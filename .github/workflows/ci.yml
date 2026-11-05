@@ -256,10 +256,24 @@ jobs:
             done
             echo "=== recent crashes (if any) ==="
             adb logcat -d -s AndroidRuntime:E | tail -20 || true
-            if [ "$OK" = "1" ]; then
-              echo "ENGINE_FFI_OK: Rust engine connected over FFI on the emulator"
-            else
+            if [ "$OK" != "1" ]; then
               echo "ENGINE_FFI_MISSING"; echo "--- UI dump ---"; head -c 2000 /tmp/ui.xml; exit 1
+            fi
+            echo "ENGINE_FFI_OK: Rust engine connected over FFI on the emulator"
+            echo "=== run PoC: tap button, verify Rust CSV profile on-device ==="
+            python3 tools/tap_poc.py
+            POC=0
+            for i in 1 2 3 4 5 6 7 8 9 10; do
+              sleep 2
+              adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1
+              adb pull /sdcard/ui.xml /tmp/ui.xml >/dev/null 2>&1
+              if grep -q "Detected schema" /tmp/ui.xml; then POC=1; break; fi
+            done
+            if [ "$POC" = "1" ]; then
+              echo "POC_OK: CSV profiled by Rust and displayed on-device"
+              grep -o '[0-9]* rows' /tmp/ui.xml | head -1 || true
+            else
+              echo "POC_MISSING"; echo "--- UI dump ---"; head -c 2000 /tmp/ui.xml; exit 1
             fi
           } > /tmp/emu_test.log 2>&1
       - name: Report emulator smoke output
