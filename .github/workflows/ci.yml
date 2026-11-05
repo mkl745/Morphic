@@ -217,44 +217,51 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
-      - name: Runtime smoke on emulator
+      - name: Boot emulator + runtime smoke (manual, fully logged)
         id: emutest
         continue-on-error: true
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 30
-          target: default
-          arch: x86_64
-          disable-animations: true
-          emulator-boot-timeout: 900
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          script: |
-            {
-              echo "=== install APK ==="
-              adb install -r /tmp/apk/app-debug.apk
-              PKG=$(adb shell pm list packages | grep morphic | head -1 | sed 's/package://' | tr -d '\r')
-              echo "package=$PKG"
-              echo "=== launch ==="
-              adb shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1
-              echo "=== wait for engine FFI (UI text) ==="
-              OK=0
-              for i in 1 2 3 4 5 6 7 8; do
-                sleep 3
-                adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1
-                adb pull /sdcard/ui.xml /tmp/ui.xml >/dev/null 2>&1
-                if grep -q "Rust engine connected" /tmp/ui.xml; then OK=1; break; fi
-              done
-              echo "=== recent crashes (if any) ==="
-              adb logcat -d -s AndroidRuntime:E | tail -20 || true
-              if [ "$OK" = "1" ]; then
-                echo "ENGINE_FFI_OK: Rust engine connected over FFI on the emulator"
-              else
-                echo "ENGINE_FFI_MISSING"
-                echo "--- UI dump (first 2000 chars) ---"
-                head -c 2000 /tmp/ui.xml
-                exit 1
-              fi
-            } > /tmp/emu_test.log 2>&1
+        run: |
+          export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
+          {
+            echo "=== install system image (android-30 default x86_64) ==="
+            echo y | sdkmanager "system-images;android-30;default;x86_64" 2>&1 | tail -5
+            echo "=== create AVD ==="
+            echo no | avdmanager create avd -n morphic_test -k "system-images;android-30;default;x86_64" --device "pixel_4" 2>&1 | tail -5
+            echo "=== boot emulator (background) ==="
+            nohup emulator -avd morphic_test -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot > /tmp/emulator_boot.log 2>&1 &
+            echo "=== wait for device (up to 2 min) ==="
+            timeout 120 adb wait-for-device || true
+            echo "=== wait for boot complete (up to 5 min) ==="
+            BOOTED=0
+            for i in $(seq 1 60); do
+              B=$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')
+              if [ "$B" = "1" ]; then BOOTED=1; break; fi
+              sleep 5
+            done
+            echo "booted=$BOOTED"; adb devices
+            if [ "$BOOTED" != "1" ]; then echo "EMULATOR_BOOT_FAILED"; tail -30 /tmp/emulator_boot.log; exit 1; fi
+            echo "=== install APK ==="
+            adb install -r /tmp/apk/app-debug.apk
+            PKG=$(adb shell pm list packages | grep morphic | head -1 | sed 's/package://' | tr -d '\r')
+            echo "package=$PKG"
+            echo "=== launch ==="
+            adb shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1
+            echo "=== wait for engine FFI (UI text) ==="
+            OK=0
+            for i in 1 2 3 4 5 6 7 8; do
+              sleep 3
+              adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1
+              adb pull /sdcard/ui.xml /tmp/ui.xml >/dev/null 2>&1
+              if grep -q "Rust engine connected" /tmp/ui.xml; then OK=1; break; fi
+            done
+            echo "=== recent crashes (if any) ==="
+            adb logcat -d -s AndroidRuntime:E | tail -20 || true
+            if [ "$OK" = "1" ]; then
+              echo "ENGINE_FFI_OK: Rust engine connected over FFI on the emulator"
+            else
+              echo "ENGINE_FFI_MISSING"; echo "--- UI dump ---"; head -c 2000 /tmp/ui.xml; exit 1
+            fi
+          } > /tmp/emu_test.log 2>&1
       - name: Report emulator smoke output
         if: always()
         continue-on-error: true
