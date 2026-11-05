@@ -1,0 +1,52 @@
+# Rust
+/target/
+**/*.rs.bk
+Cargo.lock.bak
+
+# Flutter / Dart
+.dart_tool/
+.packages
+.pub-cache/
+.pub/
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+*.iml
+.idea/
+.vscode/
+*.lock.tmp
+
+# Android
+apps/morphic_flutter/android/.gradle/
+apps/morphic_flutter/android/local.properties
+apps/morphic_flutter/android/app/src/main/jniLibs/
+apps/morphic_flutter/android/key.properties
+*.jks
+*.keystore
+
+# iOS
+apps/morphic_flutter/ios/Pods/
+apps/morphic_flutter/ios/.symlinks/
+apps/morphic_flutter/ios/Flutter/Flutter.framework
+apps/morphic_flutter/ios/Flutter/Flutter.podspec
+apps/morphic_flutter/ios/Flutter/Generated.xcconfig
+apps/morphic_flutter/ios/Flutter/app.flx
+apps/morphic_flutter/ios/Flutter/app.zip
+apps/morphic_flutter/ios/Flutter/flutter_assets/
+apps/morphic_flutter/ios/ServiceDefinitions.json
+apps/morphic_flutter/ios/Runner/GeneratedPluginRegistrant.*
+
+# Generated native artifacts (built in CI, not committed)
+*.so
+*.dylib
+*.dll
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+
+# Local toolchains / vendored deps (never committed)
+/toolchains/
+/vendor/
+.cargo-vendor-config.toml

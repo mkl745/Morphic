@@ -1,0 +1,10 @@
+[package]
+name = "morphic-model"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "MORPHIC shared domain primitives: values, columns, tables, profiles, provenance."
+
+[dependencies]
+serde.workspace = true

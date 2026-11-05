@@ -1,0 +1,25 @@
+name: morphic_flutter
+description: "MORPHIC — Your Data. Your Interface. A local-first adaptive workspace engine."
+publish_to: "none"
+version: 0.1.0+1
+
+environment:
+  sdk: ">=3.5.0 <4.0.0"
+
+# Phase 0 PoC keeps dependencies minimal (see ADR-0002 addendum). M1.1 adds
+# flutter_rust_bridge + cargokit, go_router, Riverpod 3, and file_picker.
+dependencies:
+  flutter:
+    sdk: flutter
+  ffi: ^2.1.0
+  path_provider: ^2.1.3
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/samples/

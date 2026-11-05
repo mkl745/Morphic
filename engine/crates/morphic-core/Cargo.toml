@@ -1,0 +1,19 @@
+[package]
+name = "morphic-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "MORPHIC engine facade: sessions, commands, and the Phase 0 vertical-slice PoC."
+
+[dependencies]
+morphic-model.workspace = true
+morphic-ingest.workspace = true
+morphic-semantic.workspace = true
+morphic-query.workspace = true
+morphic-schema.workspace = true
+morphic-compiler.workspace = true
+morphic-workspace.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true

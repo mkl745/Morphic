@@ -1,0 +1,6 @@
+[toolchain]
+# Phase 0 tracks stable; the exact resolved version is recorded in
+# docs/engineering/toolchain.lock.md after the first green CI run, then pinned here.
+channel = "stable"
+components = ["rustfmt", "clippy"]
+profile = "minimal"

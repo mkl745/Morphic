@@ -1,0 +1,13 @@
+[package]
+name = "morphic-compiler"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "MORPHIC UI compiler: profile + intent -> validated workspace doc (Phase 0: minimal rules)."
+
+[dependencies]
+morphic-model.workspace = true
+morphic-schema.workspace = true
+morphic-semantic.workspace = true
+serde.workspace = true

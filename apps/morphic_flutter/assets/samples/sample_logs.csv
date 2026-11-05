@@ -1,0 +1,13 @@
+time,level,service,message,latency_ms
+2026-11-05T14:00:01Z,INFO,api,Request received,12
+2026-11-05T14:00:02Z,INFO,auth,Token validated,8
+2026-11-05T14:00:03Z,WARN,api,Slow upstream response,420
+2026-11-05T14:00:04Z,ERROR,payments,Charge failed: timeout,5000
+2026-11-05T14:00:05Z,INFO,api,Request received,15
+2026-11-05T14:00:06Z,ERROR,payments,Charge failed: timeout,5000
+2026-11-05T14:00:07Z,INFO,search,Query executed,34
+2026-11-05T14:00:08Z,DEBUG,cache,Cache miss,2
+2026-11-05T14:00:09Z,INFO,api,Request received,11
+2026-11-05T14:00:10Z,WARN,auth,Rate limit approaching,20
+2026-11-05T14:00:11Z,ERROR,api,Unhandled exception,0
+2026-11-05T14:00:12Z,INFO,payments,Charge succeeded,180

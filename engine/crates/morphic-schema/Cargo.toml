@@ -1,0 +1,13 @@
+[package]
+name = "morphic-schema"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "MORPHIC UI Schema v1.0: typed workspace documents, validation, migration, export."
+
+[dependencies]
+morphic-model.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+schemars.workspace = true

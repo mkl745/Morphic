@@ -1,0 +1,5 @@
+include: package:flutter_lints/flutter.yaml
+
+# Phase 0 uses the standard flutter_lints set. Stricter analysis (strict-casts,
+# strict-inference) and additional rules are tightened in M1.1 once the production
+# state-management and bridge layers land.

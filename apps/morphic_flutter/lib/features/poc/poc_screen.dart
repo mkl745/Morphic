@@ -1,0 +1,203 @@
+import 'dart:typed_data';
+
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show rootBundle;
+
+import '../../design_system/tokens.dart';
+import '../../engine/bridge_scope.dart';
+
+/// The Phase 0 vertical-slice demo: load a sample CSV, have **Rust** profile it, then
+/// generate + persist a workspace and open it. This is the "demonstrable data-processing
+/// proof of concept" required by spec §13 Phase 0.
+class PocScreen extends StatefulWidget {
+  const PocScreen({super.key});
+
+  @override
+  State<PocScreen> createState() => _PocScreenState();
+}
+
+class _PocScreenState extends State<PocScreen> {
+  Uint8List? _bytes;
+  Map<String, dynamic>? _profile;
+  String? _error;
+  bool _generating = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAndProfile();
+  }
+
+  Future<void> _loadAndProfile() async {
+    final scope = BridgeScope.of(context);
+    try {
+      final data = await rootBundle.load('assets/samples/sample_logs.csv');
+      final bytes = data.buffer.asUint8List();
+      final profile = scope.bridge.profileCsv(bytes);
+      if (!mounted) return;
+      setState(() {
+        _bytes = bytes;
+        _profile = profile;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _error = e.toString());
+    }
+  }
+
+  Future<void> _generate() async {
+    final scope = BridgeScope.of(context);
+    final bytes = _bytes;
+    if (bytes == null) return;
+    setState(() => _generating = true);
+    try {
+      final now = DateTime.now().toUtc();
+      final id = 'w_${now.millisecondsSinceEpoch}';
+      final doc = scope.bridge.createWorkspace(
+        bytes: bytes,
+        storageRoot: scope.storageRoot,
+        title: 'Sample Logs',
+        workspaceId: id,
+        nowIso: now.toIso8601String(),
+      );
+      if (!mounted) return;
+      Navigator.of(context).pushReplacementNamed('/workspace', arguments: doc);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _generating = false;
+        _error = e.toString();
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Scaffold(
+      appBar: AppBar(title: const Text('Proof of concept')),
+      body: ListView(
+        padding: const EdgeInsets.all(MorphicSpace.lg),
+        children: [
+          _stage(1, 'Inspecting data', done: _bytes != null),
+          _stage(2, 'Discovering structure (Rust)', done: _profile != null),
+          _stage(3, 'Planning visualizations', done: _profile != null),
+          const SizedBox(height: MorphicSpace.lg),
+          if (_error != null)
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(MorphicSpace.lg),
+                child: Text('Error: $_error',
+                    style: const TextStyle(color: MorphicColors.error)),
+              ),
+            ),
+          if (_profile != null) ...[
+            Text('Detected schema', style: Theme.of(context).textTheme.titleSmall),
+            const SizedBox(height: MorphicSpace.sm),
+            _ProfileView(profile: _profile!),
+            const SizedBox(height: MorphicSpace.lg),
+            FilledButton.icon(
+              onPressed: _generating ? null : _generate,
+              icon: _generating
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.auto_awesome),
+              label: Text(_generating ? 'Building workspace…' : 'Generate workspace'),
+            ),
+          ] else if (_error == null)
+            const Padding(
+              padding: EdgeInsets.all(MorphicSpace.xl),
+              child: Center(child: CircularProgressIndicator()),
+            ),
+          const SizedBox(height: MorphicSpace.md),
+          Text(
+            'The schema above was computed by the Rust engine, not Dart.',
+            style: Theme.of(context)
+                .textTheme
+                .bodySmall
+                ?.copyWith(color: scheme.onSurface.withValues(alpha: 0.6)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _stage(int n, String label, {required bool done}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: MorphicSpace.xs),
+      child: Row(
+        children: [
+          Icon(
+            done ? Icons.check_circle : Icons.radio_button_unchecked,
+            size: 18,
+            color: done ? MorphicColors.success : MorphicColors.textSecondaryDark,
+          ),
+          const SizedBox(width: MorphicSpace.md),
+          Text('$n. $label'),
+        ],
+      ),
+    );
+  }
+}
+
+class _ProfileView extends StatelessWidget {
+  const _ProfileView({required this.profile});
+  final Map<String, dynamic> profile;
+
+  @override
+  Widget build(BuildContext context) {
+    final fields = (profile['fields'] as List? ?? []).cast<Map<String, dynamic>>();
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(MorphicSpace.lg),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '${profile['rowCount']} rows · ${profile['fieldCount']} fields',
+              style: Theme.of(context).textTheme.titleSmall,
+            ),
+            const SizedBox(height: MorphicSpace.md),
+            for (final f in fields)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: MorphicSpace.xs),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(f['name'] as String? ?? ''),
+                    ),
+                    _chip(context, f['dtype'] as String? ?? '?'),
+                    const SizedBox(width: MorphicSpace.sm),
+                    _chip(
+                      context,
+                      (f['inference'] as Map?)?['role'] as String? ?? 'unknown',
+                      accent: true,
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _chip(BuildContext context, String text, {bool accent = false}) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(
+          horizontal: MorphicSpace.sm, vertical: 2),
+      decoration: BoxDecoration(
+        color: accent ? scheme.primary.withValues(alpha: 0.15) : scheme.surface,
+        borderRadius: BorderRadius.circular(MorphicRadius.sm),
+        border: Border.all(
+          color: accent ? scheme.primary : MorphicColors.borderDark,
+        ),
+      ),
+      child: Text(text, style: Theme.of(context).textTheme.labelSmall),
+    );
+  }
+}

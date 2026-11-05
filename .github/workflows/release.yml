@@ -1,0 +1,82 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    name: Signed Android release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Verify tag matches pubspec version
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          PUBSPEC="$(grep '^version:' apps/morphic_flutter/pubspec.yaml | awk '{print $2}')"
+          echo "tag=$TAG pubspec=$PUBSPEC"
+          [ "${TAG%%+*}" = "${PUBSPEC%%+*}" ] || { echo "version mismatch"; exit 1; }
+
+      - name: Generate Flutter Android scaffolding
+        run: |
+          flutter create --platforms=android --org dev.morphic --project-name morphic_flutter /tmp/morphic_scaffold
+          cp -rn /tmp/morphic_scaffold/android apps/morphic_flutter/
+
+      - name: Configure signing (if secrets present)
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > apps/morphic_flutter/android/app/release.keystore
+            cat > apps/morphic_flutter/android/key.properties <<EOF
+          storeFile=release.keystore
+          storePassword=$KEYSTORE_PASSWORD
+          keyAlias=$KEY_ALIAS
+          keyPassword=$KEY_PASSWORD
+          EOF
+            echo "Signing configured."
+          else
+            echo "No signing secrets; building UNSIGNED release artifacts."
+          fi
+
+      - name: Pub get
+        run: flutter pub get
+        working-directory: apps/morphic_flutter
+      - name: Build native libraries
+        run: bash tools/build_android_native.sh
+      - name: Build release APK + AAB
+        run: |
+          flutter build apk --release
+          flutter build appbundle --release
+        working-directory: apps/morphic_flutter
+      - name: Verify 16 KB alignment
+        run: python3 tools/check_alignment.py apps/morphic_flutter/android/app/src/main/jniLibs
+      - name: Checksums
+        run: |
+          cd apps/morphic_flutter/build/app/outputs
+          sha256sum flutter-apk/app-release.apk bundle/release/app-release.aab > SHA256SUMS.txt
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            apps/morphic_flutter/build/app/outputs/flutter-apk/app-release.apk
+            apps/morphic_flutter/build/app/outputs/bundle/release/app-release.aab
+            apps/morphic_flutter/build/app/outputs/SHA256SUMS.txt
+          generate_release_notes: true

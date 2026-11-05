@@ -1,0 +1,13 @@
+[package]
+name = "morphic-ingest"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "MORPHIC ingestion: format detection and streaming parsers (Phase 0: CSV)."
+
+[dependencies]
+morphic-model.workspace = true
+csv.workspace = true
+serde.workspace = true
+thiserror.workspace = true

@@ -30,3 +30,22 @@ column data. Contract: [02-dart-rust-contract.md](../architecture/02-dart-rust-c
   in lockfiles and upgraded together (dependency policy).
 - Risk accepted: frb is a community project (very active, verified publisher). Exit path:
   the bridge crate isolates all frb-specific code; engine crates never see frb types.
+
+## Addendum (Phase 0 execution, 2026-11-05)
+
+The build sandbox has **no local Flutter/Dart/Rust toolchain and no access to crates.io /
+pub.dev / the Flutter CDN** (only GitHub, npm, PyPI are reachable). frb codegen cannot run
+locally, and its generated output would have to be produced in CI and committed back — a
+fragile loop for a first proof of concept.
+
+**Decision for Phase 0 only:** the Dart↔Rust PoC uses a **hand-written C ABI over
+`dart:ffi`** (see `apps/morphic_flutter/rust/src/lib.rs`), which is fully authorable and
+testable in CI without codegen. It implements the same coarse-grained contract
+(`engine_info`, `profile_csv`, `create_workspace`, `load/load`, `free_string`) with the
+panic firewall. The engine crates are FFI-agnostic, so this is contained to the bridge crate.
+
+**M1.1 is explicitly the production-integration milestone:** migrate the bridge to
+flutter_rust_bridge 2.13 + cargokit (running codegen in CI), adopt go_router and Riverpod 3,
+and wire file_picker. The Phase 0 app uses minimal dependencies (Flutter + path_provider +
+ffi) and Navigator routes to keep the first CI build low-risk. This is the "smaller but
+architecturally compatible version" sanctioned by spec §21; no engine architecture changes.
