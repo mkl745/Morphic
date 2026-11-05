@@ -7,7 +7,7 @@
 use std::collections::HashSet;
 
 /// Candidate delimiters, in tie-break preference order.
-pub const CANDIDATES: [u8; 4] = [b',', b';', b'\t', b'|'];
+pub const CANDIDATES: [u8; 4] = *b",;\t|";
 
 /// Count `delim` occurrences in `line`, ignoring occurrences inside double quotes.
 fn count_outside_quotes(line: &str, delim: u8) -> usize {
