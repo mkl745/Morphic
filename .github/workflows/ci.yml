@@ -25,12 +25,14 @@ jobs:
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
-      - name: Format
-        run: cargo fmt --all
-      - name: Clippy
+      - name: Format (check)
+        id: fmt
+        continue-on-error: true
+        run: cargo fmt --all -- --check > /tmp/fmt.log 2>&1
+      - name: Clippy (deny warnings)
         id: clippy
         continue-on-error: true
-        run: cargo clippy --workspace --all-targets > /tmp/clippy.log 2>&1
+        run: cargo clippy --workspace --all-targets -- -D warnings > /tmp/clippy.log 2>&1
       - name: Test
         id: test
         continue-on-error: true
@@ -41,10 +43,14 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           {
-            echo "## Rust CI — clippy: ${{ steps.clippy.outcome }} · test: ${{ steps.test.outcome }}"
+            echo "## Rust CI — fmt: ${{ steps.fmt.outcome }} · clippy: ${{ steps.clippy.outcome }} · test: ${{ steps.test.outcome }}"
             echo "### versions"
             echo '```'
             rustc --version; cargo --version
+            echo '```'
+            echo "### fmt (check)"
+            echo '```'
+            head -n 60 /tmp/fmt.log
             echo '```'
             echo "### clippy (tail)"
             echo '```'
@@ -62,7 +68,7 @@ jobs:
             "https://api.github.com/repos/${{ github.repository }}/commits/${{ github.sha }}/comments" \
             -d @/tmp/payload.json
       - name: Enforce checks
-        if: steps.clippy.outcome != 'success' || steps.test.outcome != 'success'
+        if: steps.fmt.outcome != 'success' || steps.clippy.outcome != 'success' || steps.test.outcome != 'success'
         run: exit 1
 
   artifacts-drift:
@@ -248,7 +254,7 @@ jobs:
             adb shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1
             echo "=== wait for engine FFI (UI text) ==="
             OK=0
-            for i in 1 2 3 4 5 6 7 8; do
+            for i in $(seq 1 20); do
               sleep 3
               adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1
               adb pull /sdcard/ui.xml /tmp/ui.xml >/dev/null 2>&1
@@ -263,7 +269,7 @@ jobs:
             echo "=== run PoC: tap button, verify Rust CSV profile on-device ==="
             python3 tools/tap_poc.py
             POC=0
-            for i in 1 2 3 4 5 6 7 8 9 10; do
+            for i in $(seq 1 15); do
               sleep 2
               adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1
               adb pull /sdcard/ui.xml /tmp/ui.xml >/dev/null 2>&1
@@ -286,7 +292,7 @@ jobs:
             echo "## Emulator smoke — ${{ steps.emutest.outcome }}"
             echo '```'
             if [ -f /tmp/emu_test.log ]; then
-              head -60 /tmp/emu_test.log | cut -c1-400
+              tail -50 /tmp/emu_test.log | cut -c1-400
             else
               echo "(no log produced — emulator action failed before script)"
               echo "--- /dev/kvm ---"; ls -la /dev/kvm 2>&1
