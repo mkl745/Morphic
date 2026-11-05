@@ -232,7 +232,7 @@ fn split_slash(s: &str) -> Option<SlashParts> {
     let sa = it.next()?;
     let sb = it.next()?;
     let sc = it.next()?;
-    let (sc_num, tail) = match sc.find(|ch| ch == ' ' || ch == 'T') {
+    let (sc_num, tail) = match sc.find([' ', 'T']) {
         Some(i) => (&sc[..i], Some(&sc.as_bytes()[i + 1..])),
         None => (sc, None),
     };
@@ -374,7 +374,7 @@ mod tests {
         // 2024-03-09 is 68 days after 2024-01-01 (31 + 29 + 8), cross-checked independently.
         assert_eq!(
             parse_iso_full("2024-03-09"),
-            Some((19723 + 68) * MS_PER_DAY, false)
+            Some(((19723 + 68) * MS_PER_DAY, false))
         );
     }
 
