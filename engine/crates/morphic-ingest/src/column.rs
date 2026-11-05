@@ -367,7 +367,7 @@ mod tests {
         let mut vals: Vec<&str> = (0..19).map(|_| "2024-01-01").collect();
         vals.push("not-a-date");
         let r = raw(&vals);
-        let b = build_column("ts", &r, &vec![false; 20], 0.95);
+        let b = build_column("ts", &r, &[false; 20], 0.95);
         assert_eq!(b.column.dtype, DataType::Timestamp);
         assert_eq!(b.coerced, 1);
         assert!(b.column.nulls[19]);

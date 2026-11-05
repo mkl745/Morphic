@@ -441,7 +441,7 @@ mod tests {
     fn quantiles_use_linear_interpolation() {
         // 1..=10: p50 = 5.5, p95 = 9.55, p99 = 9.91 (type-7 definition).
         let vals: Vec<f64> = (1..=10).map(|v| v as f64).collect();
-        let s = stats_of(&f64_col("x", &vals, &vec![false; 10]));
+        let s = stats_of(&f64_col("x", &vals, &[false; 10]));
         assert!((s.p50 - 5.5).abs() < 1e-9, "{}", s.p50);
         assert!((s.p95 - 9.55).abs() < 1e-9, "{}", s.p95);
         assert!((s.p99 - 9.91).abs() < 1e-9, "{}", s.p99);
