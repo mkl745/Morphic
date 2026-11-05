@@ -1,0 +1,6 @@
+id,name,amount,active,ts
+1,alice,10.5,true,2026-11-05T10:00:00Z
+2,bob,20.0,false,2026-11-05T10:01:00Z
+3,carol,30.25,true,2026-11-05T10:02:00Z
+4,dave,40.0,true,2026-11-05T10:03:00Z
+5,erin,50.75,false,2026-11-05T10:04:00Z

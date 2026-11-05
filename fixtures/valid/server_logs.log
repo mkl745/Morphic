@@ -1,0 +1,8 @@
+2026-11-05T14:00:01Z INFO api Request received latency=12
+2026-11-05T14:00:02Z INFO auth Token validated latency=8
+2026-11-05T14:00:03Z WARN api Slow upstream response latency=420
+2026-11-05T14:00:04Z ERROR payments Charge failed: timeout latency=5000
+2026-11-05T14:00:05Z INFO api Request received latency=15
+2026-11-05T14:00:06Z ERROR payments Charge failed: timeout latency=5000
+2026-11-05T14:00:07Z INFO search Query executed latency=34
+2026-11-05T14:00:08Z DEBUG cache Cache miss latency=2

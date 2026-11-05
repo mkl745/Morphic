@@ -1,0 +1,12 @@
+{
+  "description": "MORPHIC starter fixture corpus (Phase 0). Grows each milestone; expected profiles/plans are hand-labeled in fixtures/expected/ from M1.2.",
+  "license": "Synthetic data generated for MORPHIC testing. No real user data.",
+  "files": [
+    {"path": "valid/mixed_types.csv", "format": "csv", "expect": "5 rows; id int64, name utf8, amount float64, active bool, ts temporal"},
+    {"path": "valid/server_logs.log", "format": "log", "expect": "ISO-prefixed levels; time/level/service/message extraction (M1.2)"},
+    {"path": "valid/records.json", "format": "json", "expect": "array of 4 objects; id int64, metric utf8, value float64, host utf8 (M1.2)"},
+    {"path": "malformed/ragged.csv", "format": "csv", "expect": "ragged rows padded/truncated to header width; never crashes"},
+    {"path": "malformed/truncated.json", "format": "json", "expect": "typed parse error, never a crash (M1.2)"},
+    {"path": "malformed/empty.csv", "format": "csv", "expect": "IngestError::Empty"}
+  ]
+}

@@ -1,0 +1,6 @@
+[
+  {"id": 1, "metric": "cpu", "value": 0.42, "host": "web-1"},
+  {"id": 2, "metric": "mem", "value": 0.71, "host": "web-1"},
+  {"id": 3, "metric": "cpu", "value": 0.38, "host": "web-2"},
+  {"id": 4, "metric": "disk", "value": 0.95, "host": "db-1"}
+]

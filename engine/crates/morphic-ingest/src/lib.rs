@@ -196,4 +196,35 @@ mod tests {
         assert_eq!(table.row_count, 0);
         assert_eq!(report.rows_imported, 0);
     }
+
+    // Fixture-corpus tests (fixtures/manifest.json). Paths resolve from the crate dir.
+    const FIXTURES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../../fixtures");
+
+    #[test]
+    fn fixture_mixed_types() {
+        let path = format!("{}/valid/mixed_types.csv", FIXTURES);
+        let bytes = std::fs::read(&path).expect("fixture present");
+        let (table, report) = parse_csv(&bytes).unwrap();
+        assert_eq!(table.row_count, 5);
+        assert_eq!(report.field_count, 5);
+        assert_eq!(table.columns[0].dtype, DataType::Int64); // id
+        assert_eq!(table.columns[2].dtype, DataType::Float64); // amount
+        assert_eq!(table.columns[3].dtype, DataType::Bool); // active
+    }
+
+    #[test]
+    fn fixture_ragged_never_crashes() {
+        let path = format!("{}/malformed/ragged.csv", FIXTURES);
+        let bytes = std::fs::read(&path).expect("fixture present");
+        let (table, _) = parse_csv(&bytes).unwrap();
+        assert_eq!(table.columns.len(), 3); // header width
+        assert_eq!(table.row_count, 3);
+    }
+
+    #[test]
+    fn fixture_empty_errors() {
+        let path = format!("{}/malformed/empty.csv", FIXTURES);
+        let bytes = std::fs::read(&path).expect("fixture present");
+        assert!(matches!(parse_csv(&bytes), Err(IngestError::Empty)));
+    }
 }

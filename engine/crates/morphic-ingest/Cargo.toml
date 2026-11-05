@@ -11,3 +11,10 @@ morphic-model.workspace = true
 csv.workspace = true
 serde.workspace = true
 thiserror.workspace = true
+
+[dev-dependencies]
+criterion = "0.5"
+
+[[bench]]
+name = "parse"
+harness = false
