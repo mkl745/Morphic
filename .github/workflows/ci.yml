@@ -306,3 +306,27 @@ jobs:
         run: |
           echo "Emulator runtime smoke did not pass (outcome: ${{ steps.emutest.outcome }})."
           exit 1
+
+  perf-baseline:
+    name: Perf baseline (criterion)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Run CSV parse bench
+        run: cargo bench -p morphic-ingest
+      - name: Collect criterion baseline JSON
+        run: |
+          mkdir -p perf-baseline
+          find target/criterion -name estimates.json | while read -r f; do
+            name=$(echo "$f" | sed 's|target/criterion/||; s|/|_|g')
+            cp "$f" "perf-baseline/$name"
+          done
+          ls -la perf-baseline/
+      - name: Upload baseline
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf-baseline
+          path: perf-baseline/
+          retention-days: 90
