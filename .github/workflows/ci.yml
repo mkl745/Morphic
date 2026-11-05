@@ -197,8 +197,8 @@ jobs:
   android-runtime-smoke:
     name: Android runtime smoke (emulator)
     runs-on: ubuntu-latest
-    needs: [rust-quality, dart-quality]
-    timeout-minutes: 30
+    needs: [android-build]
+    timeout-minutes: 25
     permissions:
       contents: write
     steps:
@@ -207,32 +207,12 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
-      - uses: subosito/flutter-action@v2
+      - name: Download debug APK (built by android-build)
+        uses: actions/download-artifact@v4
         with:
-          channel: stable
-          cache: true
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - name: Generate Flutter Android scaffolding
-        run: |
-          flutter create --platforms=android --org dev.morphic --project-name morphic_flutter /tmp/morphic_scaffold
-          cp -rn /tmp/morphic_scaffold/android apps/morphic_flutter/
-      - name: Pub get
-        run: flutter pub get
-        working-directory: apps/morphic_flutter
-      - name: Build native libraries (x86_64 for emulator)
-        run: |
-          rustup target add x86_64-linux-android
-          NDK="${ANDROID_NDK_LATEST_HOME:-$(ls -d "$ANDROID_HOME"/ndk/* | sort -V | tail -1)}"
-          TC="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin"
-          export CARGO_TARGET_X86_64_LINUX_ANDROID_LINKER="$TC/x86_64-linux-android24-clang"
-          export CARGO_TARGET_X86_64_LINUX_ANDROID_AR="$TC/llvm-ar"
-          export CARGO_TARGET_X86_64_LINUX_ANDROID_RUSTFLAGS="-C link-arg=-Wl,-z,max-page-size=16384"
-          cargo build --release -p morphic-bridge --target x86_64-linux-android
-          mkdir -p apps/morphic_flutter/android/app/src/main/jniLibs/x86_64
-          cp target/x86_64-linux-android/release/libmorphic_bridge.so \
-             apps/morphic_flutter/android/app/src/main/jniLibs/x86_64/
-      - name: Run integration test on emulator
+          name: morphic-debug-apk
+          path: /tmp/apk
+      - name: Runtime smoke on emulator
         id: emutest
         continue-on-error: true
         uses: reactivecircus/android-emulator-runner@v2
@@ -240,11 +220,34 @@ jobs:
           api-level: 34
           arch: x86_64
           disable-animations: true
-          working-directory: apps/morphic_flutter
           script: |
-            { echo "=== pwd ==="; pwd; echo "=== flutter devices ==="; flutter devices; echo "=== adb devices ==="; adb devices; } > /tmp/emu_test.log 2>&1 || true
-            timeout 600 flutter test integration_test/poc_smoke_test.dart >> /tmp/emu_test.log 2>&1
-      - name: Report emulator test output
+            {
+              echo "=== install APK ==="
+              adb install -r /tmp/apk/app-debug.apk
+              PKG=$(adb shell pm list packages | grep morphic | head -1 | sed 's/package://' | tr -d '\r')
+              echo "package=$PKG"
+              echo "=== launch ==="
+              adb shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1
+              echo "=== wait for engine FFI (UI text) ==="
+              OK=0
+              for i in 1 2 3 4 5 6 7 8; do
+                sleep 3
+                adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1
+                adb pull /sdcard/ui.xml /tmp/ui.xml >/dev/null 2>&1
+                if grep -q "Rust engine connected" /tmp/ui.xml; then OK=1; break; fi
+              done
+              echo "=== recent crashes (if any) ==="
+              adb logcat -d -s AndroidRuntime:E | tail -20 || true
+              if [ "$OK" = "1" ]; then
+                echo "ENGINE_FFI_OK: Rust engine connected over FFI on the emulator"
+              else
+                echo "ENGINE_FFI_MISSING"
+                echo "--- UI dump (first 2000 chars) ---"
+                head -c 2000 /tmp/ui.xml
+                exit 1
+              fi
+            } > /tmp/emu_test.log 2>&1
+      - name: Report emulator smoke output
         if: always()
         env:
           GH_TOKEN: ${{ github.token }}
@@ -252,9 +255,7 @@ jobs:
           {
             echo "## Emulator smoke — ${{ steps.emutest.outcome }}"
             echo '```'
-            head -60 /tmp/emu_test.log 2>/dev/null
-            echo "... (tail) ..."
-            tail -40 /tmp/emu_test.log 2>/dev/null
+            head -80 /tmp/emu_test.log 2>/dev/null
             echo '```'
           } > /tmp/report.md
           jq -Rs '{body: .}' < /tmp/report.md > /tmp/payload.json
@@ -263,6 +264,6 @@ jobs:
             -H "Accept: application/vnd.github+json" \
             "https://api.github.com/repos/${{ github.repository }}/commits/${{ github.sha }}/comments" \
             -d @/tmp/payload.json
-      - name: Enforce emulator test
+      - name: Enforce emulator smoke
         if: steps.emutest.outcome != 'success'
         run: exit 1
