@@ -80,3 +80,5 @@ jobs:
             apps/morphic_flutter/build/app/outputs/bundle/release/app-release.aab
             apps/morphic_flutter/build/app/outputs/SHA256SUMS.txt
           generate_release_notes: true
+          # Phase 0 dry-run: unsigned until ANDROID_KEYSTORE_* secrets are configured.
+          prerelease: true
