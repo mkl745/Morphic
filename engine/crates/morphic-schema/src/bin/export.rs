@@ -25,5 +25,9 @@ fn main() {
     )
     .expect("write manifest");
 
-    println!("exported {} and {}", schema_path.display(), manifest_path.display());
+    println!(
+        "exported {} and {}",
+        schema_path.display(),
+        manifest_path.display()
+    );
 }

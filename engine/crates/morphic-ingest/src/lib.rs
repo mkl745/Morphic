@@ -67,7 +67,10 @@ pub fn parse_csv(bytes: &[u8]) -> Result<(Table, ImportReport), IngestError> {
         .map(|(i, name)| infer_column(name, &raw_cols[i], &null_cols[i]))
         .collect();
 
-    let table = Table { columns, row_count: rows };
+    let table = Table {
+        columns,
+        row_count: rows,
+    };
     let report = ImportReport {
         format: "csv".into(),
         encoding: "utf-8".into(),
@@ -98,14 +101,15 @@ fn infer_column(name: &str, raw: &[String], nulls: &[bool]) -> Column {
 
     // bool (restricted vocabulary so 0/1 integers are not misread as booleans)
     if non_null.iter().all(|s| {
-        matches!(s.to_ascii_lowercase().as_str(), "true" | "false" | "yes" | "no")
+        matches!(
+            s.to_ascii_lowercase().as_str(),
+            "true" | "false" | "yes" | "no"
+        )
     }) {
         let values = raw
             .iter()
             .zip(nulls)
-            .map(|(s, &n)| {
-                !n && matches!(s.to_ascii_lowercase().as_str(), "true" | "yes")
-            })
+            .map(|(s, &n)| !n && matches!(s.to_ascii_lowercase().as_str(), "true" | "yes"))
             .collect();
         return Column {
             name: name.to_string(),
@@ -135,7 +139,13 @@ fn infer_column(name: &str, raw: &[String], nulls: &[bool]) -> Column {
         let values = raw
             .iter()
             .zip(nulls)
-            .map(|(s, &n)| if n { 0.0 } else { s.parse::<f64>().unwrap_or(0.0) })
+            .map(|(s, &n)| {
+                if n {
+                    0.0
+                } else {
+                    s.parse::<f64>().unwrap_or(0.0)
+                }
+            })
             .collect();
         return Column {
             name: name.to_string(),
@@ -160,7 +170,8 @@ mod tests {
 
     #[test]
     fn parses_mixed_types() {
-        let csv = b"id,name,amount,active\n1,alice,10.5,true\n2,bob,20.0,false\n3,carol,30.25,true\n";
+        let csv =
+            b"id,name,amount,active\n1,alice,10.5,true\n2,bob,20.0,false\n3,carol,30.25,true\n";
         let (table, report) = parse_csv(csv).unwrap();
         assert_eq!(table.row_count, 3);
         assert_eq!(report.field_count, 4);

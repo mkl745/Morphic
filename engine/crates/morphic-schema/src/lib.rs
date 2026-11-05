@@ -256,7 +256,11 @@ pub fn validate(doc: &WorkspaceDoc) -> Vec<ValidationIssue> {
     if ws.components.len() > MAX_COMPONENTS {
         issues.push(ValidationIssue {
             pointer: "/workspace/components".into(),
-            rule: format!("too many components ({} > {})", ws.components.len(), MAX_COMPONENTS),
+            rule: format!(
+                "too many components ({} > {})",
+                ws.components.len(),
+                MAX_COMPONENTS
+            ),
         });
     }
 
@@ -280,7 +284,10 @@ pub fn validate(doc: &WorkspaceDoc) -> Vec<ValidationIssue> {
         if RESERVED_COMPONENTS.contains(&c.component_type.as_str()) {
             issues.push(ValidationIssue {
                 pointer: ptr.clone(),
-                rule: format!("component type '{}' is reserved, not implemented in v1", c.component_type),
+                rule: format!(
+                    "component type '{}' is reserved, not implemented in v1",
+                    c.component_type
+                ),
             });
         } else if !ACTIVE_COMPONENTS.contains(&c.component_type.as_str()) {
             issues.push(ValidationIssue {
@@ -370,8 +377,14 @@ mod tests {
                 created_at: "2026-11-05T00:00:00Z".into(),
                 modified_at: "2026-11-05T00:00:00Z".into(),
                 revision: 1,
-                generator: Generator { kind: "deterministic".into(), version: "0.1.0".into() },
-                data_sources: vec![DataSourceRef { alias: "data".into(), dataset_id: "d1".into() }],
+                generator: Generator {
+                    kind: "deterministic".into(),
+                    version: "0.1.0".into(),
+                },
+                data_sources: vec![DataSourceRef {
+                    alias: "data".into(),
+                    dataset_id: "d1".into(),
+                }],
                 layout: Layout {
                     mode: "adaptive".into(),
                     order: vec!["m1".into()],
@@ -385,7 +398,11 @@ mod tests {
                     title: None,
                     data_source: "data".into(),
                     binding: Binding::MetricCard {
-                        aggregation: Aggregation { op: "count".into(), field: None, filter: None },
+                        aggregation: Aggregation {
+                            op: "count".into(),
+                            field: None,
+                            filter: None,
+                        },
                     },
                     interactions: Interactions::default(),
                     explanation: None,
@@ -404,7 +421,9 @@ mod tests {
         let mut doc = minimal_doc();
         doc.workspace.components[0].component_type = "web_view".into();
         let issues = validate(&doc);
-        assert!(issues.iter().any(|i| i.rule.contains("unknown component type")));
+        assert!(issues
+            .iter()
+            .any(|i| i.rule.contains("unknown component type")));
     }
 
     #[test]

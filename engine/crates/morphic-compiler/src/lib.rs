@@ -53,7 +53,11 @@ pub fn compile(
         title: Some("Records".into()),
         data_source: "data".into(),
         binding: Binding::MetricCard {
-            aggregation: Aggregation { op: "count".into(), field: None, filter: None },
+            aggregation: Aggregation {
+                op: "count".into(),
+                field: None,
+                filter: None,
+            },
         },
         interactions: Interactions::default(),
         explanation: Some(Explanation {
@@ -85,7 +89,10 @@ pub fn compile(
                     .find(|f| f.inference.role == FieldRole::Severity)
                     .map(|f| f.name.clone()),
             },
-            interactions: Interactions { filter: true, ..Default::default() },
+            interactions: Interactions {
+                filter: true,
+                ..Default::default()
+            },
             explanation: Some(Explanation {
                 reason: "temporal_field_detected".into(),
                 detail: format!(
@@ -105,8 +112,16 @@ pub fn compile(
         type_version: "1.0".into(),
         title: Some("Data".into()),
         data_source: "data".into(),
-        binding: Binding::DataTable { columns: vec![], page_size: 256 },
-        interactions: Interactions { search: true, sort: true, filter: true, select: true },
+        binding: Binding::DataTable {
+            columns: vec![],
+            page_size: 256,
+        },
+        interactions: Interactions {
+            search: true,
+            sort: true,
+            filter: true,
+            select: true,
+        },
         explanation: Some(Explanation {
             reason: "raw_explorer".into(),
             detail: "A searchable, sortable table keeps every record reachable.".into(),
@@ -125,9 +140,19 @@ pub fn compile(
             created_at: now_iso.into(),
             modified_at: now_iso.into(),
             revision: 1,
-            generator: Generator { kind: "deterministic".into(), version: "0.1.0".into() },
-            data_sources: vec![DataSourceRef { alias: "data".into(), dataset_id: dataset_id.into() }],
-            layout: Layout { mode: "adaptive".into(), order, hints: vec![] },
+            generator: Generator {
+                kind: "deterministic".into(),
+                version: "0.1.0".into(),
+            },
+            data_sources: vec![DataSourceRef {
+                alias: "data".into(),
+                dataset_id: dataset_id.into(),
+            }],
+            layout: Layout {
+                mode: "adaptive".into(),
+                order,
+                hints: vec![],
+            },
             global_filters: vec![],
             components,
         },
@@ -137,7 +162,7 @@ pub fn compile(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use morphic_model::{DatasetProfile, FieldProfile, FieldRole, Inference, DataType};
+    use morphic_model::{DataType, DatasetProfile, FieldProfile, FieldRole, Inference};
 
     fn profile_with_temporal() -> DatasetProfile {
         DatasetProfile {
@@ -178,7 +203,13 @@ mod tests {
 
     #[test]
     fn compile_produces_valid_doc() {
-        let doc = compile(&profile_with_temporal(), "d1", "w1", "Test", "2026-11-05T00:00:00Z");
+        let doc = compile(
+            &profile_with_temporal(),
+            "d1",
+            "w1",
+            "Test",
+            "2026-11-05T00:00:00Z",
+        );
         assert!(morphic_schema::validate(&doc).is_empty());
         // metric + timeline + table
         assert_eq!(doc.workspace.components.len(), 3);

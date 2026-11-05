@@ -18,8 +18,8 @@ fn guarded<F>(f: F) -> *mut c_char
 where
     F: FnOnce() -> String + std::panic::UnwindSafe,
 {
-    let s = std::panic::catch_unwind(f)
-        .unwrap_or_else(|_| r#"{"error":"internal panic"}"#.to_string());
+    let s =
+        std::panic::catch_unwind(f).unwrap_or_else(|_| r#"{"error":"internal panic"}"#.to_string());
     match CString::new(s) {
         Ok(cs) => cs.into_raw(),
         Err(_) => CString::new(r#"{"error":"nul byte in output"}"#)

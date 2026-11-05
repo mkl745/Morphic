@@ -9,13 +9,13 @@
 use std::collections::HashMap;
 
 use morphic_model::{
-    Column, ColumnValues, DataType, DatasetProfile, FieldProfile, FieldRole, Inference,
-    Table, ValueCount,
+    Column, ColumnValues, DataType, DatasetProfile, FieldProfile, FieldRole, Inference, Table,
+    ValueCount,
 };
 
 const SEVERITY_VOCAB: &[&str] = &[
-    "trace", "debug", "info", "notice", "warn", "warning", "error", "err", "fatal",
-    "critical", "crit", "alert", "emerg", "panic",
+    "trace", "debug", "info", "notice", "warn", "warning", "error", "err", "fatal", "critical",
+    "crit", "alert", "emerg", "panic",
 ];
 
 /// Profile every column of a table.
@@ -176,7 +176,10 @@ fn infer_role(
             return Inference {
                 role: FieldRole::Temporal,
                 confidence: 0.9,
-                evidence: vec![format!("'{}' values look like ISO-8601 timestamps", col.name)],
+                evidence: vec![format!(
+                    "'{}' values look like ISO-8601 timestamps",
+                    col.name
+                )],
             };
         }
     }
@@ -189,7 +192,11 @@ fn infer_role(
         return Inference {
             role: FieldRole::Identifier,
             confidence: 0.9,
-            evidence: vec![format!("'{}' is {:.1}% unique", col.name, 100.0 * distinct as f64 / non_null as f64)],
+            evidence: vec![format!(
+                "'{}' is {:.1}% unique",
+                col.name,
+                100.0 * distinct as f64 / non_null as f64
+            )],
         };
     }
 
@@ -198,7 +205,11 @@ fn infer_role(
         return Inference {
             role: FieldRole::Measure,
             confidence: 0.85,
-            evidence: vec![format!("'{}' is numeric ({})", col.name, col.dtype.as_str())],
+            evidence: vec![format!(
+                "'{}' is numeric ({})",
+                col.name,
+                col.dtype.as_str()
+            )],
         };
     }
 
@@ -244,7 +255,10 @@ mod tests {
     #[test]
     fn detects_severity() {
         let t = Table {
-            columns: vec![utf8_col("level", &["ERROR", "INFO", "WARN", "ERROR", "INFO"])],
+            columns: vec![utf8_col(
+                "level",
+                &["ERROR", "INFO", "WARN", "ERROR", "INFO"],
+            )],
             row_count: 5,
         };
         let p = profile(&t);

@@ -82,12 +82,24 @@ impl FileStore {
     }
 
     /// Append a command batch to the workspace journal (crash-safe append).
-    pub fn append_journal(&self, id: &str, revision: u64, commands_json: &str) -> Result<(), StoreError> {
+    pub fn append_journal(
+        &self,
+        id: &str,
+        revision: u64,
+        commands_json: &str,
+    ) -> Result<(), StoreError> {
         let dir = self.workspace_dir(id).join("journal");
         fs::create_dir_all(&dir)?;
         let path = dir.join("commands.jsonl");
-        let mut file = fs::OpenOptions::new().create(true).append(true).open(path)?;
-        writeln!(file, "{{\"revision\":{},\"commands\":{}}}", revision, commands_json)?;
+        let mut file = fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)?;
+        writeln!(
+            file,
+            "{{\"revision\":{},\"commands\":{}}}",
+            revision, commands_json
+        )?;
         Ok(())
     }
 
@@ -200,9 +212,19 @@ mod tests {
                 created_at: "2026-11-05T00:00:00Z".into(),
                 modified_at: "2026-11-05T00:00:00Z".into(),
                 revision: 1,
-                generator: Generator { kind: "deterministic".into(), version: "0.1.0".into() },
-                data_sources: vec![DataSourceRef { alias: "data".into(), dataset_id: "d1".into() }],
-                layout: Layout { mode: "adaptive".into(), order: vec!["m1".into()], hints: vec![] },
+                generator: Generator {
+                    kind: "deterministic".into(),
+                    version: "0.1.0".into(),
+                },
+                data_sources: vec![DataSourceRef {
+                    alias: "data".into(),
+                    dataset_id: "d1".into(),
+                }],
+                layout: Layout {
+                    mode: "adaptive".into(),
+                    order: vec!["m1".into()],
+                    hints: vec![],
+                },
                 global_filters: vec![],
                 components: vec![ComponentSpec {
                     id: "m1".into(),
@@ -211,7 +233,11 @@ mod tests {
                     title: None,
                     data_source: "data".into(),
                     binding: Binding::MetricCard {
-                        aggregation: Aggregation { op: "count".into(), field: None, filter: None },
+                        aggregation: Aggregation {
+                            op: "count".into(),
+                            field: None,
+                            filter: None,
+                        },
                     },
                     interactions: Interactions::default(),
                     explanation: None,
@@ -247,7 +273,10 @@ mod tests {
         store.save_workspace(&doc("w1")).unwrap();
         store.delete_workspace("w1").unwrap();
         assert!(store.list_workspaces().unwrap().is_empty());
-        assert!(matches!(store.load_workspace("w1"), Err(StoreError::NotFound(_))));
+        assert!(matches!(
+            store.load_workspace("w1"),
+            Err(StoreError::NotFound(_))
+        ));
         fs::remove_dir_all(&root).ok();
     }
 
@@ -272,7 +301,11 @@ mod tests {
         store.save_workspace(&doc("w1")).unwrap();
         store.append_journal("w1", 2, "[]").unwrap();
         store.append_journal("w1", 3, "[]").unwrap();
-        let journal = root.join("workspaces").join("w1").join("journal").join("commands.jsonl");
+        let journal = root
+            .join("workspaces")
+            .join("w1")
+            .join("journal")
+            .join("commands.jsonl");
         let content = fs::read_to_string(journal).unwrap();
         assert_eq!(content.lines().count(), 2);
         fs::remove_dir_all(&root).ok();

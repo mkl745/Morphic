@@ -37,7 +37,10 @@ mod tests {
 
     #[test]
     fn count_returns_row_count() {
-        let t = Table { columns: vec![], row_count: 42 };
+        let t = Table {
+            columns: vec![],
+            row_count: 42,
+        };
         assert_eq!(count(&t), 42);
     }
 

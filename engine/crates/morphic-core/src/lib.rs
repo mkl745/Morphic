@@ -126,7 +126,8 @@ mod tests {
         let mut root = std::env::temp_dir();
         root.push(format!("morphic-core-test-{}", std::process::id()));
         let engine = Engine::new(&root).unwrap();
-        let csv = b"time,level,value\n2026-11-05T10:00:00Z,ERROR,1.5\n2026-11-05T10:01:00Z,INFO,2.5\n";
+        let csv =
+            b"time,level,value\n2026-11-05T10:00:00Z,ERROR,1.5\n2026-11-05T10:01:00Z,INFO,2.5\n";
         let doc = engine
             .create_workspace_from_csv(csv, "Logs", "w_poc", "2026-11-05T00:00:00Z")
             .unwrap();
