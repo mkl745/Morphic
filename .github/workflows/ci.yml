@@ -237,6 +237,12 @@ jobs:
         continue-on-error: true
         run: |
           export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
+          # GitHub's default shell is `bash -eo pipefail`; a transient `uiautomator dump`
+          # failure (UI not idle while the engine spinner animates) would otherwise errexit
+          # the whole script mid-loop. Correctness is enforced by the explicit exit-1 checks
+          # below (booted / engine FFI / PoC), so disable errexit here.
+          set +e
+          set +o pipefail
           {
             echo "=== install system image (android-30 default x86_64) ==="
             echo y | sdkmanager "system-images;android-30;default;x86_64" 2>&1 | tail -5
