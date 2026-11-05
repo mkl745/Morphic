@@ -17,28 +17,49 @@ jobs:
   rust-quality:
     name: Rust (fmt · clippy · test)
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
-      # Phase 0 applies formatting in-runner; the `--check` gate is enabled once the
-      # formatted tree is committed (see docs/engineering/ci-cd.md).
       - name: Format
         run: cargo fmt --all
       - name: Clippy
-        run: cargo clippy --workspace --all-targets
+        id: clippy
+        continue-on-error: true
+        run: cargo clippy --workspace --all-targets > /tmp/clippy.log 2>&1
       - name: Test
-        run: cargo test --workspace
-      - name: Upload formatted sources
-        uses: actions/upload-artifact@v4
-        with:
-          name: formatted-rust
-          path: |
-            engine/crates/**/*.rs
-            apps/morphic_flutter/rust/src/**/*.rs
-          retention-days: 7
+        id: test
+        continue-on-error: true
+        run: cargo test --workspace > /tmp/test.log 2>&1
+      - name: Report output as commit comment
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo "## Rust CI — clippy: ${{ steps.clippy.outcome }} · test: ${{ steps.test.outcome }}"
+            echo "### clippy (tail)"
+            echo '```'
+            tail -n 80 /tmp/clippy.log
+            echo '```'
+            echo "### test (tail)"
+            echo '```'
+            tail -n 80 /tmp/test.log
+            echo '```'
+          } > /tmp/report.md
+          jq -Rs '{body: .}' < /tmp/report.md > /tmp/payload.json
+          curl -sS -X POST \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/commits/${{ github.sha }}/comments" \
+            -d @/tmp/payload.json
+      - name: Enforce checks
+        if: steps.clippy.outcome != 'success' || steps.test.outcome != 'success'
+        run: exit 1
 
   artifacts-drift:
     name: Schema artifacts drift
@@ -51,16 +72,12 @@ jobs:
         run: cargo run -p morphic-schema --bin export
       - name: Check drift
         run: git diff --exit-code -- schemas/
-      - name: Upload generated artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: schema-artifacts
-          path: schemas/
-          retention-days: 7
 
   dart-quality:
     name: Dart (analyze · test)
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     defaults:
       run:
         working-directory: apps/morphic_flutter
@@ -75,7 +92,29 @@ jobs:
       - name: Analyze
         run: flutter analyze
       - name: Test
-        run: flutter test
+        id: darttest
+        continue-on-error: true
+        run: flutter test > /tmp/darttest.log 2>&1
+      - name: Report output as commit comment
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo "## Dart CI — test: ${{ steps.darttest.outcome }}"
+            echo '```'
+            tail -n 100 /tmp/darttest.log
+            echo '```'
+          } > /tmp/report.md
+          jq -Rs '{body: .}' < /tmp/report.md > /tmp/payload.json
+          curl -sS -X POST \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/commits/${{ github.sha }}/comments" \
+            -d @/tmp/payload.json
+      - name: Enforce checks
+        if: steps.darttest.outcome != 'success'
+        run: exit 1
 
   android-build:
     name: Android debug APK
