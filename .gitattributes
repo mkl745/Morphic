@@ -1,0 +1,12 @@
+# Default: let Git normalize text files.
+* text=auto
+
+# Binary fixtures must survive checkout byte-for-byte. `latin1.csv` is *defined* by
+# containing invalid UTF-8 (0xE9, 0xFC); any re-encoding silently destroys the test's
+# premise. A workspace snapshot was observed replacing those bytes with U+FFFD, so the
+# ingest suite also asserts the fixture's defining property at runtime.
+fixtures/valid/latin1.csv -text binary
+
+# Shell/Python tooling must keep LF endings to stay executable on CI.
+*.sh text eol=lf
+*.py text eol=lf

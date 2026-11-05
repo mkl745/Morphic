@@ -139,4 +139,52 @@ mod tests {
         assert_eq!(loaded.workspace.id, "w_poc");
         std::fs::remove_dir_all(&root).ok();
     }
+
+    // --- M1.1 task 1.1.2: the full bytes -> typed table -> facts path ---
+
+    #[test]
+    fn temporal_csv_flows_through_ingest_into_facts() {
+        let csv = b"when,region,latency_ms\n\
+                    2024-01-01T12:00:00Z,eu,10\n\
+                    2024-01-01T14:00:00+02:00,us,20\n\
+                    2024-01-02T00:00:00Z,eu,30\n";
+        let (table, report) = morphic_ingest::parse_csv(csv).unwrap();
+        assert_eq!(table.row_count, 3);
+        assert_eq!(table.columns[0].dtype, morphic_model::DataType::Timestamp);
+        assert_eq!(table.columns[2].dtype, morphic_model::DataType::Int64);
+        assert!(report.warnings.iter().any(|w| w.contains("UTC milliseconds")));
+
+        let profile = morphic_semantic::profile(&table);
+
+        let when = &profile.fields[0];
+        assert_eq!(when.inference.role, morphic_model::FieldRole::Temporal);
+        assert_eq!(when.min.as_deref(), Some("2024-01-01T12:00:00.000Z"));
+        assert_eq!(when.max.as_deref(), Some("2024-01-02T00:00:00.000Z"));
+        assert!(when.stats.is_some(), "timestamps have a real distribution");
+
+        let latency = &profile.fields[2];
+        assert_eq!(latency.inference.role, morphic_model::FieldRole::Measure);
+        let s = latency.stats.as_ref().unwrap();
+        assert_eq!(s.count, 3);
+        assert!((s.mean - 20.0).abs() < 1e-9);
+        assert!((s.p50 - 20.0).abs() < 1e-9);
+        assert!(!s.sampled);
+
+        let region = &profile.fields[1];
+        assert!(region.stats.is_none(), "text has no numeric distribution");
+    }
+
+    #[test]
+    fn ambiguous_dates_do_not_silently_become_timestamps_end_to_end() {
+        let csv = b"booked_on,amount\n01/02/2024,10\n03/04/2024,20\n05/06/2024,30\n";
+        let (table, report) = morphic_ingest::parse_csv(csv).unwrap();
+        assert_eq!(table.columns[0].dtype, morphic_model::DataType::Utf8);
+        assert!(report.warnings.iter().any(|w| w.contains("ambiguous")));
+        let profile = morphic_semantic::profile(&table);
+        assert_ne!(
+            profile.fields[0].inference.role,
+            morphic_model::FieldRole::Temporal,
+            "an unresolved date order must not be presented as a temporal fact"
+        );
+    }
 }

@@ -8,7 +8,7 @@ out. No semantics, no UI, no workspace I/O (see
 
 | Format | State |
 |---|---|
-| CSV | **M1.1 production** — sniffing, encoding, tolerant typing, quarantine, cancel/progress |
+| CSV | **M1.1 production** — sniffing, encoding, tolerant typing, timestamps, quarantine, cancel/progress |
 | JSON / JSONL | M1.2 |
 | TXT / logs | M1.2 |
 
@@ -34,10 +34,22 @@ let (table, report) = morphic_ingest::parse_csv_with(bytes, &opts, Some(&cancel)
   Headerless files get `column_1..N`. Overridable; the decision is reported.
 - **Encoding**: UTF-8/UTF-16 BOMs honoured; strict UTF-8 otherwise; **Latin-1 fallback** on
   invalid UTF-8 with a warning. Never lossy-by-replacement, never a panic.
-- **Type ladder**: `bool → int64 → float64 → utf8`, choosing the most specific type with
-  `parse_ratio ≥ type_tolerance` (default **0.95**). Residual cells become **null** and the
-  count is reported per column. `0/1` stay integers; `NaN`/`inf` are rejected; `Utf8` cells
-  are preserved verbatim.
+- **Type ladder**: `bool → int64 → float64 → timestamp → utf8`, choosing the most specific
+  type with `parse_ratio ≥ type_tolerance` (default **0.95**). Residual cells become **null**
+  and the count is reported per column. `0/1` stay integers; `NaN`/`inf` are rejected; `Utf8`
+  cells are preserved verbatim.
+- **Timestamps** (`temporal.rs`, M1.1 1.1.2) normalize to **UTC milliseconds**:
+  - ISO-8601 `YYYY-MM-DD` with optional `T`/space `HH:MM[:SS[.f…]]` and optional
+    `Z` / `±HH:MM` / `±HHMM` / `±HH`; plus `YYYY/MM/DD`.
+  - `DD/MM/YYYY` vs `MM/DD/YYYY` is resolved **only** when a row has a component > 12.
+    Otherwise the column **stays text** and the ambiguity is reported — never guessed.
+  - Values without an offset are **assumed UTC**, and that assumption is reported.
+  - Tried *after* the numeric rungs, so `20240115` and epoch-looking integers stay `int64`
+    (they are usually identifiers).
+  - Calendar-validated (leap years, month lengths); leap seconds (`:60`) rejected because
+    UTC millis cannot represent them; fractional seconds truncated to milliseconds.
+  - No timezone database and no `chrono` dependency: the civil-date math lives in
+    `morphic_model::temporal` and is round-trip tested across 1800–2200.
 - **Nulls**: `"" , null, na, n/a, nil` (trimmed, case-insensitive), configurable.
 - **Ragged rows**: padded/truncated to header width, counted and reported.
 - **Quarantine**: unreadable records are counted, never fatal; 100 consecutive failures stop
@@ -50,8 +62,10 @@ let (table, report) = morphic_ingest::parse_csv_with(bytes, &opts, Some(&cancel)
 
 - Statistical charset detection (`chardetng`) is **M1.2**; Latin-1 can mis-render
   windows-1252 punctuation in `0x80..0x9F`.
-- Timestamp normalization to UTC millis (`DataType::Timestamp`) is **M1.1 task 1.1.2**;
-  temporal fields are currently a *role* over `Utf8` detected in `morphic-semantic`.
+- Named zones (`Europe/Berlin`), DST-aware local times, and locale month names (`03-Mar-24`)
+  are **not** supported; only numeric layouts with explicit offsets. Such columns stay text.
+- Systematic quantile sampling in `morphic-semantic` can alias against periodic data;
+  reservoir sampling is a candidate improvement (recorded, not hidden).
 - Ingestion is currently **whole-file in memory** (decode → `String`). True streaming with a
   memory ceiling proportional to columns, not file size, lands with 1.1.2's column builders.
   The row/column caps above are the interim guard.

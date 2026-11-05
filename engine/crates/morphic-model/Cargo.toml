@@ -8,3 +8,6 @@ description = "MORPHIC shared domain primitives: values, columns, tables, profil
 
 [dependencies]
 serde.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

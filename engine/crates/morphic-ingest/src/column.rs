@@ -19,6 +19,8 @@ pub struct ColumnBuild {
     pub coerced: usize,
     /// Fraction of non-null cells that parsed as the chosen type (1.0 for Utf8/Null).
     pub parse_ratio: f64,
+    /// A reportable decision about this column (e.g. refused ambiguous date order).
+    pub note: Option<String>,
 }
 
 /// Restricted boolean vocabulary. `0`/`1` are deliberately excluded.
@@ -64,6 +66,7 @@ pub fn build_column(name: &str, raw: &[String], nulls: &[bool], tolerance: f64) 
             },
             coerced: 0,
             parse_ratio: 1.0,
+            note: None,
         };
     }
 
@@ -99,6 +102,7 @@ pub fn build_column(name: &str, raw: &[String], nulls: &[bool], tolerance: f64) 
             },
             coerced,
             parse_ratio: ratio(hits),
+            note: None,
         };
     }
 
@@ -131,6 +135,7 @@ pub fn build_column(name: &str, raw: &[String], nulls: &[bool], tolerance: f64) 
             },
             coerced,
             parse_ratio: ratio(hits),
+            note: None,
         };
     }
 
@@ -163,7 +168,65 @@ pub fn build_column(name: &str, raw: &[String], nulls: &[bool], tolerance: f64) 
             },
             coerced,
             parse_ratio: ratio(hits),
+            note: None,
         };
+    }
+
+    // --- timestamp (M1.1 1.1.2) ---
+    // Tried only after the numeric rungs, so bare integers (IDs, epoch-looking numbers)
+    // are never reinterpreted as dates. Ambiguous day/month order is REFUSED, not guessed.
+    let mut temporal_note: Option<String> = None;
+    if let Some(det) = crate::temporal::detect(&samples, tol) {
+        match det.format {
+            Some(format) => {
+                let mut out_nulls = nulls.to_vec();
+                let mut values = Vec::with_capacity(raw.len());
+                let mut coerced = 0usize;
+                for (i, s) in raw.iter().enumerate() {
+                    if nulls[i] {
+                        values.push(0);
+                        continue;
+                    }
+                    match crate::temporal::parse(s, format) {
+                        Some(v) => values.push(v),
+                        None => {
+                            values.push(0);
+                            out_nulls[i] = true;
+                            coerced += 1;
+                        }
+                    }
+                }
+                let mut note = format!(
+                    "parsed as timestamps using {} and normalized to UTC milliseconds",
+                    format.as_str()
+                );
+                if det.zoned_count < det.matched {
+                    note.push_str(&format!(
+                        "; {} of {} value(s) had no UTC offset and were assumed to be UTC",
+                        det.matched - det.zoned_count,
+                        det.matched
+                    ));
+                }
+                return ColumnBuild {
+                    column: Column {
+                        name: name.to_string(),
+                        dtype: DataType::Timestamp,
+                        values: ColumnValues::Timestamp(values),
+                        nulls: out_nulls,
+                    },
+                    coerced,
+                    parse_ratio: ratio(det.matched),
+                    note: Some(note),
+                };
+            }
+            None if det.ambiguous_day_month => {
+                temporal_note = Some(
+                    "looks like slash-separated dates but day/month order is ambiguous                      (no value has a component above 12); kept as text rather than guessed"
+                        .to_string(),
+                );
+            }
+            None => {}
+        }
     }
 
     // --- utf8 fallback (original cells preserved verbatim: fidelity over tidiness) ---
@@ -176,6 +239,7 @@ pub fn build_column(name: &str, raw: &[String], nulls: &[bool], tolerance: f64) 
         },
         coerced: 0,
         parse_ratio: 1.0,
+        note: temporal_note,
     }
 }
 
@@ -282,5 +346,98 @@ mod tests {
             ColumnValues::Utf8(v) => assert_eq!(v[0], "  padded text  "),
             _ => panic!("expected utf8 buffer"),
         }
+    }
+
+    // --- M1.1 task 1.1.2: the timestamp rung ---
+
+    #[test]
+    fn iso_column_becomes_timestamp_utc_millis() {
+        let r = raw(&["2023-11-14T22:13:20Z", "1970-01-01T00:00:00Z"]);
+        let b = build_column("ts", &r, &[false; 2], 0.95);
+        assert_eq!(b.column.dtype, DataType::Timestamp);
+        assert_eq!(b.coerced, 0);
+        match b.column.values {
+            ColumnValues::Timestamp(v) => assert_eq!(v, vec![1_700_000_000_000, 0]),
+            other => panic!("expected timestamp, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn unparseable_timestamp_cells_become_null_and_are_counted() {
+        let mut vals: Vec<&str> = (0..19).map(|_| "2024-01-01").collect();
+        vals.push("not-a-date");
+        let r = raw(&vals);
+        let b = build_column("ts", &r, &vec![false; 20], 0.95);
+        assert_eq!(b.column.dtype, DataType::Timestamp);
+        assert_eq!(b.coerced, 1);
+        assert!(b.column.nulls[19]);
+        assert!(!b.column.nulls[0]);
+    }
+
+    #[test]
+    fn bare_integers_are_never_reinterpreted_as_dates() {
+        // YYYYMMDD and epoch-looking numbers must stay integers (they are often IDs).
+        let r = raw(&["20240115", "20240116", "20240117"]);
+        assert_eq!(build_column("d", &r, &[false; 3], 0.95).column.dtype, DataType::Int64);
+        let e = raw(&["1700000000", "1700000001"]);
+        assert_eq!(build_column("epoch", &e, &[false; 2], 0.95).column.dtype, DataType::Int64);
+    }
+
+    #[test]
+    fn numeric_rungs_win_before_timestamps() {
+        let r = raw(&["1.5", "2.5", "3.5"]);
+        assert_eq!(build_column("x", &r, &[false; 3], 0.95).column.dtype, DataType::Float64);
+    }
+
+    #[test]
+    fn ambiguous_day_month_stays_text_and_is_reported() {
+        let r = raw(&["01/02/2024", "03/04/2024", "05/06/2024"]);
+        let b = build_column("d", &r, &[false; 3], 0.95);
+        assert_eq!(b.column.dtype, DataType::Utf8, "must not guess the field order");
+        let note = b.note.expect("ambiguity must be reported");
+        assert!(note.contains("ambiguous"), "{note}");
+        // Original cells are preserved verbatim.
+        match b.column.values {
+            ColumnValues::Utf8(v) => assert_eq!(v[0], "01/02/2024"),
+            other => panic!("expected utf8, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn day_first_slash_dates_are_typed_when_evidence_resolves_them() {
+        let r = raw(&["01/02/2024", "25/12/2024"]);
+        let b = build_column("d", &r, &[false; 2], 0.95);
+        assert_eq!(b.column.dtype, DataType::Timestamp);
+        assert!(b.note.unwrap().contains("DD/MM/YYYY"));
+    }
+
+    #[test]
+    fn missing_utc_offset_is_disclosed_in_the_note() {
+        let r = raw(&["2024-01-01 05:00:00", "2024-01-02 06:00:00"]);
+        let b = build_column("ts", &r, &[false; 2], 0.95);
+        assert_eq!(b.column.dtype, DataType::Timestamp);
+        let note = b.note.unwrap();
+        assert!(note.contains("assumed to be UTC"), "{note}");
+    }
+
+    #[test]
+    fn fully_zoned_column_does_not_warn_about_assumptions() {
+        let r = raw(&["2024-01-01T05:00:00Z", "2024-01-02T06:00:00+02:00"]);
+        let b = build_column("ts", &r, &[false; 2], 0.95);
+        assert_eq!(b.column.dtype, DataType::Timestamp);
+        assert!(!b.note.unwrap().contains("assumed"));
+    }
+
+    #[test]
+    fn mostly_text_column_is_not_temporal() {
+        let r = raw(&["2024-01-01", "hello", "world", "more text"]);
+        assert_eq!(build_column("x", &r, &[false; 4], 0.95).column.dtype, DataType::Utf8);
+    }
+
+    #[test]
+    fn all_null_temporal_looking_column_is_null_typed() {
+        let r = raw(&["2024-01-01", "2024-01-02"]);
+        let b = build_column("ts", &r, &[true, true], 0.95);
+        assert_eq!(b.column.dtype, DataType::Null);
     }
 }

@@ -13,6 +13,7 @@
 pub mod column;
 pub mod decode;
 pub mod sniff;
+pub mod temporal;
 
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -311,6 +312,9 @@ pub fn parse_csv_with(
                 built.column.dtype.as_str(),
                 100.0 * built.parse_ratio
             ));
+        }
+        if let Some(note) = &built.note {
+            warnings.push(format!("Column '{}': {}.", name, note));
         }
         columns.push(built.column);
     }
@@ -682,5 +686,90 @@ mod tests {
     fn fixture_latin1() {
         let (_, report) = parse_csv(&fixture("valid/latin1.csv")).unwrap();
         assert!(report.encoding.contains("latin-1"));
+    }
+
+    // --- M1.1 task 1.1.2: temporal ingestion, end to end ---
+
+    #[test]
+    fn fixture_timestamps_normalize_offsets_to_the_same_instant() {
+        let (table, report) = parse_csv(&fixture("valid/timestamps.csv")).unwrap();
+        assert_eq!(table.columns[1].dtype, DataType::Timestamp);
+        assert_eq!(table.row_count, 4);
+        match &table.columns[1].values {
+            morphic_model::ColumnValues::Timestamp(v) => {
+                // 12:00Z, 14:00+02:00 and 07:00-05:00 are the same instant.
+                assert_eq!(v[0], v[1]);
+                assert_eq!(v[1], v[2]);
+                assert!(v[3] > v[0]);
+            }
+            other => panic!("expected timestamps, got {:?}", other),
+        }
+        // Every value carried an offset, so no assumption warning is emitted.
+        assert!(
+            !report.warnings.iter().any(|w| w.contains("assumed to be UTC")),
+            "{:?}",
+            report.warnings
+        );
+    }
+
+    #[test]
+    fn fixture_naive_timestamps_disclose_the_utc_assumption() {
+        let (table, report) = parse_csv(&fixture("valid/naive_timestamps.csv")).unwrap();
+        assert_eq!(table.columns[0].dtype, DataType::Timestamp);
+        assert!(
+            report.warnings.iter().any(|w| w.contains("assumed to be UTC")),
+            "the missing-offset assumption must be reported: {:?}",
+            report.warnings
+        );
+    }
+
+    #[test]
+    fn fixture_ambiguous_dates_are_kept_as_text_with_a_warning() {
+        let (table, report) = parse_csv(&fixture("valid/ambiguous_dates.csv")).unwrap();
+        assert_eq!(table.columns[0].dtype, DataType::Utf8);
+        assert!(
+            report.warnings.iter().any(|w| w.contains("ambiguous")),
+            "ambiguity must be reported: {:?}",
+            report.warnings
+        );
+        // Fidelity: the original cells survive untouched.
+        match &table.columns[0].values {
+            morphic_model::ColumnValues::Utf8(v) => assert_eq!(v[0], "01/02/2024"),
+            other => panic!("expected utf8, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn fixture_day_first_dates_are_typed_when_evidence_resolves_them() {
+        let (table, report) = parse_csv(&fixture("valid/day_first_dates.csv")).unwrap();
+        assert_eq!(table.columns[0].dtype, DataType::Timestamp);
+        assert!(
+            report.warnings.iter().any(|w| w.contains("DD/MM/YYYY")),
+            "the chosen layout must be reported: {:?}",
+            report.warnings
+        );
+    }
+
+    #[test]
+    fn mixed_types_temporal_column_is_now_a_real_timestamp() {
+        // Phase 0 left this as Utf8 with only a role hint; 1.1.2 types it.
+        let (table, _) = parse_csv(&fixture("valid/mixed_types.csv")).unwrap();
+        assert_eq!(table.columns[4].name, "ts");
+        assert_eq!(table.columns[4].dtype, DataType::Timestamp);
+    }
+
+    /// Guards the fixture itself, not the parser. `latin1.csv` only tests the fallback path
+    /// if it is genuinely invalid UTF-8; a re-encoding (observed once from a workspace
+    /// snapshot) would turn it into ordinary UTF-8 and make the real test vacuous.
+    #[test]
+    fn latin1_fixture_really_is_invalid_utf8() {
+        let bytes = fixture("valid/latin1.csv");
+        assert!(
+            std::str::from_utf8(&bytes).is_err(),
+            "fixtures/valid/latin1.csv must contain invalid UTF-8; it was re-encoded. \
+             Restore it with: git checkout -- fixtures/valid/latin1.csv"
+        );
+        assert!(bytes.contains(&0xE9), "expected the Latin-1 byte 0xE9 (e-acute)");
+        assert!(bytes.contains(&0xFC), "expected the Latin-1 byte 0xFC (u-umlaut)");
     }
 }

@@ -3,15 +3,22 @@
 //! Turns a `Table` into a `DatasetProfile`: measured **facts** (confidence 1.0) plus
 //! **role inferences** with confidence + evidence (docs/architecture/05 §3).
 //!
-//! Phase 0 implements the core fact set and a transparent role heuristic. Timestamp
-//! normalization, sampled quantiles, and the full statistical suite arrive in M1.2.
+//! M1.1 adds normalized-timestamp facts and distribution statistics (mean, population
+//! standard deviation, p50/p95/p99). Quantiles are exact for small columns and estimated
+//! from a deterministic systematic sample above [`QUANTILE_SAMPLE_BUDGET`]; the `sampled`
+//! flag keeps an estimate from being presented as a measurement.
 
 use std::collections::HashMap;
 
+use morphic_model::temporal::format_utc_ms;
 use morphic_model::{
-    Column, ColumnValues, DataType, DatasetProfile, FieldProfile, FieldRole, Inference, Table,
-    ValueCount,
+    Column, ColumnValues, DataType, DatasetProfile, FieldProfile, FieldRole, Inference, NumericStats,
+    Table, ValueCount,
 };
+
+/// Above this many non-null values, quantiles are estimated from a systematic sample.
+/// Mean and standard deviation always use the full population (single pass, no sort).
+pub const QUANTILE_SAMPLE_BUDGET: usize = 100_000;
 
 const SEVERITY_VOCAB: &[&str] = &[
     "trace", "debug", "info", "notice", "warn", "warning", "error", "err", "fatal", "critical",
@@ -34,8 +41,85 @@ fn cell_string(col: &Column, i: usize) -> String {
         ColumnValues::Int64(v) => v.get(i).map(|n| n.to_string()).unwrap_or_default(),
         ColumnValues::Float64(v) => v.get(i).map(|n| n.to_string()).unwrap_or_default(),
         ColumnValues::Utf8(v) => v.get(i).cloned().unwrap_or_default(),
+        ColumnValues::Timestamp(v) => v.get(i).map(|ms| format_utc_ms(*ms)).unwrap_or_default(),
         ColumnValues::Null => String::new(),
     }
+}
+
+/// Non-null, finite numeric values of a column. Timestamps participate as UTC millis so
+/// they get a real distribution (min/max/quantiles) without becoming "measures".
+fn numeric_values(col: &Column) -> Vec<f64> {
+    let keep = |i: usize| !col.nulls.get(i).copied().unwrap_or(true);
+    match &col.values {
+        ColumnValues::Int64(v) => v
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| keep(*i))
+            .map(|(_, x)| *x as f64)
+            .collect(),
+        ColumnValues::Float64(v) => v
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| keep(*i))
+            .map(|(_, x)| *x)
+            .filter(|x| x.is_finite())
+            .collect(),
+        ColumnValues::Timestamp(v) => v
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| keep(*i))
+            .map(|(_, x)| *x as f64)
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
+/// Linear-interpolation quantile (the "type 7" definition) over a **sorted** sample.
+fn quantile_sorted(sorted: &[f64], q: f64) -> f64 {
+    if sorted.len() == 1 {
+        return sorted[0];
+    }
+    let pos = q * (sorted.len() - 1) as f64;
+    let lo = pos.floor() as usize;
+    let hi = pos.ceil() as usize;
+    if lo == hi {
+        sorted[lo]
+    } else {
+        sorted[lo] + (sorted[hi] - sorted[lo]) * (pos - lo as f64)
+    }
+}
+
+/// Distribution facts. `None` when the column has no usable numeric values.
+fn numeric_stats(values: &[f64]) -> Option<NumericStats> {
+    let count = values.len();
+    if count == 0 {
+        return None;
+    }
+    let mean = values.iter().sum::<f64>() / count as f64;
+    // Two-pass population variance: more stable than E[x^2] - E[x]^2.
+    let var = values.iter().map(|x| (x - mean) * (x - mean)).sum::<f64>() / count as f64;
+    let std_dev = if count < 2 { 0.0 } else { var.sqrt() };
+
+    let sample: Vec<f64> = if count > QUANTILE_SAMPLE_BUDGET {
+        let step = count.div_ceil(QUANTILE_SAMPLE_BUDGET);
+        values.iter().step_by(step).copied().collect()
+    } else {
+        values.to_vec()
+    };
+    let sample_size = sample.len();
+    let mut sorted = sample;
+    sorted.sort_by(f64::total_cmp);
+
+    Some(NumericStats {
+        count,
+        mean,
+        std_dev,
+        p50: quantile_sorted(&sorted, 0.50),
+        p95: quantile_sorted(&sorted, 0.95),
+        p99: quantile_sorted(&sorted, 0.99),
+        sampled: sample_size < count,
+        sample_size,
+    })
 }
 
 fn profile_field(col: &Column) -> FieldProfile {
@@ -68,6 +152,7 @@ fn profile_field(col: &Column) -> FieldProfile {
     top.truncate(20);
 
     let (min, max) = min_max(col);
+    let stats = numeric_stats(&numeric_values(col));
     let inference = infer_role(col, distinct_count, non_null, &top, avg_len);
 
     FieldProfile {
@@ -78,6 +163,7 @@ fn profile_field(col: &Column) -> FieldProfile {
         min,
         max,
         top_values: top,
+        stats,
         inference,
     }
 }
@@ -118,6 +204,18 @@ fn min_max(col: &Column) -> (Option<String>, Option<String>) {
             });
             (min.map(|x| x.to_string()), max.map(|x| x.to_string()))
         }
+        ColumnValues::Timestamp(v) => {
+            let vals: Vec<i64> = v
+                .iter()
+                .enumerate()
+                .filter(|(i, _)| !col.nulls[*i])
+                .map(|(_, x)| *x)
+                .collect();
+            (
+                vals.iter().min().map(|ms| format_utc_ms(*ms)),
+                vals.iter().max().map(|ms| format_utc_ms(*ms)),
+            )
+        }
         ColumnValues::Utf8(v) => {
             let strs: Vec<&String> = v
                 .iter()
@@ -151,6 +249,19 @@ fn infer_role(
     top: &[ValueCount],
     avg_len: f64,
 ) -> Inference {
+    // Temporal by construction: ingestion already validated and normalized these values to
+    // UTC, so this rests on a measured fact rather than a string-shape heuristic.
+    if col.dtype == DataType::Timestamp {
+        return Inference {
+            role: FieldRole::Temporal,
+            confidence: 0.99,
+            evidence: vec![format!(
+                "'{}' was parsed and normalized to UTC timestamps at import",
+                col.name
+            )],
+        };
+    }
+
     // Severity: categorical values drawn from the level vocabulary.
     if col.dtype == DataType::Utf8 && !top.is_empty() {
         let all_sev = top
@@ -296,5 +407,155 @@ mod tests {
         let p = profile(&t);
         assert_eq!(p.fields[0].inference.role, FieldRole::Measure);
         assert_eq!(p.fields[0].distinct_count, 3);
+    }
+
+    // --- M1.1 task 1.1.2: distribution facts + normalized timestamps ---
+
+    fn f64_col(name: &str, vals: &[f64], nulls: &[bool]) -> Column {
+        Column {
+            name: name.into(),
+            dtype: DataType::Float64,
+            values: ColumnValues::Float64(vals.to_vec()),
+            nulls: nulls.to_vec(),
+        }
+    }
+
+    fn ts_col(name: &str, vals: &[i64]) -> Column {
+        Column {
+            name: name.into(),
+            dtype: DataType::Timestamp,
+            values: ColumnValues::Timestamp(vals.to_vec()),
+            nulls: vec![false; vals.len()],
+        }
+    }
+
+    fn stats_of(col: &Column) -> NumericStats {
+        let t = Table { columns: vec![col.clone()], row_count: col.len() };
+        profile(&t).fields[0].stats.clone().expect("expected stats")
+    }
+
+    #[test]
+    fn quantiles_use_linear_interpolation() {
+        // 1..=10: p50 = 5.5, p95 = 9.55, p99 = 9.91 (type-7 definition).
+        let vals: Vec<f64> = (1..=10).map(|v| v as f64).collect();
+        let s = stats_of(&f64_col("x", &vals, &vec![false; 10]));
+        assert!((s.p50 - 5.5).abs() < 1e-9, "{}", s.p50);
+        assert!((s.p95 - 9.55).abs() < 1e-9, "{}", s.p95);
+        assert!((s.p99 - 9.91).abs() < 1e-9, "{}", s.p99);
+        assert!((s.mean - 5.5).abs() < 1e-9);
+        assert_eq!(s.count, 10);
+        assert!(!s.sampled);
+        assert_eq!(s.sample_size, 10);
+    }
+
+    #[test]
+    fn std_dev_is_population_not_sample() {
+        // Values 2 and 4: mean 3, population variance 1, population sd 1 (sample sd would be ~1.414).
+        let s = stats_of(&f64_col("x", &[2.0, 4.0], &[false, false]));
+        assert!((s.mean - 3.0).abs() < 1e-9);
+        assert!((s.std_dev - 1.0).abs() < 1e-9, "{}", s.std_dev);
+    }
+
+    #[test]
+    fn single_value_has_zero_deviation() {
+        let s = stats_of(&f64_col("x", &[7.0], &[false]));
+        assert_eq!(s.std_dev, 0.0);
+        assert_eq!(s.p50, 7.0);
+        assert_eq!(s.p99, 7.0);
+    }
+
+    #[test]
+    fn nulls_are_excluded_from_facts() {
+        let s = stats_of(&f64_col("x", &[1.0, 999.0, 3.0], &[false, true, false]));
+        assert_eq!(s.count, 2);
+        assert!((s.mean - 2.0).abs() < 1e-9);
+        assert_eq!(s.p99, 3.0);
+    }
+
+    #[test]
+    fn non_finite_values_are_excluded() {
+        let s = stats_of(&f64_col(
+            "x",
+            &[1.0, f64::NAN, 3.0, f64::INFINITY],
+            &[false; 4],
+        ));
+        assert_eq!(s.count, 2);
+        assert!(s.mean.is_finite());
+    }
+
+    #[test]
+    fn all_null_column_has_no_stats() {
+        let t = Table {
+            columns: vec![f64_col("x", &[0.0, 0.0], &[true, true])],
+            row_count: 2,
+        };
+        assert!(profile(&t).fields[0].stats.is_none());
+    }
+
+    #[test]
+    fn text_column_has_no_stats() {
+        let t = Table { columns: vec![utf8_col("s", &["a", "b"])], row_count: 2 };
+        assert!(profile(&t).fields[0].stats.is_none());
+    }
+
+    #[test]
+    fn large_column_marks_quantiles_as_sampled() {
+        let n = QUANTILE_SAMPLE_BUDGET + 5_000;
+        let vals: Vec<f64> = (0..n).map(|v| v as f64).collect();
+        let s = stats_of(&f64_col("x", &vals, &vec![false; n]));
+        assert_eq!(s.count, n);
+        assert!(s.sampled, "quantiles above the budget must be labelled estimated");
+        assert!(s.sample_size < n);
+        assert!(s.sample_size <= QUANTILE_SAMPLE_BUDGET);
+        // Mean still uses the full population, so it is exact.
+        assert!((s.mean - (n - 1) as f64 / 2.0).abs() < 1e-6);
+        // A monotonic sequence sampled systematically still brackets the true median.
+        assert!((s.p50 - (n - 1) as f64 / 2.0).abs() / (n as f64) < 0.01);
+    }
+
+    #[test]
+    fn timestamp_role_rests_on_the_normalized_type() {
+        let t = Table {
+            columns: vec![ts_col("when", &[0, 86_400_000, 172_800_000])],
+            row_count: 3,
+        };
+        let p = profile(&t);
+        let f = &p.fields[0];
+        assert_eq!(f.dtype, DataType::Timestamp);
+        assert_eq!(f.inference.role, FieldRole::Temporal);
+        assert!(f.inference.confidence > 0.95);
+    }
+
+    #[test]
+    fn timestamp_min_max_are_human_readable_utc() {
+        let t = Table {
+            columns: vec![ts_col("when", &[1_700_000_000_000, 0, -1])],
+            row_count: 3,
+        };
+        let f = &profile(&t).fields[0];
+        assert_eq!(f.min.as_deref(), Some("1969-12-31T23:59:59.999Z"));
+        assert_eq!(f.max.as_deref(), Some("2023-11-14T22:13:20.000Z"));
+    }
+
+    #[test]
+    fn timestamps_get_stats_but_are_not_measures() {
+        let t = Table {
+            columns: vec![ts_col("when", &[0, 1000, 2000])],
+            row_count: 3,
+        };
+        let f = &profile(&t).fields[0];
+        let s = f.stats.as_ref().expect("timestamps have a distribution");
+        assert_eq!(s.count, 3);
+        assert!((s.mean - 1000.0).abs() < 1e-9);
+        assert_ne!(f.inference.role, FieldRole::Measure);
+    }
+
+    #[test]
+    fn timestamp_cells_render_as_iso_in_top_values() {
+        let t = Table { columns: vec![ts_col("when", &[0, 0, 1000])], row_count: 3 };
+        let f = &profile(&t).fields[0];
+        assert_eq!(f.top_values[0].value, "1970-01-01T00:00:00.000Z");
+        assert_eq!(f.top_values[0].count, 2);
+        assert_eq!(f.distinct_count, 2);
     }
 }

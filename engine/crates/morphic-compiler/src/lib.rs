@@ -177,6 +177,7 @@ mod tests {
                     min: None,
                     max: None,
                     top_values: vec![],
+                    stats: None,
                     inference: Inference {
                         role: FieldRole::Temporal,
                         confidence: 0.9,
@@ -191,6 +192,7 @@ mod tests {
                     min: None,
                     max: None,
                     top_values: vec![],
+                    stats: None,
                     inference: Inference {
                         role: FieldRole::Measure,
                         confidence: 0.85,
