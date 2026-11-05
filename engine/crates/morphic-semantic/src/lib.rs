@@ -472,7 +472,10 @@ mod tests {
         let s = stats_of(&f64_col("x", &[1.0, 999.0, 3.0], &[false, true, false]));
         assert_eq!(s.count, 2);
         assert!((s.mean - 2.0).abs() < 1e-9);
-        assert_eq!(s.p99, 3.0);
+        // Type-7 quantiles interpolate: p99 of [1,3] is 1 + 2*0.99 = 2.98, not the max.
+        // The point of the test is that the null 999.0 never enters the distribution.
+        assert!((s.p99 - 2.98).abs() < 1e-9, "{}", s.p99);
+        assert!(s.p99 < 10.0, "the null cell leaked into the facts");
     }
 
     #[test]

@@ -397,10 +397,10 @@ mod tests {
 
     #[test]
     fn zone_presence_is_reported() {
-        assert_eq!(parse_iso_full("2024-01-01T00:00:00Z").unwrap().1, true);
-        assert_eq!(parse_iso_full("2024-01-01T00:00:00+01:00").unwrap().1, true);
-        assert_eq!(parse_iso_full("2024-01-01T00:00:00").unwrap().1, false);
-        assert_eq!(parse_iso_full("2024-01-01").unwrap().1, false);
+        assert!(parse_iso_full("2024-01-01T00:00:00Z").unwrap().1);
+        assert!(parse_iso_full("2024-01-01T00:00:00+01:00").unwrap().1);
+        assert!(!parse_iso_full("2024-01-01T00:00:00").unwrap().1);
+        assert!(!parse_iso_full("2024-01-01").unwrap().1);
     }
 
     #[test]
