@@ -104,6 +104,7 @@ pub enum FieldRole {
 
 /// Provenance for an uncertain inference.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Inference {
     pub role: FieldRole,
     pub confidence: f64,
@@ -112,6 +113,7 @@ pub struct Inference {
 
 /// Measured facts about one field (confidence is always 1.0 for facts).
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct FieldProfile {
     pub name: String,
     pub dtype: DataType,
@@ -124,6 +126,7 @@ pub struct FieldProfile {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ValueCount {
     pub value: String,
     pub count: usize,
@@ -131,6 +134,7 @@ pub struct ValueCount {
 
 /// The full semantic profile of a dataset: facts + role inferences per field.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DatasetProfile {
     pub row_count: usize,
     pub field_count: usize,
@@ -139,6 +143,7 @@ pub struct DatasetProfile {
 
 /// A report returned alongside a successful import.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ImportReport {
     pub format: String,
     pub encoding: String,

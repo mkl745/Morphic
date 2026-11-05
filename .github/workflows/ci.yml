@@ -102,8 +102,17 @@ jobs:
         run: |
           {
             echo "## Dart CI — test: ${{ steps.darttest.outcome }}"
+            echo '### head'
             echo '```'
-            tail -n 100 /tmp/darttest.log
+            head -n 30 /tmp/darttest.log
+            echo '```'
+            echo '### failure details'
+            echo '```'
+            grep -nE "Expected|Actual|Which|EXCEPTION|was thrown|consider|failed|passed|loading|settled|pump" /tmp/darttest.log | head -n 40
+            echo '```'
+            echo '### tail'
+            echo '```'
+            tail -n 30 /tmp/darttest.log
             echo '```'
           } > /tmp/report.md
           jq -Rs '{body: .}' < /tmp/report.md > /tmp/payload.json

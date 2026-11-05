@@ -14,15 +14,19 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  late Future<EngineInfo> _engineInfo;
-  late Future<List<dynamic>> _workspaces;
+  Future<EngineInfo>? _engineInfo;
+  Future<List<dynamic>>? _workspaces;
+  bool _initialized = false;
 
   @override
-  void initState() {
-    super.initState();
-    final scope = BridgeScope.of(context);
-    _engineInfo = Future(() => scope.bridge.engineInfo());
-    _workspaces = Future(() => scope.bridge.listWorkspaces(scope.storageRoot));
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_initialized) {
+      _initialized = true;
+      final scope = BridgeScope.of(context);
+      _engineInfo = Future(() => scope.bridge.engineInfo());
+      _workspaces = Future(() => scope.bridge.listWorkspaces(scope.storageRoot));
+    }
   }
 
   void _reloadWorkspaces() {
@@ -91,7 +95,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
 class _EngineStatusCard extends StatelessWidget {
   const _EngineStatusCard({required this.future});
-  final Future<EngineInfo> future;
+  final Future<EngineInfo>? future;
 
   @override
   Widget build(BuildContext context) {
@@ -152,7 +156,7 @@ class _EngineStatusCard extends StatelessWidget {
 
 class _WorkspaceList extends StatelessWidget {
   const _WorkspaceList({required this.future});
-  final Future<List<dynamic>> future;
+  final Future<List<dynamic>>? future;
 
   @override
   Widget build(BuildContext context) {

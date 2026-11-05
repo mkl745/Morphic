@@ -76,7 +76,10 @@ void main() {
     await tester.pumpWidget(
       MorphicApp(bridge: FakeBridge(), storageRoot: '/tmp/morphic-test'),
     );
-    await tester.pumpAndSettle();
+    // Explicit pumps (not pumpAndSettle): the loading spinner animates continuously,
+    // so we advance just far enough for the fake-bridge futures to complete.
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
 
     expect(find.text('MORPHIC'), findsOneWidget);
     expect(find.text('Run proof of concept'), findsOneWidget);

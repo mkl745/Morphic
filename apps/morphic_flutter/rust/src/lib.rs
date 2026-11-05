@@ -57,7 +57,7 @@ pub extern "C" fn morphic_engine_info() -> *mut c_char {
 /// # Safety
 /// `data` must point to `len` readable bytes (or be null).
 #[no_mangle]
-pub extern "C" fn morphic_profile_csv(data: *const u8, len: usize) -> *mut c_char {
+pub unsafe extern "C" fn morphic_profile_csv(data: *const u8, len: usize) -> *mut c_char {
     guarded(|| {
         if data.is_null() {
             return err("null input");
@@ -75,7 +75,7 @@ pub extern "C" fn morphic_profile_csv(data: *const u8, len: usize) -> *mut c_cha
 /// # Safety
 /// `data` must point to `len` readable bytes; the string pointers must be valid C strings.
 #[no_mangle]
-pub extern "C" fn morphic_create_workspace(
+pub unsafe extern "C" fn morphic_create_workspace(
     data: *const u8,
     len: usize,
     storage_root: *const c_char,
@@ -115,7 +115,7 @@ pub extern "C" fn morphic_create_workspace(
 /// # Safety
 /// `storage_root` must be a valid C string.
 #[no_mangle]
-pub extern "C" fn morphic_list_workspaces(storage_root: *const c_char) -> *mut c_char {
+pub unsafe extern "C" fn morphic_list_workspaces(storage_root: *const c_char) -> *mut c_char {
     guarded(|| {
         let root = match unsafe { cstr(storage_root) } {
             Some(r) => r,
@@ -137,7 +137,7 @@ pub extern "C" fn morphic_list_workspaces(storage_root: *const c_char) -> *mut c
 /// # Safety
 /// `storage_root` and `workspace_id` must be valid C strings.
 #[no_mangle]
-pub extern "C" fn morphic_load_workspace(
+pub unsafe extern "C" fn morphic_load_workspace(
     storage_root: *const c_char,
     workspace_id: *const c_char,
 ) -> *mut c_char {
@@ -167,7 +167,7 @@ pub extern "C" fn morphic_load_workspace(
 /// `s` must be a pointer previously returned by this library, or null. Must be called
 /// exactly once per returned pointer.
 #[no_mangle]
-pub extern "C" fn morphic_free_string(s: *mut c_char) {
+pub unsafe extern "C" fn morphic_free_string(s: *mut c_char) {
     if !s.is_null() {
         unsafe {
             drop(CString::from_raw(s));
@@ -179,12 +179,18 @@ pub extern "C" fn morphic_free_string(s: *mut c_char) {
 mod tests {
     use super::*;
 
+    /// Read a returned C string and free it.
+    unsafe fn take(ptr: *mut c_char) -> String {
+        let s = CStr::from_ptr(ptr).to_str().unwrap().to_string();
+        morphic_free_string(ptr);
+        s
+    }
+
     #[test]
     fn engine_info_returns_json() {
         let ptr = morphic_engine_info();
         assert!(!ptr.is_null());
-        let s = unsafe { CStr::from_ptr(ptr) }.to_str().unwrap().to_string();
-        morphic_free_string(ptr);
+        let s = unsafe { take(ptr) };
         let v: serde_json::Value = serde_json::from_str(&s).unwrap();
         assert_eq!(v["engine"], "morphic");
         assert_eq!(v["apiVersion"], 1);
@@ -193,9 +199,8 @@ mod tests {
     #[test]
     fn profile_csv_returns_profile() {
         let csv = b"a,b\n1,x\n2,y\n";
-        let ptr = morphic_profile_csv(csv.as_ptr(), csv.len());
-        let s = unsafe { CStr::from_ptr(ptr) }.to_str().unwrap().to_string();
-        morphic_free_string(ptr);
+        let ptr = unsafe { morphic_profile_csv(csv.as_ptr(), csv.len()) };
+        let s = unsafe { take(ptr) };
         let v: serde_json::Value = serde_json::from_str(&s).unwrap();
         assert_eq!(v["rowCount"], 2);
         assert_eq!(v["fieldCount"], 2);
@@ -203,14 +208,13 @@ mod tests {
 
     #[test]
     fn null_input_is_error_not_crash() {
-        let ptr = morphic_profile_csv(std::ptr::null(), 0);
-        let s = unsafe { CStr::from_ptr(ptr) }.to_str().unwrap().to_string();
-        morphic_free_string(ptr);
+        let ptr = unsafe { morphic_profile_csv(std::ptr::null(), 0) };
+        let s = unsafe { take(ptr) };
         assert!(s.contains("error"));
     }
 
     #[test]
     fn free_null_is_safe() {
-        morphic_free_string(std::ptr::null_mut());
+        unsafe { morphic_free_string(std::ptr::null_mut()) };
     }
 }
