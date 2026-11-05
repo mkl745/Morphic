@@ -706,7 +706,10 @@ mod tests {
         }
         // Every value carried an offset, so no assumption warning is emitted.
         assert!(
-            !report.warnings.iter().any(|w| w.contains("assumed to be UTC")),
+            !report
+                .warnings
+                .iter()
+                .any(|w| w.contains("assumed to be UTC")),
             "{:?}",
             report.warnings
         );
@@ -717,7 +720,10 @@ mod tests {
         let (table, report) = parse_csv(&fixture("valid/naive_timestamps.csv")).unwrap();
         assert_eq!(table.columns[0].dtype, DataType::Timestamp);
         assert!(
-            report.warnings.iter().any(|w| w.contains("assumed to be UTC")),
+            report
+                .warnings
+                .iter()
+                .any(|w| w.contains("assumed to be UTC")),
             "the missing-offset assumption must be reported: {:?}",
             report.warnings
         );
@@ -769,7 +775,13 @@ mod tests {
             "fixtures/valid/latin1.csv must contain invalid UTF-8; it was re-encoded. \
              Restore it with: git checkout -- fixtures/valid/latin1.csv"
         );
-        assert!(bytes.contains(&0xE9), "expected the Latin-1 byte 0xE9 (e-acute)");
-        assert!(bytes.contains(&0xFC), "expected the Latin-1 byte 0xFC (u-umlaut)");
+        assert!(
+            bytes.contains(&0xE9),
+            "expected the Latin-1 byte 0xE9 (e-acute)"
+        );
+        assert!(
+            bytes.contains(&0xFC),
+            "expected the Latin-1 byte 0xFC (u-umlaut)"
+        );
     }
 }

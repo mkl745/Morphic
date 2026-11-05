@@ -378,22 +378,35 @@ mod tests {
     fn bare_integers_are_never_reinterpreted_as_dates() {
         // YYYYMMDD and epoch-looking numbers must stay integers (they are often IDs).
         let r = raw(&["20240115", "20240116", "20240117"]);
-        assert_eq!(build_column("d", &r, &[false; 3], 0.95).column.dtype, DataType::Int64);
+        assert_eq!(
+            build_column("d", &r, &[false; 3], 0.95).column.dtype,
+            DataType::Int64
+        );
         let e = raw(&["1700000000", "1700000001"]);
-        assert_eq!(build_column("epoch", &e, &[false; 2], 0.95).column.dtype, DataType::Int64);
+        assert_eq!(
+            build_column("epoch", &e, &[false; 2], 0.95).column.dtype,
+            DataType::Int64
+        );
     }
 
     #[test]
     fn numeric_rungs_win_before_timestamps() {
         let r = raw(&["1.5", "2.5", "3.5"]);
-        assert_eq!(build_column("x", &r, &[false; 3], 0.95).column.dtype, DataType::Float64);
+        assert_eq!(
+            build_column("x", &r, &[false; 3], 0.95).column.dtype,
+            DataType::Float64
+        );
     }
 
     #[test]
     fn ambiguous_day_month_stays_text_and_is_reported() {
         let r = raw(&["01/02/2024", "03/04/2024", "05/06/2024"]);
         let b = build_column("d", &r, &[false; 3], 0.95);
-        assert_eq!(b.column.dtype, DataType::Utf8, "must not guess the field order");
+        assert_eq!(
+            b.column.dtype,
+            DataType::Utf8,
+            "must not guess the field order"
+        );
         let note = b.note.expect("ambiguity must be reported");
         assert!(note.contains("ambiguous"), "{note}");
         // Original cells are preserved verbatim.
@@ -431,7 +444,10 @@ mod tests {
     #[test]
     fn mostly_text_column_is_not_temporal() {
         let r = raw(&["2024-01-01", "hello", "world", "more text"]);
-        assert_eq!(build_column("x", &r, &[false; 4], 0.95).column.dtype, DataType::Utf8);
+        assert_eq!(
+            build_column("x", &r, &[false; 4], 0.95).column.dtype,
+            DataType::Utf8
+        );
     }
 
     #[test]

@@ -12,8 +12,8 @@ use std::collections::HashMap;
 
 use morphic_model::temporal::format_utc_ms;
 use morphic_model::{
-    Column, ColumnValues, DataType, DatasetProfile, FieldProfile, FieldRole, Inference, NumericStats,
-    Table, ValueCount,
+    Column, ColumnValues, DataType, DatasetProfile, FieldProfile, FieldRole, Inference,
+    NumericStats, Table, ValueCount,
 };
 
 /// Above this many non-null values, quantiles are estimated from a systematic sample.
@@ -430,7 +430,10 @@ mod tests {
     }
 
     fn stats_of(col: &Column) -> NumericStats {
-        let t = Table { columns: vec![col.clone()], row_count: col.len() };
+        let t = Table {
+            columns: vec![col.clone()],
+            row_count: col.len(),
+        };
         profile(&t).fields[0].stats.clone().expect("expected stats")
     }
 
@@ -494,7 +497,10 @@ mod tests {
 
     #[test]
     fn text_column_has_no_stats() {
-        let t = Table { columns: vec![utf8_col("s", &["a", "b"])], row_count: 2 };
+        let t = Table {
+            columns: vec![utf8_col("s", &["a", "b"])],
+            row_count: 2,
+        };
         assert!(profile(&t).fields[0].stats.is_none());
     }
 
@@ -504,7 +510,10 @@ mod tests {
         let vals: Vec<f64> = (0..n).map(|v| v as f64).collect();
         let s = stats_of(&f64_col("x", &vals, &vec![false; n]));
         assert_eq!(s.count, n);
-        assert!(s.sampled, "quantiles above the budget must be labelled estimated");
+        assert!(
+            s.sampled,
+            "quantiles above the budget must be labelled estimated"
+        );
         assert!(s.sample_size < n);
         assert!(s.sample_size <= QUANTILE_SAMPLE_BUDGET);
         // Mean still uses the full population, so it is exact.
@@ -552,7 +561,10 @@ mod tests {
 
     #[test]
     fn timestamp_cells_render_as_iso_in_top_values() {
-        let t = Table { columns: vec![ts_col("when", &[0, 0, 1000])], row_count: 3 };
+        let t = Table {
+            columns: vec![ts_col("when", &[0, 0, 1000])],
+            row_count: 3,
+        };
         let f = &profile(&t).fields[0];
         assert_eq!(f.top_values[0].value, "1970-01-01T00:00:00.000Z");
         assert_eq!(f.top_values[0].count, 2);

@@ -152,7 +152,10 @@ mod tests {
         assert_eq!(table.row_count, 3);
         assert_eq!(table.columns[0].dtype, morphic_model::DataType::Timestamp);
         assert_eq!(table.columns[2].dtype, morphic_model::DataType::Int64);
-        assert!(report.warnings.iter().any(|w| w.contains("UTC milliseconds")));
+        assert!(report
+            .warnings
+            .iter()
+            .any(|w| w.contains("UTC milliseconds")));
 
         let profile = morphic_semantic::profile(&table);
 

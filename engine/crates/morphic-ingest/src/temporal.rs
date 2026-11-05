@@ -372,7 +372,10 @@ mod tests {
         assert_eq!(parse_iso("1970-01-01"), Some(0));
         assert_eq!(parse_iso("2000-01-01"), Some(10957 * MS_PER_DAY));
         // 2024-03-09 is 68 days after 2024-01-01 (31 + 29 + 8), cross-checked independently.
-        assert_eq!(parse_iso_full("2024-03-09"), Some((19723 + 68) * MS_PER_DAY, false));
+        assert_eq!(
+            parse_iso_full("2024-03-09"),
+            Some((19723 + 68) * MS_PER_DAY, false)
+        );
     }
 
     #[test]
@@ -414,7 +417,10 @@ mod tests {
         assert_eq!(parse_iso("2023-11-14T22:13:20.5Z"), Some(base + 500));
         assert_eq!(parse_iso("2023-11-14T22:13:20.123Z"), Some(base + 123));
         assert_eq!(parse_iso("2023-11-14T22:13:20.1239Z"), Some(base + 123));
-        assert_eq!(parse_iso("2023-11-14T22:13:20.123456789Z"), Some(base + 123));
+        assert_eq!(
+            parse_iso("2023-11-14T22:13:20.123456789Z"),
+            Some(base + 123)
+        );
     }
 
     #[test]
@@ -428,7 +434,10 @@ mod tests {
     #[test]
     fn pre_epoch_dates_work() {
         assert_eq!(parse_iso("1969-12-31T23:59:59.999Z"), Some(-1));
-        assert_eq!(parse_iso("1900-01-01"), Some(days_from_civil(1900, 1, 1) * MS_PER_DAY));
+        assert_eq!(
+            parse_iso("1900-01-01"),
+            Some(days_from_civil(1900, 1, 1) * MS_PER_DAY)
+        );
     }
 
     #[test]
@@ -456,11 +465,25 @@ mod tests {
     #[test]
     fn malformed_input_is_rejected_not_panicking() {
         for bad in [
-            "", "x", "2024", "2024-01", "not-a-date", "2024/01/01", "2024-1-1",
-            "2024-01-01X05:00:00", "2024-01-01T", "2024-01-01T05", "2024-01-01T05:",
-            "2024-01-01T05:00:00.", "2024-01-01T05:00:00ZZ", "2024-01-01T05:00:00+",
-            "2024-01-01T05:00:00+5", "2024-01-01T05:00:00 trailing", "9999-99-99",
-            "２０２４-01-01", "2024-01-01T05:00:00🌍",
+            "",
+            "x",
+            "2024",
+            "2024-01",
+            "not-a-date",
+            "2024/01/01",
+            "2024-1-1",
+            "2024-01-01X05:00:00",
+            "2024-01-01T",
+            "2024-01-01T05",
+            "2024-01-01T05:",
+            "2024-01-01T05:00:00.",
+            "2024-01-01T05:00:00ZZ",
+            "2024-01-01T05:00:00+",
+            "2024-01-01T05:00:00+5",
+            "2024-01-01T05:00:00 trailing",
+            "9999-99-99",
+            "２０２４-01-01",
+            "2024-01-01T05:00:00🌍",
         ] {
             assert_eq!(parse_iso(bad), None, "should reject {bad:?}");
         }
@@ -473,7 +496,10 @@ mod tests {
 
     #[test]
     fn year_first_slash_is_unambiguous() {
-        assert_eq!(parse_slash_full("2024/03/09", TimestampFormat::SlashYmd), parse_iso_full("2024-03-09"));
+        assert_eq!(
+            parse_slash_full("2024/03/09", TimestampFormat::SlashYmd),
+            parse_iso_full("2024-03-09")
+        );
         assert_eq!(
             parse_slash_full("2024/03/09 05:00:00Z", TimestampFormat::SlashYmd),
             parse_iso_full("2024-03-09T05:00:00Z")
@@ -503,7 +529,10 @@ mod tests {
         let s = ["01/02/2024", "25/12/2024"];
         let d = detect(&s, 0.95).unwrap();
         assert_eq!(d.format, Some(TimestampFormat::SlashDmy));
-        assert_eq!(parse("25/12/2024", d.format.unwrap()), parse_iso("2024-12-25"));
+        assert_eq!(
+            parse("25/12/2024", d.format.unwrap()),
+            parse_iso("2024-12-25")
+        );
     }
 
     #[test]
@@ -511,7 +540,10 @@ mod tests {
         let s = ["01/02/2024", "12/25/2024"];
         let d = detect(&s, 0.95).unwrap();
         assert_eq!(d.format, Some(TimestampFormat::SlashMdy));
-        assert_eq!(parse("12/25/2024", d.format.unwrap()), parse_iso("2024-12-25"));
+        assert_eq!(
+            parse("12/25/2024", d.format.unwrap()),
+            parse_iso("2024-12-25")
+        );
     }
 
     #[test]
@@ -534,7 +566,10 @@ mod tests {
     #[test]
     fn year_first_slash_detected() {
         let s = ["2024/01/01", "2024/02/03"];
-        assert_eq!(detect(&s, 0.95).unwrap().format, Some(TimestampFormat::SlashYmd));
+        assert_eq!(
+            detect(&s, 0.95).unwrap().format,
+            Some(TimestampFormat::SlashYmd)
+        );
     }
 
     #[test]
