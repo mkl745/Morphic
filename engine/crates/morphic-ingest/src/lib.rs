@@ -286,7 +286,10 @@ pub fn parse_csv_with(
         ));
     }
     if quarantined > 0 {
-        warnings.push(format!("{} record(s) were unreadable and quarantined.", quarantined));
+        warnings.push(format!(
+            "{} record(s) were unreadable and quarantined.",
+            quarantined
+        ));
     }
 
     check_cancel(cancel)?;
@@ -325,7 +328,13 @@ pub fn parse_csv_with(
         rows_read: rows,
         bytes_read: decoded.text.len() as u64,
     });
-    Ok((Table { columns, row_count: rows }, report))
+    Ok((
+        Table {
+            columns,
+            row_count: rows,
+        },
+        report,
+    ))
 }
 
 /// Read at most `limit` records for header sniffing (bounded work, independent of file size).
@@ -535,7 +544,10 @@ mod tests {
             ..Default::default()
         };
         let err = parse_csv_with(b"a,b,c\n1,2,3\n", &opts, None, &mut |_| {}).unwrap_err();
-        assert!(matches!(err, IngestError::TooManyColumns { limit: 2, found: 3 }));
+        assert!(matches!(
+            err,
+            IngestError::TooManyColumns { limit: 2, found: 3 }
+        ));
     }
 
     #[test]
@@ -552,8 +564,13 @@ mod tests {
     fn cancellation_before_start_is_honoured() {
         let token = CancelToken::new();
         token.cancel();
-        let err = parse_csv_with(b"a\n1\n", &IngestOptions::default(), Some(&token), &mut |_| {})
-            .unwrap_err();
+        let err = parse_csv_with(
+            b"a\n1\n",
+            &IngestOptions::default(),
+            Some(&token),
+            &mut |_| {},
+        )
+        .unwrap_err();
         assert!(matches!(err, IngestError::Cancelled));
     }
 
@@ -584,11 +601,12 @@ mod tests {
     fn progress_reaches_done_with_row_count() {
         let mut phases = Vec::new();
         let mut last = 0;
-        let (table, _) = parse_csv_with(b"a\n1\n2\n3\n", &IngestOptions::default(), None, &mut |p| {
-            phases.push(p.phase);
-            last = p.rows_read;
-        })
-        .unwrap();
+        let (table, _) =
+            parse_csv_with(b"a\n1\n2\n3\n", &IngestOptions::default(), None, &mut |p| {
+                phases.push(p.phase);
+                last = p.rows_read;
+            })
+            .unwrap();
         assert_eq!(table.row_count, 3);
         assert_eq!(last, 3);
         assert_eq!(phases.first(), Some(&Phase::Sniffing));

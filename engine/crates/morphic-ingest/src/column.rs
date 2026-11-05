@@ -223,7 +223,10 @@ mod tests {
     #[test]
     fn zero_one_flags_are_not_booleans() {
         let r = raw(&["0", "1", "1"]);
-        assert_eq!(build_column("f", &r, &[false; 3], 0.95).column.dtype, DataType::Int64);
+        assert_eq!(
+            build_column("f", &r, &[false; 3], 0.95).column.dtype,
+            DataType::Int64
+        );
     }
 
     #[test]
@@ -240,19 +243,28 @@ mod tests {
     #[test]
     fn whitespace_padded_numbers_parse() {
         let r = raw(&[" 1 ", "2", " 3"]);
-        assert_eq!(build_column("x", &r, &[false; 3], 0.95).column.dtype, DataType::Int64);
+        assert_eq!(
+            build_column("x", &r, &[false; 3], 0.95).column.dtype,
+            DataType::Int64
+        );
     }
 
     #[test]
     fn nan_and_infinity_are_rejected() {
         let r = raw(&["NaN", "inf", "-inf"]);
-        assert_eq!(build_column("x", &r, &[false; 3], 0.95).column.dtype, DataType::Utf8);
+        assert_eq!(
+            build_column("x", &r, &[false; 3], 0.95).column.dtype,
+            DataType::Utf8
+        );
     }
 
     #[test]
     fn mixed_int_and_float_widens_to_float() {
         let r = raw(&["1", "2.5", "3"]);
-        assert_eq!(build_column("x", &r, &[false; 3], 0.95).column.dtype, DataType::Float64);
+        assert_eq!(
+            build_column("x", &r, &[false; 3], 0.95).column.dtype,
+            DataType::Float64
+        );
     }
 
     #[test]

@@ -40,7 +40,10 @@ pub fn sniff_delimiter(text: &str) -> u8 {
     let mut best = b',';
     let mut best_score = 0usize;
     for cand in CANDIDATES {
-        let counts: Vec<usize> = lines.iter().map(|l| count_outside_quotes(l, cand)).collect();
+        let counts: Vec<usize> = lines
+            .iter()
+            .map(|l| count_outside_quotes(l, cand))
+            .collect();
         let min = *counts.iter().min().unwrap_or(&0);
         let max = *counts.iter().max().unwrap_or(&0);
         // A stable, non-zero field separator count across every sampled line.
@@ -93,9 +96,7 @@ pub fn sniff_header(rows: &[Vec<String>]) -> bool {
         return true;
     }
 
-    let all_text = first
-        .iter()
-        .all(|s| !s.trim().is_empty() && !is_num(s));
+    let all_text = first.iter().all(|s| !s.trim().is_empty() && !is_num(s));
     let unique: HashSet<&str> = first.iter().map(|s| s.trim()).collect();
     all_text && unique.len() == ncols
 }
