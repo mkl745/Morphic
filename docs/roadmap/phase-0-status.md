@@ -10,7 +10,7 @@ This records what was actually built and verified (spec §21: no overclaiming). 
 
 | Check | Result |
 |---|---|
-| Rust `cargo fmt` + `clippy` + `cargo test --workspace` | ✅ green |
+| Rust `cargo fmt --check` + `clippy -D warnings` + `cargo test --workspace` | ✅ green (strict gates) |
 | Schema + registry artifact export & drift gate | ✅ green |
 | Dart `flutter analyze` + `flutter test` (widget + contrast tests) | ✅ green |
 | Android native libs (arm64-v8a, armeabi-v7a, x86_64) | ✅ built |
