@@ -33,5 +33,29 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo test --workspace --release
 
-  # Emulator integration tests + perf harness + parser fuzz are added in M1.1
-  # once integration_test and the perf collector exist (docs/engineering/ci-cd.md).
+  perf-baseline:
+    name: Perf baseline (criterion)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Run CSV parse bench
+        run: cargo bench -p morphic-ingest
+      - name: Collect criterion baseline JSON
+        run: |
+          mkdir -p perf-baseline
+          find target/criterion -name estimates.json | while read -r f; do
+            name=$(echo "$f" | sed 's|target/criterion/||; s|/|_|g')
+            cp "$f" "perf-baseline/$name"
+          done
+          ls -la perf-baseline/
+      - name: Upload baseline
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf-baseline
+          path: perf-baseline/
+          retention-days: 90
+
+  # Emulator runtime smoke runs in ci.yml (manual boot). Parser fuzz + the Dart
+  # frame-timing collector are added in M1.1 (docs/engineering/ci-cd.md).
