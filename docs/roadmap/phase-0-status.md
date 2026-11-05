@@ -30,6 +30,10 @@ profile a CSV and to compile + persist a workspace; the engine's vertical slice
 - **CI/CD**: `ci.yml` (4 jobs), `release.yml` (signed when secrets set), `nightly.yml`
   (audit/deny), dependabot, PR template.
 - **Tooling**: `tools/build_android_native.sh`, `tools/check_alignment.py`.
+- **Fixture corpus v1**: `fixtures/` (valid + malformed CSV/JSON/log) with `manifest.json`,
+  loaded by ingestion tests (grows each milestone).
+- **Perf skeleton**: criterion CSV-parse throughput bench (`cargo bench -p morphic-ingest`);
+  the Dart frame-timing collector + on-device harness are M1.1.
 
 ## Environment-driven adaptations (documented, not silent)
 

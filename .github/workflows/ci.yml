@@ -240,9 +240,9 @@ jobs:
           api-level: 34
           arch: x86_64
           disable-animations: true
+          working-directory: apps/morphic_flutter
           script: |
-            cd apps/morphic_flutter
-            { echo "=== flutter devices ==="; flutter devices; echo "=== adb devices ==="; adb devices; } > /tmp/emu_test.log 2>&1 || true
+            { echo "=== pwd ==="; pwd; echo "=== flutter devices ==="; flutter devices; echo "=== adb devices ==="; adb devices; } > /tmp/emu_test.log 2>&1 || true
             timeout 600 flutter test integration_test/poc_smoke_test.dart >> /tmp/emu_test.log 2>&1
       - name: Report emulator test output
         if: always()
