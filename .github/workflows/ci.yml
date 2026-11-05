@@ -249,13 +249,14 @@ jobs:
             } > /tmp/emu_test.log 2>&1
       - name: Report emulator smoke output
         if: always()
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           {
             echo "## Emulator smoke — ${{ steps.emutest.outcome }}"
             echo '```'
-            head -80 /tmp/emu_test.log 2>/dev/null
+            if [ -f /tmp/emu_test.log ]; then head -60 /tmp/emu_test.log | cut -c1-400; else echo "(no log produced)"; fi
             echo '```'
           } > /tmp/report.md
           jq -Rs '{body: .}' < /tmp/report.md > /tmp/payload.json
@@ -265,5 +266,7 @@ jobs:
             "https://api.github.com/repos/${{ github.repository }}/commits/${{ github.sha }}/comments" \
             -d @/tmp/payload.json
       - name: Enforce emulator smoke
-        if: steps.emutest.outcome != 'success'
-        run: exit 1
+        if: always() && steps.emutest.outcome != 'success'
+        run: |
+          echo "Emulator runtime smoke did not pass (outcome: ${{ steps.emutest.outcome }})."
+          exit 1
