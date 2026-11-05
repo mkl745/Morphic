@@ -15,7 +15,8 @@ marketing claims (spec §16). Reference device classes: **low** (4 GB RAM, A-ser
 | Dart unit | `test/` | controllers (mocked bridge), adapters, registry contract vs manifest | every PR |
 | Dart widget/golden | `test/` | every component × theme × (normal/empty/error); key screens; responsive breakpoints | every PR |
 | Integration (host) | `integration_test` on host lib | import→workspace→save→reopen with real engine (no mocks) | every PR |
-| Integration (device) | emulator API 36 + 24 | full flows incl. SAF picker, lifecycle kill/restore, airplane mode | nightly |
+| Integration (emulator) | emulator API 30/36 in `ci.yml` | fast regression: boot, FFI, PoC | every PR |
+| **Integration (physical device)** | **real low/mid/flagship handsets** | full flows incl. SAF picker, lifecycle kill/restore, airplane mode | **every milestone exit + every release — MANDATORY** |
 | Fuzz | cargo-fuzz targets: csv/json/log sniffers | malformed input never panics/OOMs | nightly smoke |
 | Reliability | scripted chaos | kill mid-import/mid-save; corrupt snapshot/journal/workspace; permission revocation | nightly + pre-release |
 
@@ -44,9 +45,13 @@ scroll 100k-row table; scrub chart; apply 10 filters; save/reopen) collecting:
 (`ProcessInfo.currentRss` via platform hook). Emits JSON; nightly job stores trends and
 flags >15% regressions.
 
-**Device matrix runs:** before each milestone exit, run the harness on low/mid/flagship
-physical devices (or closest available emulators, labeled as such). Results appended to
-`docs/engineering/perf-log.md` with device, build, date.
+**Device matrix runs:** before each milestone exit, run the harness on **physical**
+low/mid/flagship devices. Emulators may be used for trend-spotting only and must be labelled
+`emulator`; **emulator numbers may never validate a budget and may never satisfy a milestone
+or release gate.** This is a standing rule — see
+[real-device-testing.md](real-device-testing.md) for the matrix, the runnable harness
+(`tools/device_smoke.sh`), the evidence format, and the release gate that enforces it.
+Results are appended to `docs/engineering/perf-log.md` with device, build, and date.
 
 ## 4. Budgets (hypotheses — mid-range reference unless noted)
 

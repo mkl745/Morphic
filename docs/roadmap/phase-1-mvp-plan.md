@@ -40,8 +40,11 @@ render interactive Flutter workspace → save → reopen` (spec §20's exact sli
 | 1.1.6 | `morphic-workspace`: real save/open/list with journal + recovery (from 0.4 skeleton); home shows real recents; reopen restores revision | M | kill/restore test |
 | 1.1.7 | Import feature UI v0: file_picker → copy → progress (real events) → morph stages → workspace route | M | integration test (host) |
 
-**Exit:** AT-01, AT-02, AT-09 (partial: table sort in M1.3) pass on mid-range device;
-10 MB CSV → workspace ≤ 3 s measured (or budget re-planned with data); demo video/script.
+**Exit:** AT-01, AT-02, AT-09 (partial: table sort in M1.3) pass on a **physical** mid-range
+device with committed evidence (`tools/device_smoke.sh`, see
+[real-device-testing.md](../engineering/real-device-testing.md) — emulator runs do not count);
+10 MB CSV → workspace ≤ 3 s measured on that device (or budget re-planned with data);
+demo video/script.
 **Demo:** airplane mode on; pick `fixtures/valid/sales.csv`; workspace appears with metric +
 table; kill app; reopen from home — identical state.
 
@@ -141,5 +144,7 @@ installable, limitations documented honestly (spec §21: no overclaiming).
 
 Implement → unit/property tests → run validation (`cargo test`, `flutter test`, analyzer) →
 update crate README/doc if contracts changed → report limitations → demo evidence.
-Every milestone ends with: green CI, a demoable build, updated acceptance-test status, and
-a short "what we learned" note feeding the next milestone.
+Every milestone ends with: green CI, a demoable build, **committed physical-device evidence**
+([real-device-testing.md](../engineering/real-device-testing.md) — mandatory, emulator runs
+are not sufficient), updated acceptance-test status, and a short "what we learned" note
+feeding the next milestone.

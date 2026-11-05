@@ -62,10 +62,14 @@ and has no local toolchains. Therefore:
 - `query`/`compiler` are intentionally minimal (types + a few real rules); full operators and
   planner are M1.3/M1.4. Stubs are labeled, not presented as complete.
 - The APK is a **debug** build (large, 3 ABIs). Release per-ABI size optimization is M1.7.
-- Runtime smoke verifies boot + FFI + CSV-profile PoC on an emulator. Process-death/relaunch
-  recovery and airplane-mode checks are exercised by Rust recovery tests now and get an
-  on-device pass in M1.5. Physical-device (not just emulator) verification is recommended
-  before any store submission.
+- **NOT physical-device verified.** The runtime smoke proves boot + FFI + CSV-profile PoC on
+  an **emulator** only. Under the standing rule
+  ([real-device-testing.md](../engineering/real-device-testing.md), set 2026-11-05) that is
+  **not sufficient**: Phase 0 remains *device-unverified* until someone runs
+  `tools/device_smoke.sh` on real hardware and commits the evidence. The sandbox has no
+  USB/ADB access to a handset, so this cannot be done from here. `release.yml` now blocks
+  any release lacking that evidence — which means the earlier `v0.1.0` prerelease was a
+  pipeline dry-run, **not** a device-verified build.
 
 ## Next
 

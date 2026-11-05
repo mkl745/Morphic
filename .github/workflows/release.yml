@@ -31,6 +31,15 @@ jobs:
           echo "tag=$TAG pubspec=$PUBSPEC"
           [ "${TAG%%+*}" = "${PUBSPEC%%+*}" ] || { echo "version mismatch"; exit 1; }
 
+      # Standing rule (docs/engineering/real-device-testing.md): no release without
+      # passing evidence from physical hardware. Emulator runs never satisfy this.
+      - name: Real-device evidence gate (mandatory)
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          python3 tools/check_device_evidence.py \
+            --version "${VERSION%%+*}" \
+            --require-classes low,mid,flagship
+
       - name: Generate Flutter Android scaffolding
         run: |
           flutter create --platforms=android --org dev.morphic --project-name morphic_flutter /tmp/morphic_scaffold
