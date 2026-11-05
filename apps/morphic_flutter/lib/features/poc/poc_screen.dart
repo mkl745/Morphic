@@ -21,11 +21,15 @@ class _PocScreenState extends State<PocScreen> {
   Map<String, dynamic>? _profile;
   String? _error;
   bool _generating = false;
+  bool _started = false;
 
   @override
-  void initState() {
-    super.initState();
-    _loadAndProfile();
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_started) {
+      _started = true;
+      _loadAndProfile();
+    }
   }
 
   Future<void> _loadAndProfile() async {
