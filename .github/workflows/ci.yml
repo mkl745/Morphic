@@ -212,6 +212,11 @@ jobs:
         with:
           name: morphic-debug-apk
           path: /tmp/apk
+      - name: Enable KVM (required for Android emulator on GitHub runners)
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
       - name: Runtime smoke on emulator
         id: emutest
         continue-on-error: true
@@ -259,7 +264,14 @@ jobs:
           {
             echo "## Emulator smoke — ${{ steps.emutest.outcome }}"
             echo '```'
-            if [ -f /tmp/emu_test.log ]; then head -60 /tmp/emu_test.log | cut -c1-400; else echo "(no log produced)"; fi
+            if [ -f /tmp/emu_test.log ]; then
+              head -60 /tmp/emu_test.log | cut -c1-400
+            else
+              echo "(no log produced — emulator action failed before script)"
+              echo "--- /dev/kvm ---"; ls -la /dev/kvm 2>&1
+              echo "--- cpu virt flags ---"; egrep -c '(vmx|svm)' /proc/cpuinfo 2>&1
+              echo "--- ANDROID_HOME ---"; echo "$ANDROID_HOME"; ls "$ANDROID_HOME/emulator/emulator" 2>&1
+            fi
             echo '```'
           } > /tmp/report.md
           jq -Rs '{body: .}' < /tmp/report.md > /tmp/payload.json
