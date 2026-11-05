@@ -45,8 +45,8 @@ and has no local toolchains. Therefore:
 
 ## Known gaps / honest limitations (tracked, not hidden)
 
-- Schema JSON artifacts are generated + drift-gated in CI; being committed back so the gate
-  compares against a checked-in baseline.
+- Schema JSON artifacts (`schemas/morphic_ui_schema_v1.json`, `schemas/registry_v1.json`)
+  are committed and drift-gated against the Rust types in CI.
 - `query`/`compiler` are intentionally minimal (types + a few real rules); full operators and
   planner are M1.3/M1.4. Stubs are labeled, not presented as complete.
 - The APK is a **debug** build (large, 3 ABIs). Release per-ABI size optimization is M1.7.

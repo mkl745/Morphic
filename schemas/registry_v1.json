@@ -1,0 +1,68 @@
+{
+  "components": [
+    {
+      "status": "active",
+      "type": "metric_card",
+      "typeVersion": "1.0"
+    },
+    {
+      "status": "active",
+      "type": "data_table",
+      "typeVersion": "1.0"
+    },
+    {
+      "status": "active",
+      "type": "bar_chart",
+      "typeVersion": "1.0"
+    },
+    {
+      "status": "active",
+      "type": "line_chart",
+      "typeVersion": "1.0"
+    },
+    {
+      "status": "active",
+      "type": "timeline",
+      "typeVersion": "1.0"
+    }
+  ],
+  "registryVersion": "1.0",
+  "reserved": [
+    {
+      "status": "reserved",
+      "type": "scatter_plot"
+    },
+    {
+      "status": "reserved",
+      "type": "pie_chart"
+    },
+    {
+      "status": "reserved",
+      "type": "relationship_graph"
+    },
+    {
+      "status": "reserved",
+      "type": "search_panel"
+    },
+    {
+      "status": "reserved",
+      "type": "filter_panel"
+    },
+    {
+      "status": "reserved",
+      "type": "text_inspector"
+    },
+    {
+      "status": "reserved",
+      "type": "detail_panel"
+    },
+    {
+      "status": "reserved",
+      "type": "data_summary"
+    },
+    {
+      "status": "reserved",
+      "type": "hierarchical_explorer"
+    }
+  ]
+}

@@ -3,16 +3,23 @@
 Resolved toolchain versions for reproducible builds. **Filled in from the first green CI
 run** — the sandbox has no local toolchains, so CI is the source of truth.
 
+Resolved from the first green CI runs (2026-11-05):
+
 | Tool | Phase 0 setting | Resolved (from CI) |
 |---|---|---|
-| Flutter | `channel: stable` | _pending first green run_ |
-| Dart | bundled with Flutter | _pending_ |
-| Rust | `channel = stable` (rust-toolchain.toml) | _pending_ |
-| Android compileSdk / targetSdk | Flutter-vended (36) | _pending_ |
-| Android minSdk | Flutter-vended (24) | _pending_ |
-| NDK | runner preinstalled (16 KB forced via linker flag) | _pending_ |
+| Flutter | `channel: stable` | **3.47.9** (rev c197ca5199, 2026-10-29) |
+| Dart | bundled with Flutter | bundled with Flutter 3.47.9 |
+| Rust | `channel = stable` (rust-toolchain.toml) | **1.99.1** (58cf8f9c3, 2026-10-13) |
+| Android compileSdk / targetSdk | Flutter-vended (36) | 36 |
+| Android minSdk | Flutter-vended (24) | 24 |
+| NDK | runner preinstalled (16 KB forced via linker flag) | runner default; alignment verified |
 | Java | 17 (temurin) | 17 |
-| Gradle / AGP / KGP | Flutter-vended | _pending_ |
+| Gradle / AGP / KGP | Flutter-vended | Flutter 3.47.9 matrix |
+
+**Hard-pin follow-up:** move `rust-toolchain.toml` to `channel = "1.99.1"` and CI to
+`flutter-version: 3.47.9` (with the rust-toolchain/action alias kept consistent) so builds
+are byte-reproducible. Kept on `stable` for the first green runs to avoid toolchain-alias
+mismatches; the resolved versions above are the reference.
 
 ## Pinning policy
 

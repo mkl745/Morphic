@@ -1,0 +1,474 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "definitions": {
+    "Aggregation": {
+      "additionalProperties": false,
+      "properties": {
+        "field": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "filter": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/FilterExpr"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "op": {
+          "description": "count | sum | avg | min | max | distinct_count",
+          "type": "string"
+        }
+      },
+      "required": [
+        "op"
+      ],
+      "type": "object"
+    },
+    "Binding": {
+      "description": "Type-specific data binding. Tagged by `kind`.",
+      "oneOf": [
+        {
+          "properties": {
+            "aggregation": {
+              "$ref": "#/definitions/Aggregation"
+            },
+            "kind": {
+              "enum": [
+                "metric_card"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "aggregation",
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "columns": {
+              "default": [],
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "kind": {
+              "enum": [
+                "data_table"
+              ],
+              "type": "string"
+            },
+            "page_size": {
+              "default": 256,
+              "format": "uint32",
+              "minimum": 0.0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "dimension": {
+              "type": "string"
+            },
+            "kind": {
+              "enum": [
+                "bar_chart"
+              ],
+              "type": "string"
+            },
+            "limit": {
+              "default": 12,
+              "format": "uint32",
+              "minimum": 0.0,
+              "type": "integer"
+            },
+            "measure": {
+              "$ref": "#/definitions/Aggregation"
+            }
+          },
+          "required": [
+            "dimension",
+            "kind",
+            "measure"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "group_by": {
+              "default": null,
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "kind": {
+              "enum": [
+                "line_chart"
+              ],
+              "type": "string"
+            },
+            "x": {
+              "type": "string"
+            },
+            "y": {
+              "items": {
+                "$ref": "#/definitions/Aggregation"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "kind",
+            "x",
+            "y"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "group_by": {
+              "default": null,
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "kind": {
+              "enum": [
+                "timeline"
+              ],
+              "type": "string"
+            },
+            "severity_field": {
+              "default": null,
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "time_field": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "time_field"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "ComponentSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "binding": {
+          "$ref": "#/definitions/Binding"
+        },
+        "dataSource": {
+          "type": "string"
+        },
+        "explanation": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Explanation"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "id": {
+          "type": "string"
+        },
+        "interactions": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/Interactions"
+            }
+          ],
+          "default": {
+            "filter": false,
+            "search": false,
+            "select": false,
+            "sort": false
+          }
+        },
+        "title": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "type": {
+          "description": "Registry key, e.g. `metric_card`.",
+          "type": "string"
+        },
+        "typeVersion": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "binding",
+        "dataSource",
+        "id",
+        "type",
+        "typeVersion"
+      ],
+      "type": "object"
+    },
+    "DataSourceRef": {
+      "additionalProperties": false,
+      "properties": {
+        "alias": {
+          "type": "string"
+        },
+        "datasetId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "alias",
+        "datasetId"
+      ],
+      "type": "object"
+    },
+    "Explanation": {
+      "additionalProperties": false,
+      "properties": {
+        "confidence": {
+          "default": 0.0,
+          "format": "double",
+          "type": "number"
+        },
+        "detail": {
+          "type": "string"
+        },
+        "evidence": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "reason": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "detail",
+        "reason"
+      ],
+      "type": "object"
+    },
+    "FilterExpr": {
+      "additionalProperties": false,
+      "description": "A safe filter expression. Phase 0 uses a flat node representation; the typed-tree grammar with the full operator set is finalized in M1.3 (docs/architecture/03 §2.3).",
+      "properties": {
+        "args": {
+          "default": [],
+          "items": {
+            "$ref": "#/definitions/FilterExpr"
+          },
+          "type": "array"
+        },
+        "field": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "op": {
+          "description": "and | or | not | eq | neq | gt | gte | lt | lte | in | contains | is_null | not_null",
+          "type": "string"
+        },
+        "value": {
+          "default": null
+        }
+      },
+      "required": [
+        "op"
+      ],
+      "type": "object"
+    },
+    "Generator": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "version"
+      ],
+      "type": "object"
+    },
+    "Interactions": {
+      "additionalProperties": false,
+      "properties": {
+        "filter": {
+          "default": false,
+          "type": "boolean"
+        },
+        "search": {
+          "default": false,
+          "type": "boolean"
+        },
+        "select": {
+          "default": false,
+          "type": "boolean"
+        },
+        "sort": {
+          "default": false,
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "Layout": {
+      "additionalProperties": false,
+      "properties": {
+        "hints": {
+          "default": [],
+          "items": {
+            "$ref": "#/definitions/LayoutHint"
+          },
+          "type": "array"
+        },
+        "mode": {
+          "description": "`adaptive` | `grid` in v1; `freeform` is reserved (P2/P3).",
+          "type": "string"
+        },
+        "order": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "mode",
+        "order"
+      ],
+      "type": "object"
+    },
+    "LayoutHint": {
+      "additionalProperties": false,
+      "properties": {
+        "componentId": {
+          "type": "string"
+        },
+        "height": {
+          "default": "",
+          "type": "string"
+        },
+        "span": {
+          "default": 1,
+          "format": "uint8",
+          "minimum": 0.0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "componentId"
+      ],
+      "type": "object"
+    },
+    "Workspace": {
+      "additionalProperties": false,
+      "properties": {
+        "components": {
+          "default": [],
+          "items": {
+            "$ref": "#/definitions/ComponentSpec"
+          },
+          "type": "array"
+        },
+        "createdAt": {
+          "type": "string"
+        },
+        "dataSources": {
+          "items": {
+            "$ref": "#/definitions/DataSourceRef"
+          },
+          "type": "array"
+        },
+        "generator": {
+          "$ref": "#/definitions/Generator"
+        },
+        "globalFilters": {
+          "default": [],
+          "items": {
+            "$ref": "#/definitions/FilterExpr"
+          },
+          "type": "array"
+        },
+        "id": {
+          "type": "string"
+        },
+        "layout": {
+          "$ref": "#/definitions/Layout"
+        },
+        "modifiedAt": {
+          "type": "string"
+        },
+        "revision": {
+          "format": "uint64",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "title": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "createdAt",
+        "dataSources",
+        "generator",
+        "id",
+        "layout",
+        "modifiedAt",
+        "revision",
+        "title"
+      ],
+      "type": "object"
+    }
+  },
+  "properties": {
+    "schemaVersion": {
+      "type": "string"
+    },
+    "workspace": {
+      "$ref": "#/definitions/Workspace"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "workspace"
+  ],
+  "title": "WorkspaceDoc",
+  "type": "object"
+}
