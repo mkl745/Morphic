@@ -17,8 +17,8 @@ charts, metric cards, and (later) relationship graphs and knowledge spaces.
 
 | Phase | Scope | Status |
 |---|---|---|
-| **0 — Foundation** | Architecture, decisions, contracts, plans | 🟡 **Documentation complete — awaiting execution go-ahead** |
-| 1 — MVP | Import → analyze → generated interactive workspace → save/reopen | ⚪ Planned |
+| **0 — Foundation** | Architecture, decisions, contracts, plans + scaffolding | 🟢 **Executed — CI green, Android APK built** ([status](docs/roadmap/phase-0-status.md)) |
+| 1 — MVP | Import → analyze → generated interactive workspace → save/reopen | 🟡 Next (M1.1) |
 | 2 — Intelligence | Semantics, natural-language commands, optional local AI | ⚪ Planned |
 | 3 — Native engine | Rendering optimization, spatial indexing, benchmarks; Vulkan only if measured need | ⚪ Planned |
 | 4 — Universal workspace | More formats, specialized workspaces, templates, iOS prep | ⚪ Planned |

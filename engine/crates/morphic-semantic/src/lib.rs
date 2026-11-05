@@ -182,14 +182,15 @@ fn infer_role(
     }
 
     // Identifier: near-unique values.
-    if non_null > 0 && (distinct as f64) / (non_null as f64) >= 0.99 && non_null >= 5 {
-        if matches!(col.dtype, DataType::Utf8 | DataType::Int64) {
-            return Inference {
-                role: FieldRole::Identifier,
-                confidence: 0.9,
-                evidence: vec![format!("'{}' is {:.1}% unique", col.name, 100.0 * distinct as f64 / non_null as f64)],
-            };
-        }
+    if non_null >= 5
+        && (distinct as f64) / (non_null as f64) >= 0.99
+        && matches!(col.dtype, DataType::Utf8 | DataType::Int64)
+    {
+        return Inference {
+            role: FieldRole::Identifier,
+            confidence: 0.9,
+            evidence: vec![format!("'{}' is {:.1}% unique", col.name, 100.0 * distinct as f64 / non_null as f64)],
+        };
     }
 
     // Measure: numeric, not an identifier.

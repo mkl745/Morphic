@@ -42,6 +42,10 @@ jobs:
         run: |
           {
             echo "## Rust CI — clippy: ${{ steps.clippy.outcome }} · test: ${{ steps.test.outcome }}"
+            echo "### versions"
+            echo '```'
+            rustc --version; cargo --version
+            echo '```'
             echo "### clippy (tail)"
             echo '```'
             tail -n 80 /tmp/clippy.log
@@ -64,6 +68,8 @@ jobs:
   artifacts-drift:
     name: Schema artifacts drift
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -72,6 +78,28 @@ jobs:
         run: cargo run -p morphic-schema --bin export
       - name: Check drift
         run: git diff --exit-code -- schemas/
+      - name: Post generated artifacts as commit comment
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo "## Generated schema artifacts"
+            echo "### registry_v1.json"
+            echo '```json'
+            cat schemas/registry_v1.json
+            echo '```'
+            echo "### morphic_ui_schema_v1.json"
+            echo '```json'
+            cat schemas/morphic_ui_schema_v1.json
+            echo '```'
+          } > /tmp/report.md
+          jq -Rs '{body: .}' < /tmp/report.md > /tmp/payload.json
+          curl -sS -X POST \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/commits/${{ github.sha }}/comments" \
+            -d @/tmp/payload.json
 
   dart-quality:
     name: Dart (analyze · test)
@@ -102,6 +130,10 @@ jobs:
         run: |
           {
             echo "## Dart CI — test: ${{ steps.darttest.outcome }}"
+            echo '### versions'
+            echo '```'
+            flutter --version
+            echo '```'
             echo '### head'
             echo '```'
             head -n 30 /tmp/darttest.log
