@@ -511,7 +511,7 @@ fn extract(pattern: LogPattern, line: &str, notes: &mut LogNotes) -> Vec<(String
 
     let mut out: Vec<(String, Option<String>)> = names
         .iter()
-        .zip(core.into_iter())
+        .zip(core)
         .map(|(n, v)| ((*n).to_string(), v))
         .collect();
 
@@ -627,7 +627,7 @@ mod tests {
             .unwrap_or_else(|| panic!("no column '{name}' in {:?}", t.field_names()))
     }
 
-    fn texts(t: &Table, name: &str) -> Vec<&str> {
+    fn texts<'a>(t: &'a Table, name: &str) -> Vec<&'a str> {
         match &col(t, name).values {
             ColumnValues::Utf8(v) => v.iter().map(|s| s.as_str()).collect(),
             other => panic!("'{name}' is not Utf8: {other:?}"),
@@ -910,7 +910,7 @@ mod tests {
             .collect::<Vec<_>>()
             .join(" ");
         let (t, r) = parse(&pairs);
-        assert_eq!(t.field_count, 4 + MAX_LOGFMT_KEYS);
+        assert_eq!(t.columns.len(), 4 + MAX_LOGFMT_KEYS);
         assert!(warned(&r, "keys past the cap"), "{:?}", r.warnings);
     }
 

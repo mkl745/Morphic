@@ -183,7 +183,7 @@ mod tests {
         t.columns.iter().map(|c| c.name.as_str()).collect()
     }
 
-    fn texts(t: &Table, name: &str) -> Vec<&str> {
+    fn texts<'a>(t: &'a Table, name: &str) -> Vec<&'a str> {
         match &col(t, name).values {
             ColumnValues::Utf8(v) => v.iter().map(|s| s.as_str()).collect(),
             other => panic!("'{name}' is not Utf8: {other:?}"),
