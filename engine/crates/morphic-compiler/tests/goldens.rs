@@ -27,7 +27,13 @@ fn fixture(rel: &str) -> Vec<u8> {
 fn pipeline(bytes: &[u8]) -> (WorkspaceDoc, DatasetProfile) {
     let (table, _report) = morphic_ingest::parse_csv(bytes).expect("fixture must parse");
     let profile = morphic_semantic::profile(&table);
-    let doc = compile(&profile, "dataset_golden", "workspace_golden", "Golden", NOW);
+    let doc = compile(
+        &profile,
+        "dataset_golden",
+        "workspace_golden",
+        "Golden",
+        NOW,
+    );
     let issues = morphic_schema::validate_with_profile(&doc, &profile);
     assert!(issues.is_empty(), "compiled doc must validate: {issues:?}");
     (doc, profile)

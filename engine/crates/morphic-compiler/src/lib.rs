@@ -124,11 +124,7 @@ fn primary_measure(profile: &DatasetProfile) -> Option<&FieldProfile> {
     candidates.sort_by(|a, b| {
         id_like(a)
             .cmp(&id_like(b))
-            .then(
-                b.inference
-                    .confidence
-                    .total_cmp(&a.inference.confidence),
-            )
+            .then(b.inference.confidence.total_cmp(&a.inference.confidence))
             .then(a.name.cmp(&b.name))
     });
     candidates.into_iter().next()
@@ -144,11 +140,7 @@ fn temporal_field(profile: &DatasetProfile) -> Option<&FieldProfile> {
     candidates.sort_by(|a, b| {
         (b.dtype == DataType::Timestamp)
             .cmp(&(a.dtype == DataType::Timestamp))
-            .then(
-                b.inference
-                    .confidence
-                    .total_cmp(&a.inference.confidence),
-            )
+            .then(b.inference.confidence.total_cmp(&a.inference.confidence))
             .then(a.name.cmp(&b.name))
     });
     candidates.into_iter().next()
@@ -193,7 +185,12 @@ fn count_all() -> Aggregation {
     }
 }
 
-fn explanation(reason: &str, detail: String, evidence: Vec<String>, confidence: f64) -> Explanation {
+fn explanation(
+    reason: &str,
+    detail: String,
+    evidence: Vec<String>,
+    confidence: f64,
+) -> Explanation {
     Explanation {
         reason: reason.into(),
         detail,
@@ -468,7 +465,10 @@ mod tests {
             field("value", DataType::Float64, FieldRole::Measure, 80),
         ]);
         let doc = build(&p);
-        assert_eq!(ids(&doc), vec!["metric_card", "metric_card", "line_chart", "data_table"]);
+        assert_eq!(
+            ids(&doc),
+            vec!["metric_card", "metric_card", "line_chart", "data_table"]
+        );
         assert!(morphic_schema::validate_with_profile(&doc, &p).is_empty());
     }
 
@@ -510,7 +510,12 @@ mod tests {
 
     #[test]
     fn dimension_without_measure_counts_records() {
-        let p = profile(vec![field("region", DataType::Utf8, FieldRole::Dimension, 3)]);
+        let p = profile(vec![field(
+            "region",
+            DataType::Utf8,
+            FieldRole::Dimension,
+            3,
+        )]);
         let doc = build(&p);
         let bar = doc
             .workspace
@@ -545,7 +550,10 @@ mod tests {
         ]);
         let doc = build(&p);
         for c in &doc.workspace.components {
-            let e = c.explanation.as_ref().expect("every component is explained");
+            let e = c
+                .explanation
+                .as_ref()
+                .expect("every component is explained");
             assert!(
                 RULE_TABLE.iter().any(|r| r.id == e.reason),
                 "unknown rule id {}",
@@ -565,7 +573,10 @@ mod tests {
         ]);
         let first = serde_json::to_string(&build(&p)).unwrap();
         let second = serde_json::to_string(&build(&p)).unwrap();
-        assert_eq!(first, second, "same profile must give byte-identical output");
+        assert_eq!(
+            first, second,
+            "same profile must give byte-identical output"
+        );
     }
 
     #[test]
@@ -587,7 +598,12 @@ mod tests {
     fn normalized_timestamp_beats_a_string_shape_inference() {
         let p = profile(vec![
             field("aaa_text_time", DataType::Utf8, FieldRole::Temporal, 100),
-            field("zzz_real_time", DataType::Timestamp, FieldRole::Temporal, 100),
+            field(
+                "zzz_real_time",
+                DataType::Timestamp,
+                FieldRole::Temporal,
+                100,
+            ),
             field("value", DataType::Float64, FieldRole::Measure, 80),
         ]);
         let doc = build(&p);
@@ -605,14 +621,24 @@ mod tests {
 
     #[test]
     fn high_cardinality_dimension_is_not_charted() {
-        let p = profile(vec![field("id", DataType::Utf8, FieldRole::Dimension, 5000)]);
+        let p = profile(vec![field(
+            "id",
+            DataType::Utf8,
+            FieldRole::Dimension,
+            5000,
+        )]);
         let doc = build(&p);
         assert!(!ids(&doc).contains(&"bar_chart"));
     }
 
     #[test]
     fn single_value_dimension_is_not_charted() {
-        let p = profile(vec![field("constant", DataType::Utf8, FieldRole::Dimension, 1)]);
+        let p = profile(vec![field(
+            "constant",
+            DataType::Utf8,
+            FieldRole::Dimension,
+            1,
+        )]);
         assert!(!ids(&build(&p)).contains(&"bar_chart"));
     }
 
@@ -641,7 +667,8 @@ mod tests {
         let doc = build(&p);
         for c in &doc.workspace.components {
             assert!(
-                c.id.chars().all(|ch| ch.is_ascii_alphanumeric() || ch == '_'),
+                c.id.chars()
+                    .all(|ch| ch.is_ascii_alphanumeric() || ch == '_'),
                 "unsafe id {}",
                 c.id
             );
@@ -657,8 +684,19 @@ mod tests {
             field("region", DataType::Utf8, FieldRole::Dimension, 4),
         ]);
         let doc = build(&p);
-        let comp_ids: Vec<&str> = doc.workspace.components.iter().map(|c| c.id.as_str()).collect();
-        let order: Vec<&str> = doc.workspace.layout.order.iter().map(|s| s.as_str()).collect();
+        let comp_ids: Vec<&str> = doc
+            .workspace
+            .components
+            .iter()
+            .map(|c| c.id.as_str())
+            .collect();
+        let order: Vec<&str> = doc
+            .workspace
+            .layout
+            .order
+            .iter()
+            .map(|s| s.as_str())
+            .collect();
         assert_eq!(comp_ids, order);
     }
 
@@ -700,7 +738,11 @@ mod tests {
             fields: vec![field("row_id", DataType::Int64, FieldRole::Measure, 3)],
         };
         let doc = build(&p);
-        assert!(doc.workspace.components.iter().any(|c| c.id == "metric_row_id"));
+        assert!(doc
+            .workspace
+            .components
+            .iter()
+            .any(|c| c.id == "metric_row_id"));
     }
 
     #[test]
