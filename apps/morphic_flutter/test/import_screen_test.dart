@@ -11,6 +11,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:morphic_flutter/engine/bridge.dart';
 import 'package:morphic_flutter/engine/bridge_scope.dart';
 import 'package:morphic_flutter/engine/file_source.dart';
 import 'package:morphic_flutter/features/import/import_screen.dart';
@@ -23,12 +24,13 @@ Widget host({
   required PlatformFileSource source,
   required FakeImportRunner runner,
   required void Function(WorkspaceArgs) onWorkspace,
+  ScriptedBridge? bridge,
 }) =>
     MaterialApp(
       initialRoute: '/',
       routes: {
         '/': (_) => BridgeScope(
-              bridge: ScriptedBridge(),
+              bridge: bridge ?? ScriptedBridge(),
               storageRoot: '/tmp/morphic',
               child: ImportScreen(fileSource: source, runner: runner),
             ),
@@ -110,6 +112,122 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(runner.lastRequest?.formatHint, isNull);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a running import can be cancelled from the UI', (tester) async {
+    final gate = Completer<void>();
+    final bridge = ScriptedBridge()..cancelResult = true;
+    await tester.pumpWidget(host(
+      source: FakeFileSource(file: csv()),
+      runner: FakeImportRunner(gate: gate),
+      bridge: bridge,
+      onWorkspace: (_) {},
+    ));
+    await tester.pump();
+
+    await tester.tap(find.text('Choose a file'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(find.text('Cancel import'), findsOneWidget);
+
+    await tester.tap(find.text('Cancel import'));
+    await tester.pump();
+    expect(bridge.cancelCalls, hasLength(1));
+
+    gate.complete();
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a cancelled import says nothing was saved, without an error card',
+      (tester) async {
+    await tester.pumpWidget(host(
+      source: FakeFileSource(file: csv()),
+      runner: FakeImportRunner(
+        failure: const MorphicBridgeException('ingest: import cancelled'),
+      ),
+      onWorkspace: (_) {},
+    ));
+    await tester.pump();
+
+    await tester.tap(find.text('Choose a file'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Import cancelled'), findsOneWidget);
+    expect(find.textContaining('Nothing was saved'), findsOneWidget);
+    expect(find.text('Choose another file'), findsNothing,
+        reason: 'cancellation must not render the error card');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('quarantined rows keep the user on the report instead of navigating',
+      (tester) async {
+    var opened = false;
+    await tester.pumpWidget(host(
+      source: FakeFileSource(file: csv()),
+      runner: FakeImportRunner(result: {
+        'doc': ScriptedBridge().doc(),
+        'profile': ScriptedBridge().profileJson(),
+        'report': {
+          'format': 'csv',
+          'encoding': 'utf-8',
+          'rowsImported': 90,
+          'rowsQuarantined': 10,
+          'fieldCount': 3,
+          'warnings': [
+            "Read as 'csv' (100% confidence): 3 fields on 100% of sampled lines.",
+            '10 rows did not fit the shape of the file.',
+          ],
+        },
+      }),
+      onWorkspace: (_) => opened = true,
+    ));
+    await tester.pump();
+
+    await tester.tap(find.text('Choose a file'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+
+    expect(opened, isFalse, reason: 'review comes before the workspace');
+    expect(find.text('Worth a look first'), findsOneWidget);
+    expect(find.text('What Morphic read'), findsOneWidget);
+    expect(find.text('Set aside'), findsOneWidget);
+
+    await tester.tap(find.text('View report'));
+    await tester.pumpAndSettle();
+    expect(find.text('Import report'), findsOneWidget);
+    expect(find.textContaining('10 rows did not fit'), findsOneWidget);
+    expect(find.text('Read it as something else'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('an engine failure shows human copy and keeps the raw evidence',
+      (tester) async {
+    await tester.pumpWidget(host(
+      source: FakeFileSource(file: csv()),
+      runner: FakeImportRunner(
+        failure: const MorphicBridgeException(
+          'ingest: resource limit exceeded: the file is 300 MiB, over the 256 MiB '
+          'import limit; import a sample instead',
+        ),
+      ),
+      onWorkspace: (_) {},
+    ));
+    await tester.pump();
+
+    await tester.tap(find.text('Choose a file'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+
+    expect(find.text('That file is too large to import.'), findsOneWidget);
+    expect(find.textContaining('Split the file'), findsOneWidget);
+    expect(find.textContaining('300 MiB'), findsOneWidget,
+        reason: 'the engine text is evidence, not noise');
     expect(tester.takeException(), isNull);
   });
 

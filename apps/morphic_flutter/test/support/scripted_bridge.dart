@@ -106,7 +106,7 @@ class ScriptedBridge implements MorphicBridge {
 
   @override
   EngineInfo engineInfo() =>
-      const EngineInfo(apiVersion: 3, coreVersion: '0.1.0', engine: 'morphic');
+      const EngineInfo(apiVersion: 4, coreVersion: '0.1.0', engine: 'morphic');
 
   @override
   Map<String, dynamic> profileCsv(Uint8List bytes) => profileJson();
@@ -204,6 +204,17 @@ class ScriptedBridge implements MorphicBridge {
       throw const MorphicBridgeException("core: source data for workspace 'w1' is unavailable");
     }
     return {'componentId': componentId, 'value': metrics[componentId], 'revision': 1};
+  }
+
+  @override
+  /// What [cancelImport] reports, and every id it was asked to cancel.
+  bool cancelResult = false;
+  final List<String> cancelCalls = [];
+
+  @override
+  bool cancelImport({required String workspaceId}) {
+    cancelCalls.add(workspaceId);
+    return cancelResult;
   }
 
   @override

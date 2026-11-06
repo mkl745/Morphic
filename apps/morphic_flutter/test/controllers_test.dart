@@ -44,7 +44,7 @@ class RecordingBridge implements MorphicBridge {
 
   @override
   EngineInfo engineInfo() =>
-      const EngineInfo(apiVersion: 3, coreVersion: '0.1.0', engine: 'morphic');
+      const EngineInfo(apiVersion: 4, coreVersion: '0.1.0', engine: 'morphic');
 
   @override
   Map<String, dynamic> profileCsv(Uint8List bytes) => {'rowCount': 3, 'fieldCount': 2};
@@ -141,6 +141,15 @@ class RecordingBridge implements MorphicBridge {
   }) {
     calls.add('metric:$componentId');
     return {'componentId': componentId, 'value': metricValue, 'revision': 7};
+  }
+
+  @override
+  bool cancelResult = false;
+
+  @override
+  bool cancelImport({required String workspaceId}) {
+    calls.add('cancel:$workspaceId');
+    return cancelResult;
   }
 
   @override

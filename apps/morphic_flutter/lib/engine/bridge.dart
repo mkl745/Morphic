@@ -89,6 +89,14 @@ abstract interface class MorphicBridge {
     required String componentId,
   });
 
+  /// Ask an in-flight import to stop. Returns true when a running import was signalled.
+  ///
+  /// False is a normal answer, not a failure: the import may have finished between the user
+  /// tapping Cancel and this call landing. Safe to call from the UI isolate while the import
+  /// blocks a worker isolate — the engine keeps cancellation on a separate lock precisely so
+  /// this cannot deadlock.
+  bool cancelImport({required String workspaceId});
+
   /// Drop in-memory session state. The persisted workspace is untouched.
   Map<String, dynamic> closeWorkspace({
     required String storageRoot,
@@ -113,6 +121,9 @@ typedef _LoadWorkspaceDart = Pointer<Utf8> Function(Pointer<Utf8>, Pointer<Utf8>
 
 typedef _ListWorkspacesNative = Pointer<Utf8> Function(Pointer<Utf8>);
 typedef _ListWorkspacesDart = Pointer<Utf8> Function(Pointer<Utf8>);
+
+typedef _CancelImportNative = Pointer<Utf8> Function(Pointer<Utf8>);
+typedef _CancelImportDart = Pointer<Utf8> Function(Pointer<Utf8>);
 
 typedef _ImportFileNative = Pointer<Utf8> Function(
     Pointer<Uint8>,
@@ -178,6 +189,8 @@ class FfiBridge implements MorphicBridge {
       .lookupFunction<_LoadWorkspaceNative, _LoadWorkspaceDart>('morphic_load_workspace');
   late final _listWorkspaces = _lib
       .lookupFunction<_ListWorkspacesNative, _ListWorkspacesDart>('morphic_list_workspaces');
+  late final _cancelImport = _lib
+      .lookupFunction<_CancelImportNative, _CancelImportDart>('morphic_cancel_import');
   late final _importFile =
       _lib.lookupFunction<_ImportFileNative, _ImportFileDart>('morphic_import');
   late final _snapshot =
@@ -394,6 +407,22 @@ class FfiBridge implements MorphicBridge {
       calloc.free(root);
       calloc.free(id);
       calloc.free(comp);
+    }
+  }
+
+  @override
+  bool cancelImport({required String workspaceId}) {
+    final id = workspaceId.toNativeUtf8();
+    try {
+      return _withResponse(() => _cancelImport(id), (s) {
+        final decoded = jsonDecode(s);
+        if (decoded is Map<String, dynamic>) {
+          return decoded['cancelled'] == true;
+        }
+        throw const MorphicBridgeException('unexpected response shape');
+      });
+    } finally {
+      calloc.free(id);
     }
   }
 

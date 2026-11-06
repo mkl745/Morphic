@@ -16,10 +16,12 @@ import 'package:flutter/foundation.dart';
 
 import 'bridge.dart';
 import 'file_source.dart';
+import 'import_failure.dart';
+import 'import_facts.dart';
 import 'import_progress.dart';
 import 'import_runner.dart';
 
-enum ImportStage { idle, reading, importing, done, error }
+enum ImportStage { idle, reading, importing, done, error, cancelled }
 
 class ImportController extends ChangeNotifier {
   ImportController({
@@ -36,7 +38,77 @@ class ImportController extends ChangeNotifier {
   ImportStage get stage => _stage;
 
   String? _error;
+
+  /// The engine's own error text, kept verbatim. The UI shows [failure] instead; this is the
+  /// evidence a bug report needs.
   String? get error => _error;
+
+  /// The last failure in human terms, or null when the last attempt did not fail.
+  /// Cancellation is deliberately not a failure and yields null here.
+  ImportFailure? get failure =>
+      _error == null ? null : describeImportFailure(_error!);
+
+  /// What the engine reported about the last successful import.
+  ImportFacts? get facts =>
+      _result == null ? null : ImportFacts.fromResult(_result);
+
+  /// The workspace id of the attempt currently running, so Cancel can name it.
+  String? _activeId;
+
+  /// Ask the running import to stop. Returns true when the engine signalled one.
+  ///
+  /// Safe to call while the import blocks a worker isolate. A false return is normal: the
+  /// import may have finished first, in which case its result stands.
+  bool cancel() {
+    final id = _activeId;
+    if (!isBusy || id == null) return false;
+    try {
+      return bridge.cancelImport(workspaceId: id);
+    } catch (_) {
+      // Cancellation is best-effort. Failing to signal it must not crash the UI or mask
+      // the import's own outcome.
+      return false;
+    }
+  }
+
+  // The last source, retained so the user can re-import it with a different format hint
+  // without going back to the picker.
+  Uint8List? _lastBytes;
+  String? _lastTitle;
+  String? _lastExtension;
+  String? _lastFormatHint;
+
+  /// True when the result deserves a look before the user trusts it: rows were quarantined,
+  /// or the engine was not confident about the format. A clean, confident import goes
+  /// straight to the workspace — the spec asks for no ceremony when nothing is wrong.
+  bool get needsReview {
+    final f = facts;
+    return f != null && (f.hasQuarantine || f.isLowConfidence);
+  }
+
+  /// True when there is a remembered source to re-import.
+  bool get canReimport => _lastBytes != null;
+
+  /// The format hint used for the last attempt, null when the engine detected it.
+  String? get lastFormatHint => _lastFormatHint;
+
+  /// Re-read the same bytes with a different format. Creates a **new** workspace: the
+  /// earlier attempt is left untouched rather than silently overwritten.
+  Future<String?> reimport({String? formatHint, DateTime? now}) async {
+    final bytes = _lastBytes;
+    final title = _lastTitle;
+    if (bytes == null || title == null || isBusy) return null;
+    _begin();
+    final clock = now ?? DateTime.now();
+    return _runImport(
+      bytes,
+      title: title,
+      id: 'w_${clock.millisecondsSinceEpoch}',
+      clock: clock,
+      formatHint: formatHint,
+      extension: _lastExtension,
+    );
+  }
 
   Map<String, dynamic>? _result;
 
@@ -78,12 +150,17 @@ class ImportController extends ChangeNotifier {
   bool get isBusy =>
       _stage == ImportStage.reading || _stage == ImportStage.importing;
 
+  /// True while the user can still stop the import. Reading is local and fast; the engine
+  /// call is the long part, and only it can be cancelled.
+  bool get canCancel => _stage == ImportStage.importing && _activeId != null;
+
   void _set(ImportStage s) {
     _stage = s;
     notifyListeners();
   }
 
   void _begin() {
+    _activeId = null;
     _error = null;
     _result = null;
     _progress = null;
@@ -139,6 +216,9 @@ class ImportController extends ChangeNotifier {
         return null;
       }
     }
+    _lastBytes = bytes;
+    _lastTitle = name;
+    _lastExtension = file.extension;
     return _runImport(
       bytes,
       title: name,
@@ -192,6 +272,8 @@ class ImportController extends ChangeNotifier {
     String? formatHint,
     String? extension,
   }) async {
+    _activeId = id;
+    _lastFormatHint = formatHint;
     _set(ImportStage.importing);
     try {
       final res = await runner.run(
@@ -210,12 +292,21 @@ class ImportController extends ChangeNotifier {
         },
       );
       _result = res;
+      _activeId = null;
       _finishedAt = DateTime.now();
       _set(ImportStage.done);
       return id;
     } catch (e) {
-      _error = e.toString();
+      final raw = e.toString();
+      _activeId = null;
       _finishedAt = DateTime.now();
+      // A cancelled import is a decision the user made, not an error to apologise for.
+      if (describeImportFailure(raw).isCancellation) {
+        _error = null;
+        _set(ImportStage.cancelled);
+        return null;
+      }
+      _error = raw;
       _set(ImportStage.error);
       return null;
     }
@@ -226,8 +317,15 @@ class ImportController extends ChangeNotifier {
     _error = null;
     _result = null;
     _progress = null;
+    _activeId = null;
     _startedAt = null;
     _finishedAt = null;
+    // The remembered source goes too: reset means "start over", and offering to re-import
+    // a file the user has moved on from would be confusing.
+    _lastBytes = null;
+    _lastTitle = null;
+    _lastExtension = null;
+    _lastFormatHint = null;
     notifyListeners();
   }
 }

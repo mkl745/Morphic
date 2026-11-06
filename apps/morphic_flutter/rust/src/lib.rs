@@ -58,6 +58,68 @@ fn engines() -> &'static Mutex<HashMap<String, Engine>> {
     ENGINES.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
+/// In-flight imports, keyed by workspace id, so the UI thread can cancel one.
+///
+/// Deliberately a **separate lock** from `engines()`: `with_engine` holds the engine lock for
+/// the whole import, so a cancel call that needed it would block until the import it is
+/// trying to stop had already finished.
+fn cancellations() -> &'static Mutex<HashMap<String, morphic_core::CancelToken>> {
+    static CANCELS: OnceLock<Mutex<HashMap<String, morphic_core::CancelToken>>> = OnceLock::new();
+    CANCELS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// RAII registration. Removes the entry on *every* exit path — normal return, early `?`,
+/// and a panic unwinding through `guarded`'s firewall — so the registry cannot leak ids.
+struct CancelRegistration(String);
+
+impl CancelRegistration {
+    fn new(id: &str) -> (Self, morphic_core::CancelToken) {
+        let token = morphic_core::CancelToken::new();
+        if let Ok(mut m) = cancellations().lock() {
+            m.insert(id.to_string(), token.clone());
+        }
+        (Self(id.to_string()), token)
+    }
+}
+
+impl Drop for CancelRegistration {
+    fn drop(&mut self) {
+        if let Ok(mut m) = cancellations().lock() {
+            m.remove(&self.0);
+        }
+    }
+}
+
+/// Ask an in-flight import to stop. Returns `{"cancelled": bool}` — false when no import
+/// with that id is running, which is a normal answer, not an error (the import may have
+/// finished between the user tapping and this call landing).
+///
+/// Cancellation is cooperative: the import returns an `import cancelled` error and, because
+/// core writes nothing until parsing and validation have both succeeded, leaves no dataset
+/// and no workspace behind.
+///
+/// # Safety
+/// `workspace_id` must be null or a valid C string.
+#[no_mangle]
+pub unsafe extern "C" fn morphic_cancel_import(workspace_id: *const c_char) -> *mut c_char {
+    guarded(|| {
+        let Some(id) = (unsafe { cstr(workspace_id) }) else {
+            return err("workspace_id is required");
+        };
+        let Ok(registry) = cancellations().lock() else {
+            return err("cancel registry poisoned");
+        };
+        let cancelled = match registry.get(&id) {
+            Some(token) => {
+                token.cancel();
+                true
+            }
+            None => false,
+        };
+        serde_json::json!({ "cancelled": cancelled }).to_string()
+    })
+}
+
 /// Run `f` with the engine for `root`, creating it on first use.
 fn with_engine<F>(root: &str, f: F) -> String
 where
@@ -192,6 +254,9 @@ pub unsafe extern "C" fn morphic_import(
         let now = unsafe { cstr(now_iso) }.unwrap_or_else(|| "1970-01-01T00:00:00Z".into());
         let hint = unsafe { cstr(format_hint) };
         let ext = unsafe { cstr(extension) };
+        // Registered before the engine lock is taken, so a cancel arriving at any point
+        // during the import finds the token. Dropped when this closure exits.
+        let (_registration, cancel) = CancelRegistration::new(&id);
 
         with_engine(&root, |engine| {
             let mut sink = |p: morphic_core::ImportProgress| {
@@ -212,6 +277,7 @@ pub unsafe extern "C" fn morphic_import(
                         now_iso: &now,
                         format_hint: hint.as_deref(),
                         extension: ext.as_deref(),
+                        cancel: Some(&cancel),
                     },
                     &mut sink,
                 )
@@ -477,7 +543,7 @@ mod tests {
     fn engine_info_returns_json() {
         let v = json(morphic_engine_info());
         assert_eq!(v["engine"], "morphic");
-        assert_eq!(v["apiVersion"], 3);
+        assert_eq!(v["apiVersion"], 4);
     }
 
     #[test]
@@ -812,4 +878,80 @@ mod tests {
         assert_eq!(snap["degraded"], false, "{snap}");
         assert!(snap["profile"].is_object(), "{snap}");
     }
+
+    // ------------------------------------------- M1.2 1.2.4 cancellation over the C ABI
+
+    #[test]
+    fn cancelling_an_unknown_import_is_false_not_an_error() {
+        let v = unsafe { json(morphic_cancel_import(c("nobody").as_ptr())) };
+        assert_eq!(v["cancelled"], false, "{v}");
+        assert!(v.get("error").is_none(), "{v}");
+    }
+
+    #[test]
+    fn cancelling_with_a_null_id_is_a_typed_error() {
+        let v = unsafe { json(morphic_cancel_import(std::ptr::null())) };
+        assert!(v["error"].as_str().unwrap_or("").contains("required"), "{v}");
+    }
+
+    #[test]
+    fn the_cancel_registry_is_cleaned_up_after_success() {
+        let (p, rp) = root("cancel-cleanup-ok");
+        let id = c("w-done");
+        let v = unsafe { import(&rp, &id, None) };
+        assert!(v.get("error").is_none(), "{v}");
+        // The id must not linger: a later cancel is a no-op, not a stale hit.
+        let after = unsafe { json(morphic_cancel_import(id.as_ptr())) };
+        assert_eq!(after["cancelled"], false, "{after}");
+        std::fs::remove_dir_all(&p).ok();
+    }
+
+    #[test]
+    fn the_cancel_registry_is_cleaned_up_after_failure() {
+        let (_p, rp) = root("cancel-cleanup-err");
+        let id = c("w-bad");
+        // An unknown hint fails inside core, after registration.
+        let v = unsafe { import_as(CSV, &rp, &id, Some(&c("parquet")), None) };
+        assert!(v.get("error").is_some(), "{v}");
+        let after = unsafe { json(morphic_cancel_import(id.as_ptr())) };
+        assert_eq!(after["cancelled"], false, "{after}");
+    }
+
+    /// Trips the cancel from inside a real progress event, i.e. genuinely mid-import.
+    extern "C" fn cancel_during_import(_json: *const c_char) {
+        unsafe {
+            let reply = morphic_cancel_import(c"w-cancel-cb".as_ptr());
+            morphic_free_string(reply);
+        }
+    }
+
+    #[test]
+    fn cancelling_mid_import_errors_and_persists_nothing() {
+        let (p, rp) = root("cancel-mid");
+        let id = c("w-cancel-cb");
+        let v = unsafe {
+            json(morphic_import(
+                CSV.as_ptr(),
+                CSV.len(),
+                rp.as_ptr(),
+                c("Sales").as_ptr(),
+                id.as_ptr(),
+                c("2026-11-06T00:00:00Z").as_ptr(),
+                c"csv".as_ptr(),
+                std::ptr::null(),
+                Some(cancel_during_import),
+            ))
+        };
+        let msg = v["error"].as_str().unwrap_or("");
+        assert!(msg.contains("cancelled"), "{v}");
+        // AT-05: no workspace and no dataset may survive a cancelled import.
+        let list = unsafe { json(morphic_list_workspaces(rp.as_ptr())) };
+        assert_eq!(list.as_array().unwrap().len(), 0, "{list}");
+        let stored = std::fs::read_dir(p.join("datasets"))
+            .map(|entries| entries.count())
+            .unwrap_or(0);
+        assert_eq!(stored, 0, "a cancelled import left a dataset behind");
+        std::fs::remove_dir_all(&p).ok();
+    }
+
 }

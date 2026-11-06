@@ -19,12 +19,16 @@ use std::sync::Mutex;
 use morphic_model::{DatasetProfile, ImportReport, Table};
 use morphic_schema::WorkspaceDoc;
 use morphic_workspace::{FileStore, StoreError, WorkspaceStore};
+
+/// Re-exported so the FFI bridge can create and trip a cancellation token without taking a
+/// direct dependency on the ingest crate. Core stays the bridge's only engine surface.
+pub use morphic_ingest::CancelToken;
 use serde::Serialize;
 use thiserror::Error;
 
 /// Bridge contract version. Bumped on breaking FFI changes (docs/architecture/02 §5).
 /// v2 adds sessions, queryPage, metricData, and snapshot (M1.1 task 1.1.4).
-pub const API_VERSION: u32 = 3;
+pub const API_VERSION: u32 = 4;
 
 #[derive(Debug, Error)]
 pub enum CoreError {
@@ -48,6 +52,8 @@ pub enum CoreError {
     SourceUnavailable(String),
     #[error("unknown format '{0}'; expected csv, json, jsonl, log or txt")]
     UnknownFormat(String),
+    #[error("import cancelled")]
+    Cancelled,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -94,6 +100,9 @@ pub struct ImportRequest<'a> {
     pub format_hint: Option<&'a str>,
     /// The source file's extension, used only when no content probe was decisive.
     pub extension: Option<&'a str>,
+    /// Cooperative cancellation. Checked during parsing and again immediately before the
+    /// first byte is written, so a cancelled import leaves no dataset and no workspace.
+    pub cancel: Option<&'a morphic_ingest::CancelToken>,
 }
 
 /// Everything an import produced. The document is already validated and persisted.
@@ -170,6 +179,7 @@ impl Engine {
                 now_iso,
                 format_hint: Some("csv"),
                 extension: None,
+                cancel: None,
             },
             on_progress,
         )
@@ -192,6 +202,7 @@ impl Engine {
             now_iso,
             format_hint,
             extension,
+            cancel,
         } = req;
         let mut opts = morphic_ingest::IngestOptions::default();
         if let Some(hint) = format_hint {
@@ -202,7 +213,7 @@ impl Engine {
             );
         }
         opts.extension = extension.map(|s| s.to_string());
-        let (table, report) = morphic_ingest::ingest_with(bytes, &opts, None, &mut |p| {
+        let (table, report) = morphic_ingest::ingest_with(bytes, &opts, cancel, &mut |p| {
             on_progress(ImportProgress {
                 phase: format!("{:?}", p.phase).to_lowercase(),
                 rows_read: p.rows_read as u64,
@@ -211,8 +222,10 @@ impl Engine {
         })?;
         let profile = morphic_semantic::profile(&table);
         // Content-addressed: the dataset's identity is its hash, so importing the same file
-        // twice stores one copy and two workspaces can share it.
-        let dataset_id = self.store.put_dataset(bytes)?;
+        // twice stores one copy and two workspaces can share it. The hash is computed
+        // *without writing* so the document can be compiled and validated before anything
+        // touches disk.
+        let dataset_id = morphic_workspace::content_hash(bytes);
         let doc = morphic_compiler::compile(&profile, &dataset_id, workspace_id, title, now_iso);
         // All five passes, including bindings checked against the real profile.
         let issues = morphic_schema::validate_with_profile(&doc, &profile);
@@ -224,6 +237,13 @@ impl Engine {
                 .join("; ");
             return Err(CoreError::Validation(msg));
         }
+        // Last checkpoint before any I/O. Everything above is pure computation, so bailing
+        // out here leaves the store exactly as it was — which is what AT-05 requires of a
+        // cancelled import. It also means a validation failure no longer orphans a dataset.
+        if cancel.is_some_and(|c| c.is_cancelled()) {
+            return Err(CoreError::Cancelled);
+        }
+        self.store.put_dataset(bytes)?;
         self.store.save_workspace(&doc)?;
 
         self.sessions
@@ -970,4 +990,112 @@ mod tests {
         assert_eq!(ids, vec!["w_new", "w_old"]);
         std::fs::remove_dir_all(&root).ok();
     }
+
+    // --- M1.2 task 1.2.4: cancellation must leave the store untouched (AT-05) -----------
+
+    fn dataset_written(root: &std::path::Path, bytes: &[u8]) -> bool {
+        root.join("datasets")
+            .join(morphic_workspace::content_hash(bytes))
+            .exists()
+    }
+
+    fn req<'a>(bytes: &'a [u8], id: &'a str) -> ImportRequest<'a> {
+        ImportRequest {
+            bytes,
+            title: "Sales",
+            workspace_id: id,
+            now_iso: "2026-11-06T00:00:00Z",
+            format_hint: None,
+            extension: None,
+            cancel: None,
+        }
+    }
+
+    #[test]
+    fn a_cancelled_import_writes_neither_dataset_nor_workspace() {
+        let root = temp_root("cancel-pre");
+        let engine = Engine::new(&root).unwrap();
+        let token = morphic_ingest::CancelToken::new();
+        token.cancel();
+        let r = ImportRequest {
+            cancel: Some(&token),
+            ..req(SALES, "w1")
+        };
+        let err = engine.import(r, &mut |_| {}).unwrap_err();
+        assert!(matches!(err, CoreError::Cancelled), "{err}");
+        assert!(engine.list_workspaces().unwrap().is_empty());
+        assert!(
+            !dataset_written(&root, SALES),
+            "a cancelled import must not leave a dataset behind"
+        );
+        assert!(!engine.has_session("w1"));
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn cancelling_during_parsing_still_writes_nothing() {
+        let root = temp_root("cancel-mid");
+        let engine = Engine::new(&root).unwrap();
+        let token = morphic_ingest::CancelToken::new();
+        let trip = token.clone();
+        let r = ImportRequest {
+            cancel: Some(&token),
+            ..req(SALES, "w1")
+        };
+        // Cancel from inside the real progress callback, i.e. genuinely mid-import. Even if
+        // the parser finishes before it notices, the pre-write checkpoint must catch it.
+        let err = engine
+            .import(r, &mut |_| {
+                trip.cancel();
+            })
+            .unwrap_err();
+        assert!(matches!(err, CoreError::Cancelled), "{err}");
+        assert!(engine.list_workspaces().unwrap().is_empty());
+        assert!(!dataset_written(&root, SALES));
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn a_cancelled_reimport_leaves_the_existing_workspace_intact() {
+        let root = temp_root("cancel-existing");
+        let engine = Engine::new(&root).unwrap();
+        engine
+            .import(req(SALES, "w1"), &mut |_| {})
+            .expect("first import succeeds");
+        let token = morphic_ingest::CancelToken::new();
+        token.cancel();
+        let r = ImportRequest {
+            cancel: Some(&token),
+            ..req(b"region,other\neu,1\nus,2\n", "w1")
+        };
+        assert!(matches!(
+            engine.import(r, &mut |_| {}),
+            Err(CoreError::Cancelled)
+        ));
+        engine.close_session("w1").unwrap();
+        let snap = engine.open_session("w1").unwrap();
+        assert!(!snap.degraded);
+        assert_eq!(
+            snap.profile.as_ref().unwrap().row_count,
+            5,
+            "the cancelled attempt must not have touched the stored workspace"
+        );
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn an_uncancelled_token_does_not_interfere() {
+        let root = temp_root("cancel-noop");
+        let engine = Engine::new(&root).unwrap();
+        let token = morphic_ingest::CancelToken::new();
+        let r = ImportRequest {
+            cancel: Some(&token),
+            ..req(SALES, "w1")
+        };
+        let out = engine.import(r, &mut |_| {}).expect("not cancelled");
+        assert_eq!(out.report.rows_imported, 5);
+        assert!(dataset_written(&root, SALES));
+        std::fs::remove_dir_all(&root).ok();
+    }
+
 }

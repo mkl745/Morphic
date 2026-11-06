@@ -290,4 +290,175 @@ void main() {
       c.dispose();
     });
   });
+
+  group('cancellation (1.2.4)', () {
+    test('cancelling when nothing is running is a no-op', () {
+      final bridge = ScriptedBridge();
+      final c = ImportController(
+        bridge: bridge,
+        storageRoot: '/tmp/morphic',
+        runner: FakeImportRunner(),
+      );
+      expect(c.canCancel, isFalse);
+      expect(c.cancel(), isFalse);
+      expect(bridge.cancelCalls, isEmpty);
+      c.dispose();
+    });
+
+    test('cancelling names the workspace that is actually running', () async {
+      final gate = Completer<void>();
+      final bridge = ScriptedBridge()..cancelResult = true;
+      final c = ImportController(
+        bridge: bridge,
+        storageRoot: '/tmp/morphic',
+        runner: FakeImportRunner(gate: gate),
+      );
+      final pending = c.importBytes(
+        Uint8List(1),
+        title: 'Big',
+        workspaceId: 'w_running',
+      );
+      await Future<void>.delayed(Duration.zero);
+      expect(c.canCancel, isTrue);
+      expect(c.cancel(), isTrue);
+      expect(bridge.cancelCalls, ['w_running']);
+      gate.complete();
+      await pending;
+      expect(c.canCancel, isFalse, reason: 'nothing is running once it finishes');
+      c.dispose();
+    });
+
+    test('a bridge that throws while cancelling does not break the UI', () async {
+      final gate = Completer<void>();
+      final c = ImportController(
+        bridge: ThrowingCancelBridge(),
+        storageRoot: '/tmp/morphic',
+        runner: FakeImportRunner(gate: gate),
+      );
+      final pending = c.importBytes(Uint8List(1), title: 'Big');
+      await Future<void>.delayed(Duration.zero);
+      expect(c.cancel(), isFalse, reason: 'best effort, never a crash');
+      gate.complete();
+      expect(await pending, isNotNull);
+      c.dispose();
+    });
+
+    test('a cancelled import is a state, not an error', () async {
+      final c = make(FakeImportRunner(
+        failure: const MorphicBridgeException('ingest: import cancelled'),
+      ));
+      expect(await c.importBytes(Uint8List(1), title: 'X'), isNull);
+      expect(c.stage, ImportStage.cancelled);
+      expect(c.error, isNull);
+      expect(c.failure, isNull, reason: 'the user chose this; do not apologise');
+      c.dispose();
+    });
+
+    test('a real failure is still an error, with human copy attached', () async {
+      final c = make(FakeImportRunner(
+        failure: const MorphicBridgeException('ingest: the file is empty'),
+      ));
+      await c.importBytes(Uint8List(1), title: 'X');
+      expect(c.stage, ImportStage.error);
+      expect(c.error, contains('the file is empty'));
+      expect(c.failure!.headline, 'That file is empty.');
+      expect(c.failure!.nextStep, isNotEmpty);
+      c.dispose();
+    });
+  });
+
+  group('review and re-import (1.2.4)', () {
+    Map<String, dynamic> reportResult({
+      int quarantined = 0,
+      List<String> warnings = const [],
+    }) =>
+        {
+          'doc': ScriptedBridge().doc(),
+          'profile': ScriptedBridge().profileJson(),
+          'report': {
+            'format': 'csv',
+            'encoding': 'utf-8',
+            'rowsImported': 90,
+            'rowsQuarantined': quarantined,
+            'fieldCount': 3,
+            'warnings': warnings,
+          },
+        };
+
+    test('a clean confident import needs no review', () async {
+      final c = make(FakeImportRunner(result: reportResult()));
+      await c.importBytes(Uint8List(1), title: 'X');
+      expect(c.needsReview, isFalse);
+      expect(c.facts!.rowsImported, 90);
+      c.dispose();
+    });
+
+    test('quarantined rows ask for a review', () async {
+      final c = make(FakeImportRunner(result: reportResult(quarantined: 10)));
+      await c.importBytes(Uint8List(1), title: 'X');
+      expect(c.needsReview, isTrue);
+      expect(c.facts!.quarantineRate, 0.1);
+      c.dispose();
+    });
+
+    test('a low-confidence read asks for a review even with no quarantine', () async {
+      final c = make(FakeImportRunner(
+        result: reportResult(warnings: [
+          "Read as 'csv' (50% confidence): 3 fields on 50% of sampled lines.",
+          'Some rows are probably ragged.',
+        ]),
+      ));
+      await c.importBytes(Uint8List(1), title: 'X');
+      expect(c.facts!.hasQuarantine, isFalse);
+      expect(c.needsReview, isTrue);
+      c.dispose();
+    });
+
+    test('there is nothing to re-import before a file has been picked', () {
+      final c = make(FakeImportRunner());
+      expect(c.canReimport, isFalse);
+      c.dispose();
+    });
+
+    test('re-import reuses the bytes with the new hint and a fresh workspace', () async {
+      final runner = FakeImportRunner();
+      final c = make(runner);
+      final bytes = Uint8List.fromList([1, 2, 3]);
+      await c.importPicked(PickedFile(name: 'events.txt', bytes: bytes));
+      expect(c.canReimport, isTrue);
+      expect(c.lastFormatHint, isNull);
+      final firstId = runner.lastRequest!.workspaceId;
+
+      final second = await c.reimport(
+        formatHint: 'jsonl',
+        now: DateTime.utc(2026, 11, 6, 10),
+      );
+      expect(second, isNotNull);
+      expect(runner.lastRequest!.formatHint, 'jsonl');
+      expect(runner.lastRequest!.bytes, bytes, reason: 'no re-read of the file');
+      expect(runner.lastRequest!.extension, 'txt');
+      expect(runner.lastRequest!.workspaceId, isNot(firstId),
+          reason: 'the first attempt is left untouched');
+      expect(c.lastFormatHint, 'jsonl');
+      c.dispose();
+    });
+
+    test('reset forgets the remembered source', () async {
+      final c = make(FakeImportRunner());
+      await c.importPicked(PickedFile(name: 'a.csv', bytes: Uint8List(2)));
+      expect(c.canReimport, isTrue);
+      c.reset();
+      expect(c.canReimport, isFalse);
+      expect(c.stage, ImportStage.idle);
+      c.dispose();
+    });
+  });
+
+}
+
+/// A bridge whose cancel call fails, to prove cancellation is best-effort.
+class ThrowingCancelBridge extends ScriptedBridge {
+  @override
+  bool cancelImport({required String workspaceId}) =>
+      throw const MorphicBridgeException('cancel unavailable');
 }
