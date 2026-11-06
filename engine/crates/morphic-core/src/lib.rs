@@ -132,9 +132,24 @@ mod tests {
         let doc = engine
             .create_workspace_from_csv(csv, "Logs", "w_poc", "2026-11-05T00:00:00Z")
             .unwrap();
-        assert!(morphic_schema::validate(&doc).is_empty());
-        // metric + timeline + table
-        assert_eq!(doc.workspace.components.len(), 3);
+        let profile = morphic_semantic::profile(&morphic_ingest::parse_csv(csv).unwrap().0);
+        assert!(morphic_schema::validate_with_profile(&doc, &profile).is_empty());
+        // M1.1 1.1.3: this dataset has a temporal field AND a numeric measure, so the rule
+        // table emits R1 records + R2 measure metric + R3 line chart + R6 table. Assert the
+        // shape rather than a brittle count.
+        let kinds: Vec<&str> = doc
+            .workspace
+            .components
+            .iter()
+            .map(|c| c.component_type.as_str())
+            .collect();
+        assert!(kinds.contains(&"metric_card"));
+        assert!(kinds.contains(&"line_chart"));
+        assert!(kinds.contains(&"data_table"));
+        assert!(
+            !kinds.contains(&"timeline"),
+            "a measure exists, so R3 (line chart) applies instead of R4 (timeline)"
+        );
         // reopen
         let loaded = engine.load_workspace("w_poc").unwrap();
         assert_eq!(loaded.workspace.id, "w_poc");

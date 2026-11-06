@@ -369,8 +369,8 @@ fn validate_binding_resources(c: &ComponentSpec, ptr: &str, issues: &mut Vec<Val
         Binding::DataTable { page_size, .. } => {
             if *page_size == 0 || *page_size > MAX_PAGE_SIZE {
                 issues.push(ValidationIssue {
-                    pointer: format!("{ptr}/binding/pageSize"),
-                    rule: format!("pageSize {} out of range 1..={}", page_size, MAX_PAGE_SIZE),
+                    pointer: format!("{ptr}/binding/page_size"),
+                    rule: format!("page_size {} out of range 1..={}", page_size, MAX_PAGE_SIZE),
                 });
             }
         }
@@ -546,7 +546,7 @@ pub fn validate_bindings(
                     check_aggregation(profile, agg, &format!("{ptr}/binding/y/{j}"), &mut issues);
                 }
                 if let Some(g) = group_by {
-                    require_field(profile, g, &format!("{ptr}/binding/groupBy"), &mut issues);
+                    require_field(profile, g, &format!("{ptr}/binding/group_by"), &mut issues);
                 }
             }
             Binding::Timeline {
@@ -557,26 +557,26 @@ pub fn validate_bindings(
                 if require_field(
                     profile,
                     time_field,
-                    &format!("{ptr}/binding/timeField"),
+                    &format!("{ptr}/binding/time_field"),
                     &mut issues,
                 ) {
                     let f = find_field(profile, time_field).expect("checked by require_field");
                     if !(f.dtype == DataType::Timestamp || f.inference.role == FieldRole::Temporal)
                     {
                         issues.push(ValidationIssue {
-                            pointer: format!("{ptr}/binding/timeField"),
-                            rule: format!("timeline timeField '{time_field}' is not temporal"),
+                            pointer: format!("{ptr}/binding/time_field"),
+                            rule: format!("timeline time_field '{time_field}' is not temporal"),
                         });
                     }
                 }
                 if let Some(g) = group_by {
-                    require_field(profile, g, &format!("{ptr}/binding/groupBy"), &mut issues);
+                    require_field(profile, g, &format!("{ptr}/binding/group_by"), &mut issues);
                 }
                 if let Some(s) = severity_field {
                     require_field(
                         profile,
                         s,
-                        &format!("{ptr}/binding/severityField"),
+                        &format!("{ptr}/binding/severity_field"),
                         &mut issues,
                     );
                 }
@@ -775,7 +775,7 @@ mod tests {
             columns: vec![],
             page_size: MAX_PAGE_SIZE + 1,
         });
-        assert!(validate(&doc).iter().any(|i| i.rule.contains("pageSize")));
+        assert!(validate(&doc).iter().any(|i| i.rule.contains("page_size")));
     }
 
     #[test]
@@ -784,7 +784,7 @@ mod tests {
             columns: vec![],
             page_size: 0,
         });
-        assert!(validate(&doc).iter().any(|i| i.rule.contains("pageSize")));
+        assert!(validate(&doc).iter().any(|i| i.rule.contains("page_size")));
     }
 
     #[test]
@@ -946,7 +946,62 @@ mod tests {
             severity_field: Some("phantom".into()),
         });
         let issues = validate_bindings(&doc, &sample_profile());
-        assert!(issues.iter().any(|i| i.pointer.contains("groupBy")));
-        assert!(issues.iter().any(|i| i.pointer.contains("severityField")));
+        assert!(issues.iter().any(|i| i.pointer.contains("group_by")));
+        assert!(issues.iter().any(|i| i.pointer.contains("severity_field")));
+    }
+
+    /// Resolve an RFC-6901 JSON Pointer against a serialized value.
+    fn resolve<'a>(v: &'a serde_json::Value, pointer: &str) -> Option<&'a serde_json::Value> {
+        let mut cur = v;
+        for raw in pointer.split('/').skip(1) {
+            let key = raw.replace("~1", "/").replace("~0", "~");
+            cur = match cur {
+                serde_json::Value::Object(m) => m.get(&key)?,
+                serde_json::Value::Array(a) => a.get(key.parse::<usize>().ok()?)?,
+                _ => return None,
+            };
+        }
+        Some(cur)
+    }
+
+    /// Every issue must point at a real location in the document. This caught a genuine
+    /// defect: binding variant fields serialize snake_case (`time_field`), so pointers
+    /// written as `timeField` addressed keys that do not exist.
+    #[test]
+    fn every_issue_pointer_resolves_in_the_serialized_document() {
+        let cases = vec![
+            with_binding(Binding::MetricCard { aggregation: agg("avg", Some("ghost")) }),
+            with_binding(Binding::MetricCard { aggregation: agg("sum", None) }),
+            with_binding(Binding::MetricCard { aggregation: agg("avg", Some("when")) }),
+            with_binding(Binding::DataTable { columns: vec!["ghost".into()], page_size: 0 }),
+            with_binding(Binding::BarChart {
+                dimension: "ghost".into(), measure: agg("median", None), limit: 0,
+            }),
+            with_binding(Binding::LineChart {
+                x: "note".into(), y: vec![agg("avg", Some("ghost"))], group_by: Some("ghost".into()),
+            }),
+            with_binding(Binding::Timeline {
+                time_field: "region".into(),
+                group_by: Some("ghost".into()),
+                severity_field: Some("ghost".into()),
+            }),
+        ];
+        let profile = sample_profile();
+        let mut checked = 0;
+        for doc in cases {
+            let value = serde_json::to_value(&doc).unwrap();
+            let issues = validate_with_profile(&doc, &profile);
+            assert!(!issues.is_empty(), "case should produce issues");
+            for issue in issues {
+                assert!(
+                    resolve(&value, &issue.pointer).is_some(),
+                    "pointer '{}' does not resolve (rule: {})",
+                    issue.pointer,
+                    issue.rule
+                );
+                checked += 1;
+            }
+        }
+        assert!(checked > 10, "expected a meaningful number of pointers, got {checked}");
     }
 }
