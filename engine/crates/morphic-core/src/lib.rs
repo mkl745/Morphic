@@ -80,7 +80,8 @@ impl Engine {
             title,
             now_iso,
         );
-        let issues = morphic_schema::validate(&doc);
+        // All five passes, including bindings checked against the real profile (M1.1 1.1.3).
+        let issues = morphic_schema::validate_with_profile(&doc, &profile);
         if !issues.is_empty() {
             let msg = issues
                 .iter()

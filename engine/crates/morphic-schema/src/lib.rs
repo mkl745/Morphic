@@ -17,6 +17,15 @@ use serde::{Deserialize, Serialize};
 pub const SCHEMA_VERSION: &str = "1.0";
 pub const MAX_COMPONENTS: usize = 64;
 
+/// Resource ceilings (docs/architecture/03 §4, quality-and-performance budgets).
+/// A document that exceeds these is rejected rather than allowed to stall the runtime.
+pub const MAX_PAGE_SIZE: u32 = 1024;
+pub const MAX_BAR_LIMIT: u32 = 2000;
+pub const MAX_LINE_SERIES: usize = 8;
+
+/// The closed aggregation vocabulary. Anything else is a schema error, not a silent no-op.
+pub const AGGREGATION_OPS: &[&str] = &["count", "sum", "avg", "min", "max", "distinct_count"];
+
 // ---------------------------------------------------------------------------
 // Document
 // ---------------------------------------------------------------------------
@@ -312,6 +321,9 @@ pub fn validate(doc: &WorkspaceDoc) -> Vec<ValidationIssue> {
                 rule: format!("dataSource '{}' is not a declared alias", c.data_source),
             });
         }
+
+        // Pass 5: resource ceilings + closed aggregation vocabulary.
+        validate_binding_resources(c, &ptr, &mut issues);
     }
 
     // Layout order must reference exactly the component ids (no orphans, no missing).
@@ -334,6 +346,213 @@ pub fn validate(doc: &WorkspaceDoc) -> Vec<ValidationIssue> {
         }
     }
 
+    issues
+}
+
+/// Pass 5 helpers: aggregation vocabulary and resource ceilings. Profile-independent.
+fn validate_binding_resources(c: &ComponentSpec, ptr: &str, issues: &mut Vec<ValidationIssue>) {
+    let mut check_agg = |agg: &Aggregation, location: String| {
+        if !AGGREGATION_OPS.contains(&agg.op.as_str()) {
+            issues.push(ValidationIssue {
+                pointer: location,
+                rule: format!("unknown aggregation op '{}'", agg.op),
+            });
+        }
+    };
+    match &c.binding {
+        Binding::MetricCard { aggregation } => {
+            check_agg(aggregation, format!("{ptr}/binding/aggregation"));
+        }
+        Binding::DataTable { page_size, .. } => {
+            if *page_size == 0 || *page_size > MAX_PAGE_SIZE {
+                issues.push(ValidationIssue {
+                    pointer: format!("{ptr}/binding/pageSize"),
+                    rule: format!("pageSize {} out of range 1..={}", page_size, MAX_PAGE_SIZE),
+                });
+            }
+        }
+        Binding::BarChart { limit, measure, .. } => {
+            if *limit == 0 || *limit > MAX_BAR_LIMIT {
+                issues.push(ValidationIssue {
+                    pointer: format!("{ptr}/binding/limit"),
+                    rule: format!("limit {} out of range 1..={}", limit, MAX_BAR_LIMIT),
+                });
+            }
+            check_agg(measure, format!("{ptr}/binding/measure"));
+        }
+        Binding::LineChart { y, .. } => {
+            if y.is_empty() {
+                issues.push(ValidationIssue {
+                    pointer: format!("{ptr}/binding/y"),
+                    rule: "lineChart requires at least one series".into(),
+                });
+            }
+            if y.len() > MAX_LINE_SERIES {
+                issues.push(ValidationIssue {
+                    pointer: format!("{ptr}/binding/y"),
+                    rule: format!("too many series ({} > {})", y.len(), MAX_LINE_SERIES),
+                });
+            }
+            for (i, agg) in y.iter().enumerate() {
+                check_agg(agg, format!("{ptr}/binding/y/{i}"));
+            }
+        }
+        Binding::Timeline { .. } => {}
+    }
+}
+
+/// Look up a field by name in the profile.
+fn find_field<'a>(
+    profile: &'a morphic_model::DatasetProfile,
+    name: &str,
+) -> Option<&'a morphic_model::FieldProfile> {
+    profile.fields.iter().find(|f| f.name == name)
+}
+
+/// Require that a referenced field exists; records an issue and returns false if not.
+fn require_field(
+    profile: &morphic_model::DatasetProfile,
+    name: &str,
+    ptr: &str,
+    issues: &mut Vec<ValidationIssue>,
+) -> bool {
+    if find_field(profile, name).is_some() {
+        return true;
+    }
+    issues.push(ValidationIssue {
+        pointer: ptr.into(),
+        rule: format!("field '{name}' does not exist in the dataset"),
+    });
+    false
+}
+
+/// Check that an aggregation names an existing field and is meaningful for its type.
+fn check_aggregation(
+    profile: &morphic_model::DatasetProfile,
+    agg: &Aggregation,
+    ptr: &str,
+    issues: &mut Vec<ValidationIssue>,
+) {
+    let needs_field = matches!(
+        agg.op.as_str(),
+        "sum" | "avg" | "min" | "max" | "distinct_count"
+    );
+    let Some(name) = &agg.field else {
+        if needs_field {
+            issues.push(ValidationIssue {
+                pointer: ptr.into(),
+                rule: format!("aggregation '{}' requires a field", agg.op),
+            });
+        }
+        return;
+    };
+    let Some(f) = find_field(profile, name) else {
+        issues.push(ValidationIssue {
+            pointer: ptr.into(),
+            rule: format!("field '{name}' does not exist in the dataset"),
+        });
+        return;
+    };
+    let numeric = f.dtype.is_numeric();
+    let ordered = numeric || f.dtype == morphic_model::DataType::Timestamp;
+    let ok = match agg.op.as_str() {
+        // Summing or averaging a timestamp is meaningless.
+        "sum" | "avg" => numeric,
+        "min" | "max" => ordered,
+        _ => true,
+    };
+    if !ok {
+        issues.push(ValidationIssue {
+            pointer: ptr.into(),
+            rule: format!(
+                "aggregation '{}' is not valid for field '{}' of type {}",
+                agg.op,
+                name,
+                f.dtype.as_str()
+            ),
+        });
+    }
+}
+
+/// **Pass 3 — binding validation against a live dataset profile.**
+///
+/// Structural validity does not imply a binding can actually be computed. This checks that
+/// every referenced field exists and that each aggregation is meaningful for the field's
+/// physical type, so the runtime never receives a document it cannot execute.
+pub fn validate_bindings(
+    doc: &WorkspaceDoc,
+    profile: &morphic_model::DatasetProfile,
+) -> Vec<ValidationIssue> {
+    use morphic_model::{DataType, FieldRole};
+
+    let mut issues = Vec::new();
+    for (i, c) in doc.workspace.components.iter().enumerate() {
+        let ptr = format!("/workspace/components/{}", i);
+        match &c.binding {
+            Binding::MetricCard { aggregation } => {
+                check_aggregation(profile, aggregation, &format!("{ptr}/binding/aggregation"), &mut issues);
+            }
+            Binding::DataTable { columns, .. } => {
+                for (j, col) in columns.iter().enumerate() {
+                    require_field(profile, col, &format!("{ptr}/binding/columns/{j}"), &mut issues);
+                }
+            }
+            Binding::BarChart { dimension, measure, .. } => {
+                require_field(profile, dimension, &format!("{ptr}/binding/dimension"), &mut issues);
+                check_aggregation(profile, measure, &format!("{ptr}/binding/measure"), &mut issues);
+            }
+            Binding::LineChart { x, y, group_by } => {
+                if require_field(profile, x, &format!("{ptr}/binding/x"), &mut issues) {
+                    let f = find_field(profile, x).expect("checked by require_field");
+                    if !(f.dtype == DataType::Timestamp
+                        || f.dtype.is_numeric()
+                        || f.inference.role == FieldRole::Temporal)
+                    {
+                        issues.push(ValidationIssue {
+                            pointer: format!("{ptr}/binding/x"),
+                            rule: format!(
+                                "lineChart x field '{x}' must be temporal or numeric, got {}",
+                                f.dtype.as_str()
+                            ),
+                        });
+                    }
+                }
+                for (j, agg) in y.iter().enumerate() {
+                    check_aggregation(profile, agg, &format!("{ptr}/binding/y/{j}"), &mut issues);
+                }
+                if let Some(g) = group_by {
+                    require_field(profile, g, &format!("{ptr}/binding/groupBy"), &mut issues);
+                }
+            }
+            Binding::Timeline { time_field, group_by, severity_field } => {
+                if require_field(profile, time_field, &format!("{ptr}/binding/timeField"), &mut issues) {
+                    let f = find_field(profile, time_field).expect("checked by require_field");
+                    if !(f.dtype == DataType::Timestamp || f.inference.role == FieldRole::Temporal) {
+                        issues.push(ValidationIssue {
+                            pointer: format!("{ptr}/binding/timeField"),
+                            rule: format!("timeline timeField '{time_field}' is not temporal"),
+                        });
+                    }
+                }
+                if let Some(g) = group_by {
+                    require_field(profile, g, &format!("{ptr}/binding/groupBy"), &mut issues);
+                }
+                if let Some(s) = severity_field {
+                    require_field(profile, s, &format!("{ptr}/binding/severityField"), &mut issues);
+                }
+            }
+        }
+    }
+    issues
+}
+
+/// All five passes: structural, registry, **binding**, referential, resource.
+pub fn validate_with_profile(
+    doc: &WorkspaceDoc,
+    profile: &morphic_model::DatasetProfile,
+) -> Vec<ValidationIssue> {
+    let mut issues = validate(doc);
+    issues.extend(validate_bindings(doc, profile));
     issues
 }
 
@@ -454,5 +673,176 @@ mod tests {
     fn registry_lists_five_active() {
         let m = registry_manifest();
         assert_eq!(m["components"].as_array().unwrap().len(), 5);
+    }
+
+    // --- M1.1 task 1.1.3: pass 3 (bindings) + pass 5 (resources) ---
+
+    use morphic_model::{DataType, DatasetProfile, FieldProfile, FieldRole, Inference};
+
+    fn fp(name: &str, dtype: DataType, role: FieldRole) -> FieldProfile {
+        FieldProfile {
+            name: name.into(),
+            dtype,
+            null_count: 0,
+            distinct_count: 5,
+            min: None,
+            max: None,
+            top_values: vec![],
+            stats: None,
+            inference: Inference { role, confidence: 0.9, evidence: vec![] },
+        }
+    }
+
+    fn sample_profile() -> DatasetProfile {
+        let fields = vec![
+            fp("amount", DataType::Float64, FieldRole::Measure),
+            fp("count", DataType::Int64, FieldRole::Measure),
+            fp("when", DataType::Timestamp, FieldRole::Temporal),
+            fp("region", DataType::Utf8, FieldRole::Dimension),
+            fp("note", DataType::Utf8, FieldRole::Text),
+        ];
+        DatasetProfile { row_count: 10, field_count: fields.len(), fields }
+    }
+
+    /// Replace the single component's binding, keeping the document structurally valid.
+    fn with_binding(binding: Binding) -> WorkspaceDoc {
+        let mut doc = minimal_doc();
+        let kind = binding.kind().to_string();
+        doc.workspace.components[0].component_type = kind;
+        doc.workspace.components[0].binding = binding;
+        doc
+    }
+
+    fn agg(op: &str, field: Option<&str>) -> Aggregation {
+        Aggregation { op: op.into(), field: field.map(|s| s.into()), filter: None }
+    }
+
+    #[test]
+    fn resource_pass_rejects_oversized_page() {
+        let doc = with_binding(Binding::DataTable { columns: vec![], page_size: MAX_PAGE_SIZE + 1 });
+        assert!(validate(&doc).iter().any(|i| i.rule.contains("pageSize")));
+    }
+
+    #[test]
+    fn resource_pass_rejects_zero_page() {
+        let doc = with_binding(Binding::DataTable { columns: vec![], page_size: 0 });
+        assert!(validate(&doc).iter().any(|i| i.rule.contains("pageSize")));
+    }
+
+    #[test]
+    fn resource_pass_accepts_boundary_page() {
+        let doc = with_binding(Binding::DataTable { columns: vec![], page_size: MAX_PAGE_SIZE });
+        assert!(validate(&doc).is_empty());
+    }
+
+    #[test]
+    fn resource_pass_rejects_oversized_bar_limit() {
+        let doc = with_binding(Binding::BarChart {
+            dimension: "region".into(),
+            measure: agg("count", None),
+            limit: MAX_BAR_LIMIT + 1,
+        });
+        assert!(validate(&doc).iter().any(|i| i.rule.contains("limit")));
+    }
+
+    #[test]
+    fn resource_pass_rejects_empty_line_series() {
+        let doc = with_binding(Binding::LineChart { x: "when".into(), y: vec![], group_by: None });
+        assert!(validate(&doc).iter().any(|i| i.rule.contains("at least one series")));
+    }
+
+    #[test]
+    fn resource_pass_rejects_unknown_aggregation_op() {
+        let doc = with_binding(Binding::MetricCard { aggregation: agg("median", Some("amount")) });
+        assert!(validate(&doc).iter().any(|i| i.rule.contains("unknown aggregation op")));
+    }
+
+    #[test]
+    fn binding_pass_accepts_a_well_formed_document() {
+        let doc = with_binding(Binding::MetricCard { aggregation: agg("avg", Some("amount")) });
+        assert!(validate_with_profile(&doc, &sample_profile()).is_empty());
+    }
+
+    #[test]
+    fn binding_pass_rejects_a_missing_field() {
+        let doc = with_binding(Binding::MetricCard { aggregation: agg("avg", Some("ghost")) });
+        let issues = validate_bindings(&doc, &sample_profile());
+        assert!(issues.iter().any(|i| i.rule.contains("does not exist")));
+    }
+
+    #[test]
+    fn binding_pass_requires_a_field_for_sum() {
+        let doc = with_binding(Binding::MetricCard { aggregation: agg("sum", None) });
+        assert!(validate_bindings(&doc, &sample_profile())
+            .iter().any(|i| i.rule.contains("requires a field")));
+    }
+
+    #[test]
+    fn binding_pass_allows_count_without_a_field() {
+        let doc = with_binding(Binding::MetricCard { aggregation: agg("count", None) });
+        assert!(validate_bindings(&doc, &sample_profile()).is_empty());
+    }
+
+    #[test]
+    fn binding_pass_rejects_summing_text() {
+        let doc = with_binding(Binding::MetricCard { aggregation: agg("sum", Some("note")) });
+        assert!(validate_bindings(&doc, &sample_profile())
+            .iter().any(|i| i.rule.contains("not valid for field")));
+    }
+
+    #[test]
+    fn binding_pass_rejects_averaging_a_timestamp() {
+        let doc = with_binding(Binding::MetricCard { aggregation: agg("avg", Some("when")) });
+        assert!(validate_bindings(&doc, &sample_profile())
+            .iter().any(|i| i.rule.contains("not valid for field")));
+    }
+
+    #[test]
+    fn binding_pass_allows_min_max_on_timestamps() {
+        for op in ["min", "max"] {
+            let doc = with_binding(Binding::MetricCard { aggregation: agg(op, Some("when")) });
+            assert!(validate_bindings(&doc, &sample_profile()).is_empty(), "{op} on a timestamp is meaningful");
+        }
+    }
+
+    #[test]
+    fn binding_pass_checks_table_columns() {
+        let doc = with_binding(Binding::DataTable { columns: vec!["amount".into(), "ghost".into()], page_size: 256 });
+        let issues = validate_bindings(&doc, &sample_profile());
+        assert!(issues.iter().any(|i| i.pointer.contains("/binding/columns/1")));
+    }
+
+    #[test]
+    fn binding_pass_requires_temporal_or_numeric_line_x() {
+        let bad = with_binding(Binding::LineChart {
+            x: "note".into(), y: vec![agg("avg", Some("amount"))], group_by: None,
+        });
+        assert!(validate_bindings(&bad, &sample_profile())
+            .iter().any(|i| i.rule.contains("must be temporal or numeric")));
+        let good = with_binding(Binding::LineChart {
+            x: "when".into(), y: vec![agg("avg", Some("amount"))], group_by: None,
+        });
+        assert!(validate_bindings(&good, &sample_profile()).is_empty());
+    }
+
+    #[test]
+    fn binding_pass_requires_temporal_timeline_field() {
+        let bad = with_binding(Binding::Timeline {
+            time_field: "region".into(), group_by: None, severity_field: None,
+        });
+        assert!(validate_bindings(&bad, &sample_profile())
+            .iter().any(|i| i.rule.contains("is not temporal")));
+    }
+
+    #[test]
+    fn binding_pass_checks_optional_group_and_severity_fields() {
+        let doc = with_binding(Binding::Timeline {
+            time_field: "when".into(),
+            group_by: Some("ghost".into()),
+            severity_field: Some("phantom".into()),
+        });
+        let issues = validate_bindings(&doc, &sample_profile());
+        assert!(issues.iter().any(|i| i.pointer.contains("groupBy")));
+        assert!(issues.iter().any(|i| i.pointer.contains("severityField")));
     }
 }
