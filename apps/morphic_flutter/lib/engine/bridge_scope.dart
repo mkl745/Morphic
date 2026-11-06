@@ -7,6 +7,7 @@ library;
 import 'package:flutter/widgets.dart';
 
 import 'bridge.dart';
+import 'import_runner.dart';
 
 class BridgeScope extends InheritedWidget {
   const BridgeScope({
@@ -14,10 +15,15 @@ class BridgeScope extends InheritedWidget {
     required this.bridge,
     required this.storageRoot,
     required super.child,
+    this.importRunner,
   });
 
   final MorphicBridge bridge;
   final String storageRoot;
+
+  /// Where imports run. Null means the screens use a worker isolate; tests inject an
+  /// [InlineImportRunner] over a fake bridge, since the host has no native library.
+  final ImportRunner? importRunner;
 
   static BridgeScope of(BuildContext context) {
     final scope = context.dependOnInheritedWidgetOfExactType<BridgeScope>();
@@ -27,5 +33,7 @@ class BridgeScope extends InheritedWidget {
 
   @override
   bool updateShouldNotify(BridgeScope oldWidget) =>
-      bridge != oldWidget.bridge || storageRoot != oldWidget.storageRoot;
+      bridge != oldWidget.bridge ||
+      storageRoot != oldWidget.storageRoot ||
+      importRunner != oldWidget.importRunner;
 }

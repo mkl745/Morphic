@@ -47,7 +47,7 @@ class _ImportScreenState extends State<ImportScreen> {
     _controller = ImportController(
       bridge: scope.bridge,
       storageRoot: scope.storageRoot,
-      runner: widget.runner ?? const IsolateImportRunner(),
+      runner: widget.runner ?? scope.importRunner ?? const IsolateImportRunner(),
     )..addListener(_onControllerChanged);
   }
 

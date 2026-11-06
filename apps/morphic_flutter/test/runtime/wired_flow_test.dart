@@ -6,6 +6,7 @@ library;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:morphic_flutter/app.dart';
+import 'package:morphic_flutter/engine/import_runner.dart';
 import 'package:morphic_flutter/runtime/components/data_table_view.dart';
 import 'package:morphic_flutter/runtime/components/metric_card_view.dart';
 
@@ -13,7 +14,13 @@ import '../support/scripted_bridge.dart';
 
 Future<void> _pumpApp(WidgetTester tester, ScriptedBridge bridge) async {
   await tester.pumpWidget(
-    MorphicApp(bridge: bridge, storageRoot: '/tmp/morphic-wired-test'),
+    MorphicApp(
+      bridge: bridge,
+      storageRoot: '/tmp/morphic-wired-test',
+      // The host has no libmorphic_bridge.so, so the worker isolate cannot run. The
+      // screens, navigation and runtime under test are the real ones.
+      importRunner: InlineImportRunner(bridge),
+    ),
   );
   // Explicit pumps: the home loading spinner animates forever, so pumpAndSettle would hang.
   await tester.pump();

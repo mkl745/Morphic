@@ -22,6 +22,10 @@ class RecordingBridge implements MorphicBridge {
   Object? metricValue = 42;
   List<String> importWarnings = [];
 
+  /// Off by default so stage-transition assertions keep their meaning: a progress event
+  /// notifies listeners without changing the stage. Turned on to test forwarding itself.
+  bool emitProgress = false;
+
   Map<String, dynamic> _doc() => {
         'schemaVersion': '1.0',
         'workspace': {
@@ -80,7 +84,9 @@ class RecordingBridge implements MorphicBridge {
     void Function(Map<String, dynamic> progress)? onProgress,
   }) {
     calls.add('import:$workspaceId');
-    onProgress?.call({'phase': 'parsing', 'rowsRead': 3, 'bytesRead': 32});
+    if (emitProgress) {
+      onProgress?.call({'phase': 'parsing', 'rowsRead': 3, 'bytesRead': 32});
+    }
     if (failImport) throw const MorphicBridgeException('ingest: empty file');
     return {
       'doc': _doc(),
@@ -162,6 +168,26 @@ void main() {
       expect(stages, [ImportStage.importing, ImportStage.done]);
       expect(bridge.calls, ['import:w1']);
       expect(c.elapsed, isNotNull);
+    });
+
+    test('the default inline runner forwards engine progress to the controller',
+        () async {
+      final bridge = RecordingBridge()..emitProgress = true;
+      // No runner passed: this exercises InlineImportRunner, the default.
+      final c = ImportController(bridge: bridge, storageRoot: '/tmp/m');
+      final phases = <String>[];
+      c.addListener(() {
+        final p = c.progress;
+        if (p != null) phases.add(p.phase);
+      });
+
+      await c.importBytes(Uint8List.fromList([1, 2, 3]), title: 'Sales');
+
+      expect(phases, contains('parsing'));
+      expect(c.progress!.rowsRead, 3);
+      expect(c.progress!.bytesRead, 32);
+      expect(c.stage, ImportStage.done);
+      c.dispose();
     });
 
     test('engine errors become an error state, never a crash', () async {

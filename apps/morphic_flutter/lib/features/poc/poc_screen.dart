@@ -63,7 +63,7 @@ class _PocScreenState extends State<PocScreen> {
     final importer = ImportController(
       bridge: scope.bridge,
       storageRoot: scope.storageRoot,
-      runner: const IsolateImportRunner(),
+      runner: scope.importRunner ?? const IsolateImportRunner(),
     );
     final id = await importer.importBytes(bytes, title: 'Sample Logs');
     if (!mounted) return;
