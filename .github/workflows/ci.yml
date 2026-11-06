@@ -150,7 +150,9 @@ jobs:
       - name: Pub get
         run: flutter pub get
       - name: Analyze
-        run: flutter analyze
+        id: analyze
+        continue-on-error: true
+        run: flutter analyze > /tmp/analyze.log 2>&1
       - name: Test
         id: darttest
         continue-on-error: true
@@ -161,7 +163,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           {
-            echo "## Dart CI — test: ${{ steps.darttest.outcome }}"
+            echo "## Dart CI — analyze: ${{ steps.analyze.outcome }} · test: ${{ steps.darttest.outcome }}"
+            echo '### analyze'
+            echo '```'
+            cat /tmp/analyze.log
+            echo '```'
             echo '### versions'
             echo '```'
             flutter --version
@@ -186,7 +192,7 @@ jobs:
             "https://api.github.com/repos/${{ github.repository }}/commits/${{ github.sha }}/comments" \
             -d @/tmp/payload.json
       - name: Enforce checks
-        if: steps.darttest.outcome != 'success'
+        if: steps.analyze.outcome != 'success' || steps.darttest.outcome != 'success'
         run: exit 1
 
   android-build:

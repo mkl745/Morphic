@@ -141,7 +141,7 @@ impl Engine {
         let (table, report) = morphic_ingest::parse_csv_with(bytes, &opts, None, &mut |p| {
             on_progress(ImportProgress {
                 phase: format!("{:?}", p.phase).to_lowercase(),
-                rows_read: p.rows_read,
+                rows_read: p.rows_read as u64,
                 bytes_read: p.bytes_read,
             });
         })?;
