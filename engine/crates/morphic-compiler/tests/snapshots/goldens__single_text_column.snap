@@ -24,7 +24,6 @@ expression: doc
       "mode": "adaptive",
       "order": [
         "total_records",
-        "breakdown_by_note",
         "data_table"
       ],
       "hints": []
@@ -58,37 +57,6 @@ expression: doc
             "3 rows detected"
           ],
           "confidence": 1.0
-        }
-      },
-      {
-        "id": "breakdown_by_note",
-        "type": "bar_chart",
-        "typeVersion": "1.0",
-        "title": "record count by note",
-        "dataSource": "data",
-        "binding": {
-          "kind": "bar_chart",
-          "dimension": "note",
-          "measure": {
-            "op": "count",
-            "field": null,
-            "filter": null
-          },
-          "limit": 3
-        },
-        "interactions": {
-          "filter": true,
-          "search": false,
-          "sort": false,
-          "select": true
-        },
-        "explanation": {
-          "reason": "R5_category_breakdown",
-          "detail": "'note' has 3 distinct values, few enough to compare as categories.",
-          "evidence": [
-            "'note' has 3 distinct values"
-          ],
-          "confidence": 0.8
         }
       },
       {

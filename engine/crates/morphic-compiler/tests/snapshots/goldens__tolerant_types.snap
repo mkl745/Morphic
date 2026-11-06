@@ -24,6 +24,7 @@ expression: doc
       "mode": "adaptive",
       "order": [
         "total_records",
+        "metric_qty",
         "data_table"
       ],
       "hints": []
@@ -57,6 +58,35 @@ expression: doc
             "20 rows detected"
           ],
           "confidence": 1.0
+        }
+      },
+      {
+        "id": "metric_qty",
+        "type": "metric_card",
+        "typeVersion": "1.0",
+        "title": "Avg qty",
+        "dataSource": "data",
+        "binding": {
+          "kind": "metric_card",
+          "aggregation": {
+            "op": "avg",
+            "field": "qty",
+            "filter": null
+          }
+        },
+        "interactions": {
+          "filter": false,
+          "search": false,
+          "sort": false,
+          "select": false
+        },
+        "explanation": {
+          "reason": "R2_primary_measure",
+          "detail": "'qty' is the strongest numeric measure, so its average is surfaced. An average is used rather than a sum because it stays meaningful for rates as well as totals.",
+          "evidence": [
+            "'qty' is numeric (int64)"
+          ],
+          "confidence": 0.85
         }
       },
       {

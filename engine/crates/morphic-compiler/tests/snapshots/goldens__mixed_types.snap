@@ -26,6 +26,7 @@ expression: doc
         "total_records",
         "metric_amount",
         "trend_over_time",
+        "breakdown_by_active",
         "data_table"
       ],
       "hints": []
@@ -122,6 +123,37 @@ expression: doc
             "'amount' is numeric (float64)"
           ],
           "confidence": 0.85
+        }
+      },
+      {
+        "id": "breakdown_by_active",
+        "type": "bar_chart",
+        "typeVersion": "1.0",
+        "title": "average amount by active",
+        "dataSource": "data",
+        "binding": {
+          "kind": "bar_chart",
+          "dimension": "active",
+          "measure": {
+            "op": "avg",
+            "field": "amount",
+            "filter": null
+          },
+          "limit": 2
+        },
+        "interactions": {
+          "filter": true,
+          "search": false,
+          "sort": false,
+          "select": true
+        },
+        "explanation": {
+          "reason": "R5_category_breakdown",
+          "detail": "'active' has 2 distinct values, few enough to compare as categories.",
+          "evidence": [
+            "'active' is a boolean flag: two values to group by"
+          ],
+          "confidence": 0.9
         }
       },
       {

@@ -25,7 +25,7 @@ expression: doc
       "order": [
         "total_records",
         "metric_amount",
-        "breakdown_by_booked_on",
+        "trend_over_time",
         "data_table"
       ],
       "hints": []
@@ -91,20 +91,22 @@ expression: doc
         }
       },
       {
-        "id": "breakdown_by_booked_on",
-        "type": "bar_chart",
+        "id": "trend_over_time",
+        "type": "line_chart",
         "typeVersion": "1.0",
-        "title": "average amount by booked_on",
+        "title": "amount over time",
         "dataSource": "data",
         "binding": {
-          "kind": "bar_chart",
-          "dimension": "booked_on",
-          "measure": {
-            "op": "avg",
-            "field": "amount",
-            "filter": null
-          },
-          "limit": 3
+          "kind": "line_chart",
+          "x": "booked_on",
+          "y": [
+            {
+              "op": "avg",
+              "field": "amount",
+              "filter": null
+            }
+          ],
+          "group_by": null
         },
         "interactions": {
           "filter": true,
@@ -113,12 +115,13 @@ expression: doc
           "select": true
         },
         "explanation": {
-          "reason": "R5_category_breakdown",
-          "detail": "'booked_on' has 3 distinct values, few enough to compare as categories.",
+          "reason": "R3_time_series",
+          "detail": "'booked_on' is temporal and 'amount' is a measure, so the measure is plotted over time.",
           "evidence": [
-            "'booked_on' has 3 distinct values"
+            "'booked_on' values look like timestamps but stayed text: the layout is not unambiguous enough to type",
+            "'amount' is numeric (int64)"
           ],
-          "confidence": 0.8
+          "confidence": 0.85
         }
       },
       {
