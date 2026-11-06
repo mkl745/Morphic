@@ -712,11 +712,14 @@ mod tests {
             ("a,b\n1,2\n3,4\n", "csv"),
             ("[{\"a\":1},{\"a\":2}]", "json"),
             ("{\"a\":1}\n{\"a\":2}\n", "jsonl"),
-            ("2026-11-05T14:00:01Z INFO api hi\n2026-11-05T14:00:02Z WARN api yo\n", "log"),
+            (
+                "2026-11-05T14:00:01Z INFO api hi\n2026-11-05T14:00:02Z WARN api yo\n",
+                "log",
+            ),
             ("plain prose here\nanother line\n", "txt"),
         ] {
-            let (table, report) = ingest(src.as_bytes())
-                .unwrap_or_else(|e| panic!("failed on {src}: {e}"));
+            let (table, report) =
+                ingest(src.as_bytes()).unwrap_or_else(|e| panic!("failed on {src}: {e}"));
             assert_eq!(report.format, expected, "{src}");
             assert!(table.row_count > 0, "{src}");
             assert!(
@@ -730,15 +733,27 @@ mod tests {
     #[test]
     fn ingest_reports_the_detection_evidence_first() {
         let (_, report) = ingest(b"a,b\n1,2\n").unwrap();
-        assert!(report.warnings[0].contains("Read as 'csv'"), "{:?}", report.warnings);
-        assert!(report.warnings[0].contains("confidence"), "{:?}", report.warnings);
+        assert!(
+            report.warnings[0].contains("Read as 'csv'"),
+            "{:?}",
+            report.warnings
+        );
+        assert!(
+            report.warnings[0].contains("confidence"),
+            "{:?}",
+            report.warnings
+        );
     }
 
     #[test]
     fn the_summary_is_first_even_when_detection_had_caveats() {
         let bytes = std::fs::read(format!("{FIXTURES}/malformed/ragged.csv")).expect("fixture");
         let (_, report) = ingest(&bytes).unwrap();
-        assert!(report.warnings[0].starts_with("Read as 'csv'"), "{:?}", report.warnings);
+        assert!(
+            report.warnings[0].starts_with("Read as 'csv'"),
+            "{:?}",
+            report.warnings
+        );
         assert!(
             report.warnings.iter().any(|w| w.contains("ragged")),
             "the caveat must survive: {:?}",
@@ -756,7 +771,11 @@ mod tests {
         let (table, report) = ingest_with(b"a,b\n1,2\n", &opts, None, &mut |_| {}).unwrap();
         assert_eq!(report.format, "txt");
         assert_eq!(table.field_names(), vec!["line_number", "line"]);
-        assert!(report.warnings[0].contains("explicitly"), "{:?}", report.warnings);
+        assert!(
+            report.warnings[0].contains("explicitly"),
+            "{:?}",
+            report.warnings
+        );
     }
 
     #[test]
@@ -800,8 +819,13 @@ mod tests {
     fn ingest_honours_cancellation() {
         let token = CancelToken::new();
         token.cancel();
-        let err = ingest_with(b"a,b\n1,2\n", &IngestOptions::default(), Some(&token), &mut |_| {})
-            .unwrap_err();
+        let err = ingest_with(
+            b"a,b\n1,2\n",
+            &IngestOptions::default(),
+            Some(&token),
+            &mut |_| {},
+        )
+        .unwrap_err();
         assert!(matches!(err, IngestError::Cancelled), "{err}");
     }
 

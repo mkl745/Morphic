@@ -286,7 +286,9 @@ mod tests {
 
     #[test]
     fn more_fields_wins_an_agreement_tie() {
-        assert_eq!(delimiter_evidence("a;b,c;d\n1;2,3;4\n"), Some((b';', 3, 1.0)));
+        assert_eq!(
+            delimiter_evidence("a;b,c;d\n1;2,3;4\n"),
+            Some((b';', 3, 1.0))
+        );
     }
-
 }

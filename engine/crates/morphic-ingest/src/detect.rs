@@ -66,7 +66,12 @@ impl Format {
     /// Parse a caller-supplied hint. Aliases are accepted so the UI and file extensions can
     /// share one vocabulary. Unknown strings return `None` rather than guessing.
     pub fn parse(s: &str) -> Option<Format> {
-        match s.trim().trim_start_matches('.').to_ascii_lowercase().as_str() {
+        match s
+            .trim()
+            .trim_start_matches('.')
+            .to_ascii_lowercase()
+            .as_str()
+        {
             "csv" | "tsv" => Some(Format::Csv),
             "json" => Some(Format::Json),
             "jsonl" | "ndjson" => Some(Format::Jsonl),
@@ -358,7 +363,11 @@ mod tests {
         let d = det("{\"a\":1}\n{\"a\":2}\n{\"a\":3}\n");
         assert_eq!(d.format, Format::Jsonl);
         assert!(d.confidence >= JSONL_RATE);
-        assert!(d.evidence.contains("complete JSON values"), "{}", d.evidence);
+        assert!(
+            d.evidence.contains("complete JSON values"),
+            "{}",
+            d.evidence
+        );
     }
 
     #[test]
@@ -446,7 +455,10 @@ mod tests {
         let d = detect(b"alpha\nbeta\n", None, Some("csv"));
         assert_eq!(d.format, Format::Csv);
         assert!(d.evidence.contains("extension"), "{}", d.evidence);
-        assert!(!d.warnings.is_empty(), "an extension guess must be disclosed");
+        assert!(
+            !d.warnings.is_empty(),
+            "an extension guess must be disclosed"
+        );
     }
 
     #[test]
@@ -462,12 +474,18 @@ mod tests {
 
     #[test]
     fn a_dot_prefixed_extension_works() {
-        assert_eq!(detect(b"alpha\nbeta\n", None, Some(".jsonl")).format, Format::Jsonl);
+        assert_eq!(
+            detect(b"alpha\nbeta\n", None, Some(".jsonl")).format,
+            Format::Jsonl
+        );
     }
 
     #[test]
     fn an_unknown_extension_does_not_force_a_format() {
-        assert_eq!(detect(b"alpha\nbeta\n", None, Some("bin")).format, Format::Txt);
+        assert_eq!(
+            detect(b"alpha\nbeta\n", None, Some("bin")).format,
+            Format::Txt
+        );
     }
 
     #[test]
@@ -547,7 +565,10 @@ mod tests {
         assert_eq!(bare.confidence, 0.0);
         let hinted = detect(b"", None, Some("csv"));
         assert_eq!(hinted.format, Format::Csv);
-        assert!(!hinted.warnings.is_empty(), "an extension guess is disclosed");
+        assert!(
+            !hinted.warnings.is_empty(),
+            "an extension guess is disclosed"
+        );
     }
 
     #[test]

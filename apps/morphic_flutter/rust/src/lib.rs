@@ -731,7 +731,15 @@ mod tests {
     #[test]
     fn import_auto_detects_json() {
         let (_p, rp) = root("auto-json");
-        let v = unsafe { import_as(b"[{\"id\":1,\"v\":2.5},{\"id\":2,\"v\":3.5}]", &rp, &c("w-j"), None, None) };
+        let v = unsafe {
+            import_as(
+                b"[{\"id\":1,\"v\":2.5},{\"id\":2,\"v\":3.5}]",
+                &rp,
+                &c("w-j"),
+                None,
+                None,
+            )
+        };
         assert_eq!(v["report"]["format"], "json", "{v}");
         assert_eq!(v["report"]["rowsImported"], 2, "{v}");
     }
@@ -804,5 +812,4 @@ mod tests {
         assert_eq!(snap["degraded"], false, "{snap}");
         assert!(snap["profile"].is_object(), "{snap}");
     }
-
 }
