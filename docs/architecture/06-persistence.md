@@ -99,7 +99,7 @@ This document is the target contract. What the file backend actually implements 
 | Content-addressed `datasets/<sha256>/source.csv` | **Built** | §1 shows the source inside the dataset folder; a workspace references it by hash |
 | Write-ahead journal + replay + compaction | **Built** | Entry is `{revision, commands, doc}`. `commands` is empty in M1.1; the full document is the payload |
 | Torn trailing JSONL line tolerated | **Built** | Counted in `RecoveryReport`, dropped, never fatal |
-| Corrupt JSON → rebuild, else quarantine | **Built** | Quarantine file is `workspace.corrupt.json`; typed `Corrupt` error |
+| Corrupt JSON → rebuild, else quarantine | **Built** | Bad bytes are preserved as `workspace.corrupt.json` **even when the journal can rebuild the document**, so recovery never destroys the only evidence. With nothing to rebuild from, a typed `Corrupt` error is returned |
 | Missing source → degraded mode | **Built** | Typed `SourceUnavailable`; snapshot carries `degraded` + `notice`, data calls error |
 | Recents newest-first | **Built** | `modifiedAt` desc, id tiebreak |
 | Legacy in-workspace `source.csv` | **Built** | Loads via fallback, migrated on first open without a revision bump |

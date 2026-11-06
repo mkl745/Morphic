@@ -319,8 +319,15 @@ impl FileStore {
                 }
                 Ok((doc, report))
             }
-            (_, Some(entry)) => {
+            (base, Some(entry)) => {
                 let doc = entry.doc.clone().expect("filtered on is_some");
+                if had_file && base.is_none() {
+                    // The base was unparseable but the journal can rebuild it. Keep the bad
+                    // bytes for diagnosis instead of overwriting the only evidence.
+                    let quarantine = self.workspace_dir(id).join("workspace.corrupt.json");
+                    fs::rename(&path, &quarantine)?;
+                    report.quarantined = true;
+                }
                 // A crash after the journal append but before the rename: promote the journal.
                 atomic_write(&path, &serde_json::to_vec_pretty(&doc)?)?;
                 self.compact_journal(id, doc.workspace.revision)?;
@@ -334,7 +341,7 @@ impl FileStore {
                     // instead of deleting evidence, then report corruption.
                     let quarantine = self.workspace_dir(id).join("workspace.corrupt.json");
                     fs::rename(&path, &quarantine)?;
-                    report.quarantined = true;
+                    // The error is the signal here; there is no report to return.
                     return Err(StoreError::Corrupt(id.to_string()));
                 }
                 Err(StoreError::NotFound(id.to_string()))
@@ -791,6 +798,12 @@ mod tests {
 
         let report = s.recover_workspace("w1").unwrap();
         assert!(report.restored_from_journal);
+        assert!(
+            report.quarantined,
+            "recovering must not destroy the corrupt bytes"
+        );
+        let kept = s.workspace_dir("w1").join("workspace.corrupt.json");
+        assert_eq!(fs::read(&kept).unwrap(), b"{ not json at all".to_vec());
         assert_eq!(s.load_workspace("w1").unwrap().workspace.revision, 4);
         fs::remove_dir_all(&root).ok();
     }

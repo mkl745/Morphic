@@ -161,7 +161,7 @@ impl Engine {
         // Content-addressed: the dataset's identity is its hash, so importing the same file
         // twice stores one copy and two workspaces can share it.
         let dataset_id = self.store.put_dataset(bytes)?;
-        let doc = morphic_compiler::compile(&profile, workspace_id, &dataset_id, title, now_iso);
+        let doc = morphic_compiler::compile(&profile, &dataset_id, workspace_id, title, now_iso);
         // All five passes, including bindings checked against the real profile.
         let issues = morphic_schema::validate_with_profile(&doc, &profile);
         if !issues.is_empty() {
@@ -718,10 +718,23 @@ mod tests {
         let out = engine
             .import_csv(SALES, "Sales", "w1", "2026-11-05T00:00:00Z", &mut |_| {})
             .unwrap();
+        // Guards the exact confusion that content addressing exposed: `compile` takes
+        // (profile, dataset_id, workspace_id, ...), and passing the workspace id for both had
+        // hidden the argument order until the two values stopped being equal.
+        assert_eq!(
+            out.doc.workspace.id,
+            "w1",
+            "the workspace must keep the id the caller asked for"
+        );
         assert_eq!(
             out.doc.workspace.data_sources[0].dataset_id,
             morphic_workspace::content_hash(SALES),
             "a workspace must reference its dataset by content, not by workspace id"
+        );
+        assert_ne!(
+            out.doc.workspace.id,
+            out.doc.workspace.data_sources[0].dataset_id,
+            "workspace identity and dataset identity are different things"
         );
         std::fs::remove_dir_all(&root).ok();
     }
