@@ -15,8 +15,8 @@ not from memory.
 | Milestones code-complete | **2 of 7** (M1.1, M1.2) |
 | Milestones not started | **5** (M1.3 → M1.7) |
 | Milestone exits formally met | **0 of 7** |
-| Acceptance tests fully green | **3 of 19** (AT-02, AT-03, AT-10) |
-| Acceptance tests partially evidenced | **8** |
+| Acceptance tests fully green | **4 of 19** (AT-02, AT-03, AT-05, AT-10) |
+| Acceptance tests partially evidenced | **7** |
 | Acceptance tests not yet started | **8** |
 | Evidence gaps no task row covers | **6** (see §6) |
 | Remaining core effort, by the plan's own S/M/L legend | **40–69 focused days** |
@@ -33,7 +33,7 @@ is now provably short. §7 proposes a re-baseline.
 | Milestone | Tasks | Done | Code status | Exit status |
 |---|---|---|---|---|
 | M1.1 Vertical slice | 7 | 7 | **complete** | **unmet** — needs a mid-class device; AT-02 unscored; 10 MB ≤ 3 s unmeasured |
-| M1.2 Format breadth | 5 | 5 | **complete** | **unmet** — fuzz smoke never run; AT-04's timeline clause depends on M1.4 |
+| M1.2 Format breadth | 5 | 5 | **complete** | **unmet** — AT-04's timeline clause depends on M1.4; device evidence pending (fuzz smoke now clean) |
 | M1.3 Interactivity | 5 | 0 | not started | — |
 | M1.4 Visualization + planner | 7 | 0 | not started | — |
 | M1.5 Lifecycle & layout | 6 | 0 | not started | — |
@@ -100,7 +100,7 @@ three ABIs.
 | AT-02 | Detection accuracy | **green** | 100% dtype / 100% role on 21 files — but tuned against that corpus, so it is an upper bound |
 | AT-03 | JSON breadth | **green** | the 256 MiB refusal is proven with a lowered ceiling, not a real 256 MB file |
 | AT-04 | Logs & TXT | partial | extraction ✓; the **timeline** it requires is task 1.4.4 |
-| AT-05 | Malformed safety | partial | corpus + cancel ✓; **fuzz never run** |
+| AT-05 | Malformed safety | **green** | 3,000-case mutation smoke clean; coverage-guided fuzzing still deferred to M1.7 |
 | AT-06 | Filtering | not started | M1.3 |
 | AT-07 | Sorting | not started | M1.3 |
 | AT-08 | Search | partial | works end-to-end; combining with filter/sort untestable until M1.3 |
@@ -130,8 +130,10 @@ These will not be closed by working through the task list, because no task owns 
 1. **Mid-class device evidence.** The matrix requires a Pixel 6a/7a-class phone for *every*
    milestone exit. Both available devices (C51, A15) are low class. Nothing downstream can be
    signed off until this is solved.
-2. **No fuzz target, and the nightly workflow has never executed.** M1.2's exit and all of
-   M1.7's reliability week depend on it.
+2. **The nightly workflow has never executed.** GitHub only registers workflow files from the
+   default branch, so the cron has never fired and `cargo-deny` / `cargo-audit` have never run.
+   The fuzz smoke was moved into CI so it actually executes; the supply-chain audit cannot be,
+   and waits for the merge to `main`.
 3. **The 10 MB → ≤ 3 s hypothesis is unmeasured.** It is the product's central claim.
 4. **Zero golden images.** Task 1.1.5 promised them; M1.4 and M1.6 both assume they exist.
 5. **The report sheet shows caveat counts, not the quarantined rows themselves.** Users can
@@ -155,8 +157,9 @@ expensive later:
 2. ~~Build the AT-02 scorer.~~ **Done** — 21 labelled files, 90 fields, scored in CI, and the
    first measurement drove six real heuristic fixes. M1.4's planner accuracy work now inherits
    the harness. Next step is held-out files, not more tuning.
-3. **Add a fuzz target and run the nightly once.** Cheap now with five parsers; expensive after
-   M1.7 finds the crashes for us.
+3. ~~Add a fuzz target.~~ **Done** — a 3,000-case seeded mutation smoke runs on every push and
+   found no panic, no invariant violation and a 16 ms worst case. Running the *nightly* is still
+   blocked, but on the merge to `main`, not on missing work.
 
 **Re-baseline the estimate.** State plainly that the remaining 27 core tasks are 40–69 focused
 days, not the 18–28 the original 30–40-day total implied. If the calendar cannot absorb that,
