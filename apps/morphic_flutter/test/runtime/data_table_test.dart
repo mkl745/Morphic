@@ -106,9 +106,15 @@ void main() {
     )));
     await tester.pumpAndSettle();
 
-    IconButton prev() =>
-        tester.widget<IconButton>(find.byTooltip('Previous page'));
-    IconButton next() => tester.widget<IconButton>(find.byTooltip('Next page'));
+    // byTooltip matches the Tooltip widget, so walk up to the button itself.
+    IconButton button(String tooltip) => tester.widget<IconButton>(
+          find.ancestor(
+            of: find.byTooltip(tooltip),
+            matching: find.byType(IconButton),
+          ),
+        );
+    IconButton prev() => button('Previous page');
+    IconButton next() => button('Next page');
     expect(prev().onPressed, isNull);
     expect(next().onPressed, isNotNull);
 

@@ -73,7 +73,7 @@ class WorkspaceView extends StatelessWidget {
       builder: (context, constraints) {
         final width = constraints.maxWidth - MorphicSpace.lg * 2;
         final columns = width >= 1000 ? 3 : (width >= 640 ? 2 : 1);
-        final gap = MorphicSpace.md;
+        const gap = MorphicSpace.md;
         final cardWidth = (width - gap * (columns - 1)) / columns;
 
         // Group *consecutive* metric cards so they can flow, without reordering anything.
