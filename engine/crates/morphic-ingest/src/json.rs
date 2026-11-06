@@ -117,11 +117,10 @@ pub fn parse_json_with(
     if lead.starts_with('[') {
         let mut scan = ArrayElements::new(&text, open_at);
         let mut seen = 0usize;
-        loop {
-            let Some(item) = scan.next() else { break };
-            let src = item?;
+        for item in scan.by_ref() {
+            let element = item?;
             seen += 1;
-            match serde_json::from_str::<Value>(src) {
+            match serde_json::from_str::<Value>(element.src) {
                 Ok(v) => match row_fields(&v, &mut notes) {
                     Some(fields) => {
                         grid.push(fields, opts, &mut notes)?;
@@ -141,7 +140,7 @@ pub fn parse_json_with(
                 progress(Progress {
                     phase: Phase::Parsing,
                     rows_read: grid.rows,
-                    bytes_read: scan.end().min(text.len()) as u64,
+                    bytes_read: element.consumed.min(text.len()) as u64,
                 });
             }
         }
@@ -522,14 +521,22 @@ impl<'a> ArrayElements<'a> {
         }
     }
 
-    fn fail(&mut self, msg: &str) -> Option<Result<&'a str, IngestError>> {
+    fn fail(&mut self, msg: &str) -> Option<Result<Element<'a>, IngestError>> {
         self.failed = true;
         Some(Err(IngestError::Json(msg.to_string())))
     }
 }
 
+/// One array element, plus how much of the input has been consumed to reach past it.
+/// Carrying the offset here is what lets the parse loop report progress without borrowing
+/// the scanner it is iterating.
+struct Element<'a> {
+    src: &'a str,
+    consumed: usize,
+}
+
 impl<'a> Iterator for ArrayElements<'a> {
-    type Item = Result<&'a str, IngestError>;
+    type Item = Result<Element<'a>, IngestError>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.closed || self.failed {
@@ -593,7 +600,10 @@ impl<'a> Iterator for ArrayElements<'a> {
             self.i += 1;
         }
         let src: &'a str = self.src;
-        Some(Ok(src[start..end].trim()))
+        Some(Ok(Element {
+            src: src[start..end].trim(),
+            consumed: self.i,
+        }))
     }
 }
 
@@ -986,7 +996,7 @@ mod tests {
 
     #[test]
     fn a_mostly_broken_file_fails_instead_of_importing_nonsense() {
-        let src = format!("[{}{{\"a\":1}}]", "[[0],".repeat(1500));
+        let src = format!("[{}{{\"a\":1}}]", "[0],".repeat(1500));
         let err = parse_json(src.as_bytes()).unwrap_err();
         match err {
             IngestError::Json(m) => assert!(m.contains("quarantine allowance"), "{m}"),
