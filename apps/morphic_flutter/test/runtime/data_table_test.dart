@@ -310,9 +310,15 @@ void main() {
     }
 
     testWidgets('a timestamp column is wide enough for the whole value', (tester) async {
-      await pump(tester, ScriptedBridge(rows: [
-        [iso, 'ERROR', 'note'],
-      ]));
+      await pump(
+        tester,
+        ScriptedBridge(
+          fields: ['time', 'level', 'message'],
+          rows: [
+            [iso, 'ERROR', 'Upstream timeout'],
+          ],
+        ),
+      );
       // 24 characters at ~7.2 dp plus padding; the old header-only rule gave 96 dp.
       expect(headerWidth(tester, 'time'), greaterThan(180));
     });
