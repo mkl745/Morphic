@@ -401,7 +401,7 @@ mod tests {
         (p, cs)
     }
 
-    const CSV: &[u8] = b"region,amount\neu,10\nus,20\neu,30\n";
+    const CSV: &[u8] = b"region,amount\neu,10\nus,20\neu,30\nus,10\n";
 
     unsafe fn import(
         rp: &CString,
@@ -461,8 +461,8 @@ mod tests {
         let (p, rp) = root("import");
         let v = unsafe { import(&rp, &c("w1"), None) };
         assert!(v.get("error").is_none(), "{v}");
-        assert_eq!(v["report"]["rowsImported"], 3);
-        assert_eq!(v["profile"]["rowCount"], 3);
+        assert_eq!(v["report"]["rowsImported"], 4);
+        assert_eq!(v["profile"]["rowCount"], 4);
         assert_eq!(v["doc"]["workspace"]["id"], "w1");
         std::fs::remove_dir_all(&p).ok();
     }
@@ -505,7 +505,7 @@ mod tests {
         // A separate FFI call must see the session created by the import.
         let plan = c(r#"{"offset":1,"limit":1}"#);
         let v = json(unsafe { morphic_query_page(rp.as_ptr(), id.as_ptr(), plan.as_ptr()) });
-        assert_eq!(v["totalRows"], 3);
+        assert_eq!(v["totalRows"], 4);
         assert_eq!(v["rows"][0][0], "us");
         assert_eq!(v["rows"][0][1], 20);
         assert_eq!(v["limit"], 1);
@@ -518,7 +518,7 @@ mod tests {
         let id = c("w1");
         unsafe { import(&rp, &id, None) };
         let v = json(unsafe { morphic_query_page(rp.as_ptr(), id.as_ptr(), std::ptr::null()) });
-        assert_eq!(v["totalRows"], 3);
+        assert_eq!(v["totalRows"], 4);
         assert_eq!(v["limit"], 256);
         std::fs::remove_dir_all(&p).ok();
     }
@@ -542,13 +542,13 @@ mod tests {
         let v = json(unsafe {
             morphic_metric_data(rp.as_ptr(), id.as_ptr(), c("total_records").as_ptr())
         });
-        assert_eq!(v["value"], 3);
+        assert_eq!(v["value"], 4);
         assert_eq!(v["componentId"], "total_records");
         assert_eq!(v["revision"], 1);
         let avg = json(unsafe {
             morphic_metric_data(rp.as_ptr(), id.as_ptr(), c("metric_amount").as_ptr())
         });
-        assert_eq!(avg["value"], 20.0);
+        assert_eq!(avg["value"], 17.5);
         std::fs::remove_dir_all(&p).ok();
     }
 
@@ -571,7 +571,7 @@ mod tests {
         assert_eq!(closed["closed"], true);
         // Snapshot must rehydrate from the persisted source, not fail.
         let v = json(unsafe { morphic_snapshot(rp.as_ptr(), id.as_ptr()) });
-        assert_eq!(v["profile"]["rowCount"], 3);
+        assert_eq!(v["profile"]["rowCount"], 4);
         assert_eq!(v["revision"], 1);
         std::fs::remove_dir_all(&p).ok();
     }

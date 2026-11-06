@@ -390,10 +390,12 @@ mod tests {
 
     // --- M1.1 task 1.1.4: sessions, paging, metrics, reopen ---
 
+    // Amounts deliberately repeat: a perfectly unique integer column is classified as an
+    // identifier by morphic-semantic's >=99%-unique rule, so it would earn no measure metric.
     const SALES: &[u8] = b"region,amount\n\
                            eu,10\n\
                            us,20\n\
-                           eu,30\n\
+                           eu,10\n\
                            us,40\n\
                            eu,50\n";
 
@@ -482,7 +484,7 @@ mod tests {
         assert_eq!(count.value, serde_json::json!(5));
         assert_eq!(count.revision, 1);
         let avg = engine.metric_data("w1", "metric_amount").unwrap();
-        assert_eq!(avg.value, serde_json::json!(30.0));
+        assert_eq!(avg.value, serde_json::json!(26.0));
         std::fs::remove_dir_all(&root).ok();
     }
 
@@ -535,7 +537,7 @@ mod tests {
         assert!(engine.has_session(doc_id));
         assert_eq!(
             engine.metric_data(doc_id, "metric_amount").unwrap().value,
-            serde_json::json!(30.0)
+            serde_json::json!(26.0)
         );
         std::fs::remove_dir_all(&root).ok();
     }
@@ -600,5 +602,36 @@ mod tests {
             profile.fields[0].inference.role,
             morphic_model::FieldRole::Temporal
         );
+    }
+
+    /// Documents a real heuristic limit rather than hiding it: morphic-semantic labels a
+    /// >=99%-unique integer column an Identifier, so an all-distinct numeric column earns
+    /// no measure metric. Scored role selection is M1.4 work.
+    #[test]
+    fn all_distinct_integers_are_treated_as_identifiers_not_measures() {
+        let root = temp_root("idlike");
+        let engine = Engine::new(&root).unwrap();
+        let csv = b"region,amount\neu,10\nus,20\neu,30\nus,40\neu,50\n";
+        let out = engine
+            .import_csv(csv, "Sales", "w1", "2026-11-05T00:00:00Z", &mut |_| {})
+            .unwrap();
+        let ids: Vec<&str> = out
+            .doc
+            .workspace
+            .components
+            .iter()
+            .map(|c| c.id.as_str())
+            .collect();
+        assert!(ids.contains(&"total_records"));
+        assert!(
+            !ids.contains(&"metric_amount"),
+            "a perfectly unique integer is an identifier under the current heuristic"
+        );
+        // The count metric still works, so the workspace remains useful.
+        assert_eq!(
+            engine.metric_data("w1", "total_records").unwrap().value,
+            serde_json::json!(5)
+        );
+        std::fs::remove_dir_all(&root).ok();
     }
 }
