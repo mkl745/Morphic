@@ -106,7 +106,7 @@ class ScriptedBridge implements MorphicBridge {
 
   @override
   EngineInfo engineInfo() =>
-      const EngineInfo(apiVersion: 2, coreVersion: '0.1.0', engine: 'morphic');
+      const EngineInfo(apiVersion: 3, coreVersion: '0.1.0', engine: 'morphic');
 
   @override
   Map<String, dynamic> profileCsv(Uint8List bytes) => profileJson();
@@ -134,12 +134,14 @@ class ScriptedBridge implements MorphicBridge {
       ];
 
   @override
-  Map<String, dynamic> importCsv({
+  Map<String, dynamic> importFile({
     required Uint8List bytes,
     required String storageRoot,
     required String title,
     required String workspaceId,
     required String nowIso,
+    String? formatHint,
+    String? extension,
     void Function(Map<String, dynamic> progress)? onProgress,
   }) =>
       {

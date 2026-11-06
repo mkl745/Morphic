@@ -24,7 +24,7 @@ use thiserror::Error;
 
 /// Bridge contract version. Bumped on breaking FFI changes (docs/architecture/02 §5).
 /// v2 adds sessions, queryPage, metricData, and snapshot (M1.1 task 1.1.4).
-pub const API_VERSION: u32 = 2;
+pub const API_VERSION: u32 = 3;
 
 #[derive(Debug, Error)]
 pub enum CoreError {
@@ -46,6 +46,8 @@ pub enum CoreError {
     SessionPoisoned,
     #[error("source data for workspace '{0}' is unavailable")]
     SourceUnavailable(String),
+    #[error("unknown format '{0}'; expected csv, json, jsonl, log or txt")]
+    UnknownFormat(String),
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -78,6 +80,20 @@ pub struct ImportProgress {
     pub phase: String,
     pub rows_read: u64,
     pub bytes_read: u64,
+}
+
+/// One import call. Bundled into a struct so the format hint and extension do not push
+/// `import` past a readable argument count.
+#[derive(Debug, Clone, Copy)]
+pub struct ImportRequest<'a> {
+    pub bytes: &'a [u8],
+    pub title: &'a str,
+    pub workspace_id: &'a str,
+    pub now_iso: &'a str,
+    /// `csv` | `json` | `jsonl` | `log` | `txt` (aliases accepted). `None` means auto-detect.
+    pub format_hint: Option<&'a str>,
+    /// The source file's extension, used only when no content probe was decisive.
+    pub extension: Option<&'a str>,
 }
 
 /// Everything an import produced. The document is already validated and persisted.
@@ -137,10 +153,7 @@ impl Engine {
         })
     }
 
-    /// Import CSV: analyze → compile → validate → persist → retain an open session.
-    ///
-    /// `on_progress` receives real events from the streaming parser. Pass a no-op closure
-    /// when the caller does not need them.
+    /// Import CSV, forcing the CSV parser. Retained for the PoC screen and older callers.
     pub fn import_csv(
         &self,
         bytes: &[u8],
@@ -149,8 +162,47 @@ impl Engine {
         now_iso: &str,
         on_progress: &mut dyn FnMut(ImportProgress),
     ) -> Result<ImportOutcome, CoreError> {
-        let opts = morphic_ingest::IngestOptions::default();
-        let (table, report) = morphic_ingest::parse_csv_with(bytes, &opts, None, &mut |p| {
+        self.import(
+            ImportRequest {
+                bytes,
+                title,
+                workspace_id,
+                now_iso,
+                format_hint: Some("csv"),
+                extension: None,
+            },
+            on_progress,
+        )
+    }
+
+    /// Import any supported format: detect → parse → analyze → compile → validate → persist
+    /// → retain an open session (M1.2 task 1.2.3).
+    ///
+    /// `on_progress` receives real events from the streaming parser. Pass a no-op closure
+    /// when the caller does not need them.
+    pub fn import(
+        &self,
+        req: ImportRequest<'_>,
+        on_progress: &mut dyn FnMut(ImportProgress),
+    ) -> Result<ImportOutcome, CoreError> {
+        let ImportRequest {
+            bytes,
+            title,
+            workspace_id,
+            now_iso,
+            format_hint,
+            extension,
+        } = req;
+        let mut opts = morphic_ingest::IngestOptions::default();
+        if let Some(hint) = format_hint {
+            // An unrecognised hint is a caller error, not a silent fall back to sniffing.
+            opts.format_hint = Some(
+                morphic_ingest::detect::Format::parse(hint)
+                    .ok_or_else(|| CoreError::UnknownFormat(hint.to_string()))?,
+            );
+        }
+        opts.extension = extension.map(|s| s.to_string());
+        let (table, report) = morphic_ingest::ingest_with(bytes, &opts, None, &mut |p| {
             on_progress(ImportProgress {
                 phase: format!("{:?}", p.phase).to_lowercase(),
                 rows_read: p.rows_read as u64,
@@ -223,8 +275,10 @@ impl Engine {
         self.store.migrate_legacy_source(workspace_id)?;
         let doc = self.store.load_workspace(workspace_id)?;
 
+        // The stored source may be any supported format, so reopen runs the same detection
+        // the import did. Forcing CSV here would corrupt every non-CSV workspace on reopen.
         let (table, profile, notice) = match self.store.load_source(workspace_id) {
-            Ok(bytes) => match morphic_ingest::parse_csv(&bytes) {
+            Ok(bytes) => match morphic_ingest::ingest(&bytes) {
                 Ok((table, _report)) => {
                     let profile = morphic_semantic::profile(&table);
                     (Some(table), Some(profile), None)

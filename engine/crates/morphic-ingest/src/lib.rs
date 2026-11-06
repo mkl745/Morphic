@@ -21,6 +21,7 @@
 
 pub mod column;
 pub mod decode;
+pub mod detect;
 pub mod json;
 pub mod jsonl;
 pub mod log;
@@ -111,6 +112,12 @@ pub struct IngestOptions {
     /// than `max_import_bytes` because per-string overhead and the flattened union of keys
     /// can exceed the source size. Aborts before OOM rather than during it.
     pub max_memory_bytes: usize,
+    /// Forces the format, bypassing detection. This is the `formatHint` override the import
+    /// UI offers when a sniff was wrong (docs/architecture/05 §1.1).
+    pub format_hint: Option<detect::Format>,
+    /// The source file's extension. The *weakest* evidence, used only when no content probe
+    /// was decisive, and always disclosed when it decides.
+    pub extension: Option<String>,
 }
 
 impl Default for IngestOptions {
@@ -127,6 +134,8 @@ impl Default for IngestOptions {
             max_columns: 2_048,
             max_import_bytes: 256 * 1024 * 1024,
             max_memory_bytes: 512 * 1024 * 1024,
+            format_hint: None,
+            extension: None,
         }
     }
 }
@@ -425,6 +434,46 @@ fn normalize_headers(rec: &csv::StringRecord) -> Vec<String> {
         .collect()
 }
 
+/// Detect the format and parse accordingly (M1.2 task 1.2.3).
+///
+/// This is the entry point callers should use once they no longer know the format in
+/// advance. `opts.format_hint` overrides detection; `opts.extension` is the last-resort
+/// tie-break. The detection evidence is prepended to `ImportReport.warnings` so the UI can
+/// explain the choice and offer a re-import with a different hint.
+pub fn ingest(bytes: &[u8]) -> Result<(Table, ImportReport), IngestError> {
+    ingest_with(bytes, &IngestOptions::default(), None, &mut |_| {})
+}
+
+/// [`ingest`] with explicit options, cancellation and progress.
+pub fn ingest_with(
+    bytes: &[u8],
+    opts: &IngestOptions,
+    cancel: Option<&CancelToken>,
+    progress: &mut dyn FnMut(Progress),
+) -> Result<(Table, ImportReport), IngestError> {
+    let detection = detect::detect(bytes, opts.format_hint, opts.extension.as_deref());
+    let (table, mut report) = match detection.format {
+        detect::Format::Csv => parse_csv_with(bytes, opts, cancel, progress)?,
+        detect::Format::Json => json::parse_json_with(bytes, opts, cancel, progress)?,
+        detect::Format::Jsonl => jsonl::parse_jsonl_with(bytes, opts, cancel, progress)?,
+        detect::Format::Log => log::parse_log_with(bytes, opts, cancel, progress)?,
+        detect::Format::Txt => text::parse_txt_with(bytes, opts, cancel, progress)?,
+    };
+    // The summary is always first, so the UI can show one headline regardless of how many
+    // caveats detection or the parser added underneath it.
+    let mut warnings = Vec::with_capacity(detection.warnings.len() + report.warnings.len() + 1);
+    warnings.push(format!(
+        "Read as '{}' ({:.0}% confidence): {}.",
+        detection.format.as_str(),
+        100.0 * detection.confidence,
+        detection.evidence
+    ));
+    warnings.extend(detection.warnings);
+    warnings.append(&mut report.warnings);
+    report.warnings = warnings;
+    Ok((table, report))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -652,6 +701,122 @@ mod tests {
         match &table.columns[1].values {
             morphic_model::ColumnValues::Utf8(v) => assert_eq!(v[0], "hello, world"),
             other => panic!("expected utf8, got {:?}", other),
+        }
+    }
+
+    // ---------------------------------------- M1.2 1.2.3 unified entry point
+
+    #[test]
+    fn ingest_dispatches_every_format() {
+        for (src, expected) in [
+            ("a,b\n1,2\n3,4\n", "csv"),
+            ("[{\"a\":1},{\"a\":2}]", "json"),
+            ("{\"a\":1}\n{\"a\":2}\n", "jsonl"),
+            ("2026-11-05T14:00:01Z INFO api hi\n2026-11-05T14:00:02Z WARN api yo\n", "log"),
+            ("plain prose here\nanother line\n", "txt"),
+        ] {
+            let (table, report) = ingest(src.as_bytes())
+                .unwrap_or_else(|e| panic!("failed on {src}: {e}"));
+            assert_eq!(report.format, expected, "{src}");
+            assert!(table.row_count > 0, "{src}");
+            assert!(
+                report.warnings.iter().any(|w| w.contains("Read as '")),
+                "{expected}: {:?}",
+                report.warnings
+            );
+        }
+    }
+
+    #[test]
+    fn ingest_reports_the_detection_evidence_first() {
+        let (_, report) = ingest(b"a,b\n1,2\n").unwrap();
+        assert!(report.warnings[0].contains("Read as 'csv'"), "{:?}", report.warnings);
+        assert!(report.warnings[0].contains("confidence"), "{:?}", report.warnings);
+    }
+
+    #[test]
+    fn the_summary_is_first_even_when_detection_had_caveats() {
+        let bytes = std::fs::read(format!("{FIXTURES}/malformed/ragged.csv")).expect("fixture");
+        let (_, report) = ingest(&bytes).unwrap();
+        assert!(report.warnings[0].starts_with("Read as 'csv'"), "{:?}", report.warnings);
+        assert!(
+            report.warnings.iter().any(|w| w.contains("ragged")),
+            "the caveat must survive: {:?}",
+            report.warnings
+        );
+    }
+
+    #[test]
+    fn a_format_hint_overrides_a_correct_looking_sniff() {
+        // This really is a CSV, but the user asked for TXT and must get TXT.
+        let opts = IngestOptions {
+            format_hint: Some(crate::detect::Format::Txt),
+            ..Default::default()
+        };
+        let (table, report) = ingest_with(b"a,b\n1,2\n", &opts, None, &mut |_| {}).unwrap();
+        assert_eq!(report.format, "txt");
+        assert_eq!(table.field_names(), vec!["line_number", "line"]);
+        assert!(report.warnings[0].contains("explicitly"), "{:?}", report.warnings);
+    }
+
+    #[test]
+    fn a_wrong_hint_is_a_typed_error_not_a_crash() {
+        let opts = IngestOptions {
+            format_hint: Some(crate::detect::Format::Json),
+            ..Default::default()
+        };
+        let err = ingest_with(b"a,b\n1,2\n", &opts, None, &mut |_| {}).unwrap_err();
+        assert!(matches!(err, IngestError::Json(_)), "{err}");
+    }
+
+    #[test]
+    fn the_extension_only_decides_when_content_could_not() {
+        let opts = IngestOptions {
+            extension: Some("csv".into()),
+            ..Default::default()
+        };
+        let (_, report) = ingest_with(b"alpha\nbeta\n", &opts, None, &mut |_| {}).unwrap();
+        assert_eq!(report.format, "csv");
+        assert!(
+            report.warnings.iter().any(|w| w.contains("file extension")),
+            "{:?}",
+            report.warnings
+        );
+    }
+
+    #[test]
+    fn ingest_is_deterministic_and_reopenable() {
+        // open_session re-ingests the stored bytes; the two paths must agree exactly.
+        let src = b"{\"a\":1,\"n\":{\"b\":\"x\"}}\n{\"a\":2,\"n\":{\"b\":\"y\"}}\n";
+        let (t1, r1) = ingest(src).unwrap();
+        let (t2, r2) = ingest(src).unwrap();
+        assert_eq!(t1.field_names(), t2.field_names());
+        assert_eq!(t1.row_count, t2.row_count);
+        assert_eq!(r1.format, r2.format);
+        assert_eq!(r1.warnings, r2.warnings);
+    }
+
+    #[test]
+    fn ingest_honours_cancellation() {
+        let token = CancelToken::new();
+        token.cancel();
+        let err = ingest_with(b"a,b\n1,2\n", &IngestOptions::default(), Some(&token), &mut |_| {})
+            .unwrap_err();
+        assert!(matches!(err, IngestError::Cancelled), "{err}");
+    }
+
+    #[test]
+    fn ingest_never_panics_on_the_malformed_corpus() {
+        for rel in [
+            "malformed/ragged.csv",
+            "malformed/truncated.json",
+            "malformed/empty.csv",
+            "malformed/bad_element.json",
+            "malformed/mixed.log",
+        ] {
+            let bytes = std::fs::read(format!("{}/{}", FIXTURES, rel)).expect("fixture");
+            // Either a table or a typed error is acceptable; a panic is not.
+            let _ = ingest(&bytes);
         }
     }
 

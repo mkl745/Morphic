@@ -35,6 +35,25 @@ class _ImportScreenState extends State<ImportScreen> {
   PickedFile? _picked;
   String? _pickError;
   bool _picking = false;
+
+  /// `'auto'` means let the engine detect the format; anything else is the override the user
+  /// picks when a sniff was wrong (docs/architecture/05 §1.1). A sentinel rather than a null
+  /// dropdown value, so "detect automatically" is a real, visible choice.
+  String _formatChoice = _autoDetect;
+
+  static const String _autoDetect = 'auto';
+
+  /// The engine's format hint for the current choice, or null to let it detect.
+  String? get _formatHint => _formatChoice == _autoDetect ? null : _formatChoice;
+
+  /// The choices the engine accepts, in the order a user is likely to need them.
+  static const Map<String, String> _formats = {
+    'csv': 'CSV / TSV',
+    'json': 'JSON',
+    'jsonl': 'JSON Lines',
+    'log': 'Structured log',
+    'txt': 'Plain text',
+  };
   bool _initialized = false;
 
   @override
@@ -101,7 +120,7 @@ class _ImportScreenState extends State<ImportScreen> {
     final controller = _controller;
     if (controller == null) return;
     final scope = BridgeScope.of(context);
-    final id = await controller.importPicked(file);
+    final id = await controller.importPicked(file, formatHint: _formatHint);
     if (!mounted) return;
     final outcome = controller.result;
     if (id == null || outcome == null) {
@@ -131,15 +150,39 @@ class _ImportScreenState extends State<ImportScreen> {
         padding: const EdgeInsets.all(MorphicSpace.lg),
         children: [
           Text(
-            'Choose a CSV, TSV or text table. MORPHIC inspects it and builds the '
-            'workspace for you — nothing leaves this device.',
+            'Choose a CSV, JSON, JSON Lines, log or text file. MORPHIC detects the '
+            'format and builds the workspace for you — nothing leaves this device.',
             style: theme.textTheme.bodyMedium,
           ),
           const SizedBox(height: MorphicSpace.lg),
           FilledButton.icon(
             onPressed: (busy || _picking) ? null : _pick,
             icon: const Icon(Icons.file_open_outlined),
-            label: Text(_picking ? 'Opening picker…' : 'Choose a CSV file'),
+            label: Text(_picking ? 'Opening picker…' : 'Choose a file'),
+          ),
+          const SizedBox(height: MorphicSpace.lg),
+          DropdownButtonFormField<String>(
+            initialValue: _formatChoice,
+            decoration: const InputDecoration(
+              labelText: 'Format',
+              helperText: 'Detect automatically unless the result looks wrong.',
+            ),
+            items: [
+              const DropdownMenuItem<String>(
+                value: _autoDetect,
+                child: Text('Detect automatically'),
+              ),
+              for (final entry in _formats.entries)
+                DropdownMenuItem<String>(
+                  value: entry.key,
+                  child: Text(entry.value),
+                ),
+            ],
+            onChanged: (busy || _picking)
+                ? null
+                : (value) => setState(
+                    () => _formatChoice = value ?? _autoDetect,
+                  ),
           ),
           const SizedBox(height: MorphicSpace.lg),
           if (_picked != null) _PickedFileCard(file: _picked!),
@@ -151,7 +194,8 @@ class _ImportScreenState extends State<ImportScreen> {
           ],
           const SizedBox(height: MorphicSpace.xl),
           Text(
-            'JSON and structured logs are not supported yet.',
+            'Morphic reports how it read the file, including any rows it could not '
+            'parse. If it guessed wrong, choose the format above and import again.',
             style: theme.textTheme.bodySmall
                 ?.copyWith(color: theme.colorScheme.onSurface.withValues(alpha: 0.6)),
           ),

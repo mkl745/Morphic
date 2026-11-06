@@ -57,13 +57,59 @@ void main() {
     await tester.pump();
 
     expect(find.text('Import a file'), findsOneWidget);
-    expect(find.text('Choose a CSV file'), findsOneWidget);
+    expect(find.text('Choose a file'), findsOneWidget);
     expect(find.textContaining('nothing leaves this device'), findsOneWidget);
     expect(
-      find.text('JSON and structured logs are not supported yet.'),
+      find.textContaining('If it guessed wrong'),
       findsOneWidget,
       reason: 'the UI must not imply formats the engine cannot parse',
     );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('the format defaults to auto-detect and can be overridden',
+      (tester) async {
+    final runner = FakeImportRunner();
+    await tester.pumpWidget(host(
+      source: FakeFileSource(file: csv()),
+      runner: runner,
+      onWorkspace: (_) {},
+    ));
+    await tester.pump();
+
+    expect(find.text('Detect automatically'), findsOneWidget);
+
+    // Choose an explicit format, then import: the hint must reach the engine.
+    await tester.tap(find.byType(DropdownButtonFormField<String>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('JSON Lines').last);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Choose a file'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+
+    expect(runner.lastRequest?.formatHint, 'jsonl');
+    expect(runner.lastRequest?.extension, 'csv');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('leaving the format alone sends no hint', (tester) async {
+    final runner = FakeImportRunner();
+    await tester.pumpWidget(host(
+      source: FakeFileSource(file: csv()),
+      runner: runner,
+      onWorkspace: (_) {},
+    ));
+    await tester.pump();
+
+    await tester.tap(find.text('Choose a file'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+
+    expect(runner.lastRequest?.formatHint, isNull);
     expect(tester.takeException(), isNull);
   });
 
@@ -76,13 +122,13 @@ void main() {
       onWorkspace: (_) => fail('cancelling must not navigate'),
     ));
     await tester.pump();
-    await tester.tap(find.text('Choose a CSV file'));
+    await tester.tap(find.text('Choose a file'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 50));
 
     expect(source.calls, 1);
     expect(runner.runs, 0);
-    expect(find.text('Choose a CSV file'), findsOneWidget);
+    expect(find.text('Choose a file'), findsOneWidget);
     expect(find.textContaining('could not'), findsNothing);
     expect(tester.takeException(), isNull);
   });
@@ -99,7 +145,7 @@ void main() {
       onWorkspace: (a) => args = a,
     ));
     await tester.pump();
-    await tester.tap(find.text('Choose a CSV file'));
+    await tester.tap(find.text('Choose a file'));
     await tester.pumpAndSettle();
 
     expect(find.text('WORKSPACE ROUTE'), findsOneWidget);
@@ -124,7 +170,7 @@ void main() {
       onWorkspace: (_) {},
     ));
     await tester.pump();
-    await tester.tap(find.text('Choose a CSV file'));
+    await tester.tap(find.text('Choose a file'));
     // Explicit pumps: the indeterminate progress indicator never settles.
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 50));
@@ -156,7 +202,7 @@ void main() {
       onWorkspace: (_) => fail('a refused file must not navigate'),
     ));
     await tester.pump();
-    await tester.tap(find.text('Choose a CSV file'));
+    await tester.tap(find.text('Choose a file'));
     await tester.pumpAndSettle();
 
     expect(find.text('That file is 512.0 MB.'), findsOneWidget);
@@ -175,7 +221,7 @@ void main() {
       onWorkspace: (_) => fail('a failed import must not navigate'),
     ));
     await tester.pump();
-    await tester.tap(find.text('Choose a CSV file'));
+    await tester.tap(find.text('Choose a file'));
     await tester.pumpAndSettle();
 
     expect(find.textContaining('ingest: empty file'), findsOneWidget);

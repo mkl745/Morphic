@@ -44,7 +44,7 @@ class RecordingBridge implements MorphicBridge {
 
   @override
   EngineInfo engineInfo() =>
-      const EngineInfo(apiVersion: 2, coreVersion: '0.1.0', engine: 'morphic');
+      const EngineInfo(apiVersion: 3, coreVersion: '0.1.0', engine: 'morphic');
 
   @override
   Map<String, dynamic> profileCsv(Uint8List bytes) => {'rowCount': 3, 'fieldCount': 2};
@@ -74,16 +74,24 @@ class RecordingBridge implements MorphicBridge {
     ];
   }
 
+  /// What the controller actually forwarded, so the override path is testable end to end.
+  String? lastFormatHint;
+  String? lastExtension;
+
   @override
-  Map<String, dynamic> importCsv({
+  Map<String, dynamic> importFile({
     required Uint8List bytes,
     required String storageRoot,
     required String title,
     required String workspaceId,
     required String nowIso,
+    String? formatHint,
+    String? extension,
     void Function(Map<String, dynamic> progress)? onProgress,
   }) {
     calls.add('import:$workspaceId');
+    lastFormatHint = formatHint;
+    lastExtension = extension;
     if (emitProgress) {
       onProgress?.call({'phase': 'parsing', 'rowsRead': 3, 'bytesRead': 32});
     }

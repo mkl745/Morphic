@@ -25,6 +25,8 @@ class ImportRequest {
     required this.title,
     required this.workspaceId,
     required this.nowIso,
+    this.formatHint,
+    this.extension,
   });
 
   final Uint8List bytes;
@@ -32,6 +34,12 @@ class ImportRequest {
   final String title;
   final String workspaceId;
   final String nowIso;
+
+  /// Forces the engine's parser, bypassing detection. Null means auto-detect.
+  final String? formatHint;
+
+  /// The source extension; the engine's weakest evidence, used only as a tie-break.
+  final String? extension;
 }
 
 /// Runs one import, reporting the engine's progress as it happens.
@@ -56,12 +64,14 @@ class InlineImportRunner implements ImportRunner {
     ImportRequest request,
     void Function(ImportProgress) onProgress,
   ) async =>
-      bridge.importCsv(
+      bridge.importFile(
         bytes: request.bytes,
         storageRoot: request.storageRoot,
         title: request.title,
         workspaceId: request.workspaceId,
         nowIso: request.nowIso,
+        formatHint: request.formatHint,
+        extension: request.extension,
         onProgress: (json) => onProgress(ImportProgress.fromJson(json)),
       );
 }
@@ -161,12 +171,14 @@ class _WorkerInit {
 void _importWorkerMain(_WorkerInit init) {
   try {
     final bridge = FfiBridge();
-    final result = bridge.importCsv(
+    final result = bridge.importFile(
       bytes: init.request.bytes,
       storageRoot: init.request.storageRoot,
       title: init.request.title,
       workspaceId: init.request.workspaceId,
       nowIso: init.request.nowIso,
+      formatHint: init.request.formatHint,
+      extension: init.request.extension,
       onProgress: (json) => init.reply.send({'progress': json}),
     );
     init.reply.send({'result': result});

@@ -55,6 +55,74 @@ pub fn sniff_delimiter(text: &str) -> u8 {
     best
 }
 
+/// Delimiter evidence for format detection (M1.2 1.2.3).
+///
+/// Returns `(delimiter, field count, agreement)` where agreement is the share of sampled
+/// lines carrying the modal field count. `None` when no candidate produces at least two
+/// fields on at least [`DELIMITER_PLAUSIBLE`] of lines — a single-column file is not evidence
+/// of a delimited format.
+pub fn delimiter_evidence(text: &str) -> Option<(u8, usize, f64)> {
+    let lines: Vec<&str> = text
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .take(PROBE_LINES)
+        .collect();
+    if lines.is_empty() {
+        return None;
+    }
+    let mut best: Option<(u8, usize, f64)> = None;
+    for cand in CANDIDATES {
+        let counts: Vec<usize> = lines
+            .iter()
+            .map(|l| count_outside_quotes(l, cand))
+            .collect();
+        // The modal count, not the minimum: one ragged row must not veto an otherwise
+        // obvious delimiter. The agreement fraction carries that raggedness instead.
+        let mut modal = 0usize;
+        let mut modal_hits = 0usize;
+        for probe in &counts {
+            let hits = counts.iter().filter(|c| *c == probe).count();
+            if hits > modal_hits {
+                modal_hits = hits;
+                modal = *probe;
+            }
+        }
+        if modal == 0 {
+            continue;
+        }
+        let agreement = modal_hits as f64 / counts.len() as f64;
+        if agreement < DELIMITER_PLAUSIBLE {
+            continue;
+        }
+        let better = match best {
+            None => true,
+            Some((_, fields, prev)) => {
+                agreement > prev || (agreement == prev && modal + 1 > fields)
+            }
+        };
+        if better {
+            best = Some((cand, modal + 1, agreement));
+        }
+    }
+    best
+}
+
+/// Lines examined when scoring a delimiter.
+pub const PROBE_LINES: usize = 21;
+
+/// Share of sampled lines that must agree on the field count for the delimiter to be
+/// *confident*. Below this the evidence is still returned, but the caller should warn.
+pub const DELIMITER_AGREEMENT: f64 = 0.90;
+
+/// Minimum agreement for a delimiter to be worth choosing at all.
+///
+/// Deliberately lower than [`DELIMITER_AGREEMENT`]: a genuinely ragged CSV (field counts
+/// 3,2,4,3) still has a delimiter on every line, and reading it as plain text would throw
+/// away all of its structure. docs/architecture/05 §1.1 resolves ambiguity to the *richer*
+/// interpretation plus a warning, so a majority is enough to choose CSV — the agreement
+/// fraction then travels as the confidence.
+pub const DELIMITER_PLAUSIBLE: f64 = 0.50;
+
 /// Decide whether the first record is a header row.
 ///
 /// Signals, in order of strength:
@@ -172,4 +240,53 @@ mod tests {
         let r = rows(&[&["a", "b", "c"]]);
         assert!(sniff_header(&r));
     }
+
+    // ------------------------------- M1.2 1.2.3 evidence used by format detection
+
+    #[test]
+    fn evidence_reports_the_delimiter_field_count_and_agreement() {
+        assert_eq!(delimiter_evidence("a,b,c\n1,2,3\n"), Some((b',', 3, 1.0)));
+    }
+
+    #[test]
+    fn a_ragged_file_still_yields_evidence_with_lower_agreement() {
+        // Counts 2,1,3,2: the modal count is 2 and half the lines agree. Returning None
+        // here would demote a recoverable CSV to plain text.
+        let (delim, fields, agreement) =
+            delimiter_evidence("a,b,c\n1,2\n3,4,5,6\n7,8,9\n").expect("still a delimiter");
+        assert_eq!(delim, b',');
+        assert_eq!(fields, 3);
+        assert!((agreement - 0.5).abs() < f64::EPSILON);
+        assert!(agreement < DELIMITER_AGREEMENT);
+    }
+
+    #[test]
+    fn inconsistent_prose_commas_are_not_evidence() {
+        assert_eq!(
+            delimiter_evidence("Hello, world.\nNo comma here\nTwo, here, yes\n"),
+            None
+        );
+    }
+
+    #[test]
+    fn a_single_column_file_is_not_evidence() {
+        assert_eq!(delimiter_evidence("alpha\nbeta\ngamma\n"), None);
+    }
+
+    #[test]
+    fn delimiters_inside_quotes_are_not_counted() {
+        assert_eq!(delimiter_evidence("a,b\n\"x,y\",z\n"), Some((b',', 2, 1.0)));
+    }
+
+    #[test]
+    fn an_exact_tie_keeps_the_earlier_candidate() {
+        // Both ',' and ';' give 2 fields on every line; CANDIDATES order decides.
+        assert_eq!(delimiter_evidence("a,b;c\n1,2;3\n").unwrap().0, b',');
+    }
+
+    #[test]
+    fn more_fields_wins_an_agreement_tie() {
+        assert_eq!(delimiter_evidence("a;b,c;d\n1;2,3;4\n"), Some((b';', 3, 1.0)));
+    }
+
 }

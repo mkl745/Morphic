@@ -133,6 +133,48 @@ pub unsafe extern "C" fn morphic_import_csv(
     now_iso: *const c_char,
     on_progress: Option<MorphicProgressFn>,
 ) -> *mut c_char {
+    // Retained for the PoC screen and any older caller: force CSV, no extension evidence.
+    unsafe {
+        morphic_import(
+            data,
+            len,
+            storage_root,
+            title,
+            workspace_id,
+            now_iso,
+            c"csv".as_ptr(),
+            std::ptr::null(),
+            on_progress,
+        )
+    }
+}
+
+/// Import any supported format, detecting it from the content (M1.2 task 1.2.3).
+///
+/// `format_hint` is a C string (`csv`, `json`, `jsonl`, `log`, `txt`) or null to auto-detect;
+/// an unrecognised value is an error, never a silent fall back. `extension` is the source
+/// file's extension or null, and is used only when no content probe was decisive.
+///
+/// Returns `{doc, profile, report}`. `on_progress` may be null.
+///
+/// # Safety
+/// `data` must point to `len` readable bytes; every non-null string pointer must be a valid
+/// C string. `on_progress`, if non-null, must be a valid `extern "C"` fn that does not unwind.
+#[no_mangle]
+// A C ABI boundary: nine scalar parameters is the honest shape here. Collapsing them into a
+// repr(C) struct would move the marshalling burden to Dart without removing any of it.
+#[allow(clippy::too_many_arguments)]
+pub unsafe extern "C" fn morphic_import(
+    data: *const u8,
+    len: usize,
+    storage_root: *const c_char,
+    title: *const c_char,
+    workspace_id: *const c_char,
+    now_iso: *const c_char,
+    format_hint: *const c_char,
+    extension: *const c_char,
+    on_progress: Option<MorphicProgressFn>,
+) -> *mut c_char {
     guarded(|| {
         if data.is_null() {
             return err("null input");
@@ -148,6 +190,8 @@ pub unsafe extern "C" fn morphic_import_csv(
         };
         let title = unsafe { cstr(title) }.unwrap_or_else(|| "Untitled".into());
         let now = unsafe { cstr(now_iso) }.unwrap_or_else(|| "1970-01-01T00:00:00Z".into());
+        let hint = unsafe { cstr(format_hint) };
+        let ext = unsafe { cstr(extension) };
 
         with_engine(&root, |engine| {
             let mut sink = |p: morphic_core::ImportProgress| {
@@ -160,7 +204,17 @@ pub unsafe extern "C" fn morphic_import_csv(
                 }
             };
             let outcome = engine
-                .import_csv(bytes, &title, &id, &now, &mut sink)
+                .import(
+                    morphic_core::ImportRequest {
+                        bytes,
+                        title: &title,
+                        workspace_id: &id,
+                        now_iso: &now,
+                        format_hint: hint.as_deref(),
+                        extension: ext.as_deref(),
+                    },
+                    &mut sink,
+                )
                 .map_err(|e| e.to_string())?;
             to_json(&outcome)
         })
@@ -651,4 +705,104 @@ mod tests {
         assert!(v["notice"].is_null());
         std::fs::remove_dir_all(&p).ok();
     }
+
+    // ------------------------------------------ M1.2 1.2.3 format-aware import
+
+    unsafe fn import_as(
+        bytes: &[u8],
+        rp: &CString,
+        id: &CString,
+        hint: Option<&CString>,
+        ext: Option<&CString>,
+    ) -> serde_json::Value {
+        json(morphic_import(
+            bytes.as_ptr(),
+            bytes.len(),
+            rp.as_ptr(),
+            c("Imported").as_ptr(),
+            id.as_ptr(),
+            c("2026-11-06T00:00:00Z").as_ptr(),
+            hint.map_or(std::ptr::null(), |h| h.as_ptr()),
+            ext.map_or(std::ptr::null(), |e| e.as_ptr()),
+            None,
+        ))
+    }
+
+    #[test]
+    fn import_auto_detects_json() {
+        let (_p, rp) = root("auto-json");
+        let v = unsafe { import_as(b"[{\"id\":1,\"v\":2.5},{\"id\":2,\"v\":3.5}]", &rp, &c("w-j"), None, None) };
+        assert_eq!(v["report"]["format"], "json", "{v}");
+        assert_eq!(v["report"]["rowsImported"], 2, "{v}");
+    }
+
+    #[test]
+    fn import_auto_detects_jsonl() {
+        let (_p, rp) = root("auto-jsonl");
+        let v = unsafe { import_as(b"{\"id\":1}\n{\"id\":2}\n", &rp, &c("w-jl"), None, None) };
+        assert_eq!(v["report"]["format"], "jsonl", "{v}");
+    }
+
+    #[test]
+    fn import_auto_detects_logs() {
+        let (_p, rp) = root("auto-log");
+        let src = b"2026-11-05T14:00:01Z INFO api hello\n2026-11-05T14:00:02Z WARN api slow\n";
+        let v = unsafe { import_as(src, &rp, &c("w-log"), None, None) };
+        assert_eq!(v["report"]["format"], "log", "{v}");
+    }
+
+    #[test]
+    fn import_auto_detects_plain_text() {
+        let (_p, rp) = root("auto-txt");
+        let v = unsafe { import_as(b"some prose\nmore prose\n", &rp, &c("w-txt"), None, None) };
+        assert_eq!(v["report"]["format"], "txt", "{v}");
+    }
+
+    #[test]
+    fn an_explicit_hint_overrides_detection() {
+        let (_p, rp) = root("hint-txt");
+        // Valid CSV, but the caller asked for text.
+        let v = unsafe { import_as(CSV, &rp, &c("w-hint"), Some(&c("txt")), None) };
+        assert_eq!(v["report"]["format"], "txt", "{v}");
+    }
+
+    #[test]
+    fn an_unknown_hint_is_a_typed_error_not_a_crash() {
+        let (_p, rp) = root("hint-bad");
+        let v = unsafe { import_as(CSV, &rp, &c("w-bad"), Some(&c("parquet")), None) };
+        let msg = v["error"].as_str().unwrap_or("");
+        assert!(msg.contains("unknown format"), "{v}");
+    }
+
+    #[test]
+    fn the_extension_decides_only_when_content_could_not() {
+        let (_p, rp) = root("ext-csv");
+        let v = unsafe { import_as(b"alpha\nbeta\n", &rp, &c("w-ext"), None, Some(&c("csv"))) };
+        assert_eq!(v["report"]["format"], "csv", "{v}");
+    }
+
+    #[test]
+    fn a_json_workspace_reopens_with_its_data() {
+        // Regression guard: open_session used to force CSV, which would have corrupted
+        // every non-CSV workspace on reopen.
+        let (_p, rp) = root("reopen-json");
+        let id = c("w-reopen");
+        let v = unsafe {
+            import_as(
+                b"[{\"region\":\"eu\",\"amount\":10},{\"region\":\"us\",\"amount\":20}]",
+                &rp,
+                &id,
+                None,
+                None,
+            )
+        };
+        assert_eq!(v["report"]["format"], "json", "{v}");
+        unsafe {
+            morphic_close_workspace(rp.as_ptr(), id.as_ptr());
+        }
+        let snap = unsafe { json(morphic_snapshot(rp.as_ptr(), id.as_ptr())) };
+        assert_eq!(snap["degraded"], false, "{snap}");
+        assert!(snap["profile"].is_object(), "{snap}");
+    }
+
 }

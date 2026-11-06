@@ -97,12 +97,13 @@ class ImportController extends ChangeNotifier {
     required String title,
     String? workspaceId,
     DateTime? now,
+    String? formatHint,
   }) async {
     if (isBusy) return null;
     _begin();
     final clock = now ?? DateTime.now();
     final id = workspaceId ?? 'w_${clock.millisecondsSinceEpoch}';
-    return _runImport(bytes, title: title, id: id, clock: clock);
+    return _runImport(bytes, title: title, id: id, clock: clock, formatHint: formatHint);
   }
 
   /// Import a file the user picked. Handles both picker outcomes: bytes already in hand,
@@ -111,6 +112,7 @@ class ImportController extends ChangeNotifier {
     PickedFile file, {
     String? title,
     DateTime? now,
+    String? formatHint,
   }) async {
     if (isBusy) return null;
     _begin();
@@ -137,11 +139,23 @@ class ImportController extends ChangeNotifier {
         return null;
       }
     }
-    return _runImport(bytes, title: name, id: id, clock: clock);
+    return _runImport(
+      bytes,
+      title: name,
+      id: id,
+      clock: clock,
+      formatHint: formatHint,
+      extension: file.extension,
+    );
   }
 
   /// Read a file from disk, then import it. The reading stage is genuinely separate work.
-  Future<String?> importFile(File file, {String? title, DateTime? now}) async {
+  Future<String?> importFile(
+    File file, {
+    String? title,
+    DateTime? now,
+    String? formatHint,
+  }) async {
     if (isBusy) return null;
     _begin();
     _set(ImportStage.reading);
@@ -158,7 +172,14 @@ class ImportController extends ChangeNotifier {
     final id = 'w_${clock.millisecondsSinceEpoch}';
     final name =
         file.uri.pathSegments.isEmpty ? 'Imported' : file.uri.pathSegments.last;
-    return _runImport(bytes, title: title ?? name, id: id, clock: clock);
+    return _runImport(
+      bytes,
+      title: title ?? name,
+      id: id,
+      clock: clock,
+      formatHint: formatHint,
+      extension: extensionOf(name),
+    );
   }
 
   /// Shared import path. Assumes the clock already started, so reading time is included
@@ -168,6 +189,8 @@ class ImportController extends ChangeNotifier {
     required String title,
     required String id,
     required DateTime clock,
+    String? formatHint,
+    String? extension,
   }) async {
     _set(ImportStage.importing);
     try {
@@ -178,6 +201,8 @@ class ImportController extends ChangeNotifier {
           title: title,
           workspaceId: id,
           nowIso: clock.toUtc().toIso8601String(),
+          formatHint: formatHint,
+          extension: extension,
         ),
         (p) {
           _progress = p;

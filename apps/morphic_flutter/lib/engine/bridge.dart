@@ -50,15 +50,22 @@ abstract interface class MorphicBridge {
 
   /// Import a file and open a session. Returns `{doc, profile, report}`.
   ///
+  /// The engine detects the format from the content. [formatHint] (`csv`, `json`, `jsonl`,
+  /// `log`, `txt`) overrides detection — this is the re-import-with-a-hint escape hatch when
+  /// a sniff was wrong. [extension] is the weakest evidence, used only when no content probe
+  /// was decisive.
+  ///
   /// [onProgress] receives the engine's raw progress JSON (`phase`, `rowsRead`,
   /// `bytesRead`) as the import proceeds. It is called on the same thread as the import,
   /// so an implementation must not block in it.
-  Map<String, dynamic> importCsv({
+  Map<String, dynamic> importFile({
     required Uint8List bytes,
     required String storageRoot,
     required String title,
     required String workspaceId,
     required String nowIso,
+    String? formatHint,
+    String? extension,
     void Function(Map<String, dynamic> progress)? onProgress,
   });
 
@@ -107,10 +114,26 @@ typedef _LoadWorkspaceDart = Pointer<Utf8> Function(Pointer<Utf8>, Pointer<Utf8>
 typedef _ListWorkspacesNative = Pointer<Utf8> Function(Pointer<Utf8>);
 typedef _ListWorkspacesDart = Pointer<Utf8> Function(Pointer<Utf8>);
 
-typedef _ImportCsvNative = Pointer<Utf8> Function(Pointer<Uint8>, IntPtr,
-    Pointer<Utf8>, Pointer<Utf8>, Pointer<Utf8>, Pointer<Utf8>, Pointer<Void>);
-typedef _ImportCsvDart = Pointer<Utf8> Function(
-    Pointer<Uint8>, int, Pointer<Utf8>, Pointer<Utf8>, Pointer<Utf8>, Pointer<Utf8>, Pointer<Void>);
+typedef _ImportFileNative = Pointer<Utf8> Function(
+    Pointer<Uint8>,
+    IntPtr,
+    Pointer<Utf8>,
+    Pointer<Utf8>,
+    Pointer<Utf8>,
+    Pointer<Utf8>,
+    Pointer<Utf8>,
+    Pointer<Utf8>,
+    Pointer<Void>);
+typedef _ImportFileDart = Pointer<Utf8> Function(
+    Pointer<Uint8>,
+    int,
+    Pointer<Utf8>,
+    Pointer<Utf8>,
+    Pointer<Utf8>,
+    Pointer<Utf8>,
+    Pointer<Utf8>,
+    Pointer<Utf8>,
+    Pointer<Void>);
 
 typedef _TwoStringNative = Pointer<Utf8> Function(Pointer<Utf8>, Pointer<Utf8>);
 typedef _TwoStringDart = Pointer<Utf8> Function(Pointer<Utf8>, Pointer<Utf8>);
@@ -155,8 +178,8 @@ class FfiBridge implements MorphicBridge {
       .lookupFunction<_LoadWorkspaceNative, _LoadWorkspaceDart>('morphic_load_workspace');
   late final _listWorkspaces = _lib
       .lookupFunction<_ListWorkspacesNative, _ListWorkspacesDart>('morphic_list_workspaces');
-  late final _importCsv =
-      _lib.lookupFunction<_ImportCsvNative, _ImportCsvDart>('morphic_import_csv');
+  late final _importFile =
+      _lib.lookupFunction<_ImportFileNative, _ImportFileDart>('morphic_import');
   late final _snapshot =
       _lib.lookupFunction<_TwoStringNative, _TwoStringDart>('morphic_snapshot');
   late final _queryPage =
@@ -261,12 +284,14 @@ class FfiBridge implements MorphicBridge {
   }
 
   @override
-  Map<String, dynamic> importCsv({
+  Map<String, dynamic> importFile({
     required Uint8List bytes,
     required String storageRoot,
     required String title,
     required String workspaceId,
     required String nowIso,
+    String? formatHint,
+    String? extension,
     void Function(Map<String, dynamic> progress)? onProgress,
   }) {
     final buf = calloc<Uint8>(bytes.length);
@@ -274,6 +299,8 @@ class FfiBridge implements MorphicBridge {
     final t = title.toNativeUtf8();
     final id = workspaceId.toNativeUtf8();
     final now = nowIso.toNativeUtf8();
+    final hint = formatHint?.toNativeUtf8();
+    final ext = extension?.toNativeUtf8();
     NativeCallable<_ProgressNative>? progress;
     try {
       buf.asTypedList(bytes.length).setAll(0, bytes);
@@ -295,7 +322,15 @@ class FfiBridge implements MorphicBridge {
         );
       }
       return _withResponse(
-          () => _importCsv(buf, bytes.length, root, t, id, now,
+          () => _importFile(
+              buf,
+              bytes.length,
+              root,
+              t,
+              id,
+              now,
+              hint ?? nullptr,
+              ext ?? nullptr,
               progress?.nativeFunction.cast<Void>() ?? nullptr),
           _decodeMap);
     } finally {
@@ -306,6 +341,8 @@ class FfiBridge implements MorphicBridge {
       calloc.free(t);
       calloc.free(id);
       calloc.free(now);
+      if (hint != null) calloc.free(hint);
+      if (ext != null) calloc.free(ext);
     }
   }
 

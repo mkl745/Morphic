@@ -10,6 +10,16 @@ import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 
+/// The lowercase extension of [name] without the dot, or null when there is not one.
+///
+/// Only the final suffix counts, so `report.final.csv` gives `csv`. A dotfile (`.csv`) has
+/// no extension — it is a name, not a suffix.
+String? extensionOf(String name) {
+  final dot = name.lastIndexOf('.');
+  if (dot <= 0 || dot == name.length - 1) return null;
+  return name.substring(dot + 1).toLowerCase();
+}
+
 /// A file the user chose. Either [bytes] or a readable [path] must be present; which one
 /// depends on the platform, so the controller handles both rather than assuming.
 class PickedFile {
@@ -25,11 +35,22 @@ class PickedFile {
   final String? path;
   final int? sizeBytes;
 
-  /// A workspace title derived from the file name. Only a *known* tabular extension is
+  /// The extension the engine may use as a last-resort format tie-break.
+  String? get extension => extensionOf(name);
+
+  /// A workspace title derived from the file name. Only a *known* supported extension is
   /// stripped, so `report.final.csv` becomes `report.final`, not `report`.
   String get suggestedTitle {
     final lower = name.toLowerCase();
-    for (final ext in const ['.csv', '.tsv', '.txt']) {
+    for (final ext in const [
+      '.csv',
+      '.tsv',
+      '.txt',
+      '.json',
+      '.jsonl',
+      '.ndjson',
+      '.log',
+    ]) {
       if (lower.endsWith(ext) && name.length > ext.length) {
         return name.substring(0, name.length - ext.length);
       }
@@ -62,7 +83,7 @@ abstract interface class PlatformFileSource {
 class FilePickerSource implements PlatformFileSource {
   const FilePickerSource({this.maxBytes = defaultMaxBytes});
 
-  /// Ceiling until ingest streams from disk (M1.2).
+  /// Ceiling until ingest streams from disk.
   ///
   /// The engine decodes the source in one pass, so an unbounded import can exhaust a 4 GB
   /// phone. v12 exposes `length()` before any read, so this is checked *before* the bytes
@@ -70,10 +91,17 @@ class FilePickerSource implements PlatformFileSource {
   /// perf budget is 10 MB, well inside this.
   static const int defaultMaxBytes = 64 * 1024 * 1024;
 
-  /// Only formats the engine can actually parse today: delimiter-sniffed text (`,`, `;`,
-  /// tab). JSON and structured logs arrive in M1.2 — offering them here would be a promise
-  /// the importer cannot keep.
-  static const List<String> extensions = ['csv', 'tsv', 'txt'];
+  /// Every format the engine can parse as of M1.2 1.2.3. The engine detects which one from
+  /// the content, so this list only widens what the OS lets the user choose.
+  static const List<String> extensions = [
+    'csv',
+    'tsv',
+    'txt',
+    'json',
+    'jsonl',
+    'ndjson',
+    'log',
+  ];
 
   final int maxBytes;
 
@@ -83,7 +111,7 @@ class FilePickerSource implements PlatformFileSource {
     try {
       // `pickFile` is v12's single-selection API; `pickFiles` now defaults to multi-select.
       file = await FilePicker.pickFile(
-        dialogTitle: 'Choose a CSV file',
+        dialogTitle: 'Choose a data file',
         type: FileType.custom,
         allowedExtensions: extensions,
       );

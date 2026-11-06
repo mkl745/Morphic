@@ -20,10 +20,60 @@ Order of evidence: BOM/encoding → content probes on first 64 KB → extension 
 Ambiguity (e.g. CSV vs single-column TXT) resolves to the richer interpretation and is
 reported in `ImportReport.warnings` with the evidence — user can re-import with `formatHint`.
 
+**Implemented in M1.2 task 1.2.3** (`morphic-ingest::detect`). Two thresholds per probe, not
+one, because *choosing* a format and being *confident* about it are different questions:
+
+| Probe | Plausible (choose it) | Confident (no warning) |
+|---|---|---|
+| Delimiter agreement | ≥ 50% (`sniff::DELIMITER_PLAUSIBLE`) | ≥ 90% (`sniff::DELIMITER_AGREEMENT`) |
+| Log-pattern match | ≥ 50% (`detect::LOG_PLAUSIBLE_RATE`) | ≥ 70% (`log::CONFIDENT_MATCH_RATE`) |
+
+The lower bar is what makes "richer interpretation" real. A ragged CSV with field counts
+3,2,4,3 agrees on only 50% of lines, but every line has a comma and the CSV parser is built to
+recover it; demoting it to TXT would discard all of its structure. Likewise a mixed log where
+60% of lines match still gains timestamp/level extraction, and the log parser keeps every
+unmatched line verbatim. Below the confident bar the agreement fraction becomes the reported
+confidence and a warning explains the raggedness.
+
+Other binding details:
+
+- **A single column is not a delimiter.** The modal count must be ≥ 1 (i.e. ≥ 2 fields), so a
+  plain list of words stays TXT.
+- **Modal, not minimum.** One short row must not veto an otherwise obvious delimiter; the
+  agreement fraction carries the raggedness instead.
+- **CSV vs LOG on the same file** (a comma-separated log export): the higher score wins and
+  the runner-up is disclosed with a re-import suggestion.
+- **The extension is the weakest evidence.** It decides only when no content probe was
+  decisive (including an empty file), and that decision is always disclosed. When it
+  disagrees with the contents, the contents win and the disagreement is reported.
+- **`formatHint` short-circuits everything** at confidence 1.0. An unrecognised hint is a
+  typed error (`CoreError::UnknownFormat`), never a silent fall back to sniffing.
+- **The first warning is always the headline** — `Read as '<format>' (<n>% confidence):
+  <evidence>.` — so the UI has one stable line to show regardless of how many caveats follow.
+- Probing is bounded: ≤ 64 KB decoded, ≤ 256 lines sampled, window cut at the last newline so
+  no probe sees half a record. Detection cost does not grow with file size.
+
 ### 1.2 Encoding
 
 BOM → strict UTF-8 validation → `chardetng` detection (confidence-gated) → lossy decode with
 replacement chars **only** with an explicit warning + quarantine of undecodable rows.
+
+**Status after 1.2.3.** BOM handling (UTF-8, UTF-16LE/BE) and strict UTF-8 validation are
+implemented, as are the edge cases that silently corrupt real files:
+
+- **Invalid / mixed UTF-8** falls back to Latin-1 (a total byte→char mapping, so no byte is
+  ever lost) and reports **how many** byte sequences failed and **where the first one is**.
+- **Mixed CRLF + bare LF** is handled and reported.
+- **Lone CR** is reported explicitly: neither `str::lines` nor the `csv` crate splits on it,
+  so a CR-only file would otherwise import as one enormous row.
+- **Probable UTF-16/32 without a BOM** (≥ 25% NUL bytes) is flagged rather than guessed at;
+  choosing an endianness on the user's behalf would be worse than saying so.
+
+**`chardetng` is still deferred**, and the reason is now concrete rather than aspirational:
+it is not in `Cargo.lock`, and this build environment cannot reach crates.io to compute the
+checksums a locked dependency requires. Latin-1 remains the smaller, architecturally
+compatible substitute. The gap it leaves is narrow and stated in the warning: windows-1252
+punctuation in 0x80–0x9F renders as control characters.
 
 ### 1.3 Streaming & memory discipline (spec §5.1, §18)
 

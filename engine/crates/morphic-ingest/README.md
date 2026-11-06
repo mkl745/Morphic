@@ -14,13 +14,32 @@ out. No semantics, no UI, no workspace I/O (see
 | TXT | **M1.2 1.2.2** — `line_number` + verbatim `line`, blank lines preserved |
 | LOG | **M1.2 1.2.2** — scored pattern library v1: iso-level, syslog, common-log, logfmt, fallback |
 
-None of the M1.2 formats is reachable from the UI yet: `morphic-core` and the bridge still
-call CSV only. Format auto-detection is 1.2.3 and the import UX is 1.2.4.
+| Detection | **M1.2 1.2.3** — content-first sniffing across all five formats, `formatHint` override, extension as last resort |
+
+All five formats are now reachable end to end: `ingest()` detects and dispatches,
+`morphic-core::import()` takes a hint, the bridge exports `morphic_import`, and the import
+screen offers a format override. The richer import UX (per-format previews, evidence panel)
+is 1.2.4.
 
 ## API
 
 ```rust
-// Stable convenience entry point (used by the bridge and core).
+// Detect the format from the content and parse it. This is what core and the bridge call.
+let (table, report) = morphic_ingest::ingest(bytes)?;
+
+// Force a format, or offer the extension as a last-resort tie-break.
+let opts = morphic_ingest::IngestOptions {
+    format_hint: Some(morphic_ingest::detect::Format::Jsonl),
+    extension: Some("ndjson".into()),
+    ..Default::default()
+};
+let (table, report) = morphic_ingest::ingest_with(bytes, &opts, None, &mut |p| {})?;
+
+// Detection on its own, when you want the evidence before committing to a parse.
+let d = morphic_ingest::detect::detect(bytes, None, Some("csv"));
+// d.format, d.confidence (0.0–1.0), d.evidence, d.warnings
+
+// CSV-only entry point, retained for callers that know the format.
 let (table, report) = morphic_ingest::parse_csv(bytes)?;
 
 // Full control: overrides, cancellation, real progress events.

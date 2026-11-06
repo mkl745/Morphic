@@ -69,12 +69,35 @@ void main() {
   });
 
   group('picked file', () {
-    test('strips only a known tabular extension', () {
+    test('strips only a known supported extension', () {
       expect(const PickedFile(name: 'sales.csv').suggestedTitle, 'sales');
       expect(const PickedFile(name: 'logs.TSV').suggestedTitle, 'logs');
       expect(const PickedFile(name: 'report.final.csv').suggestedTitle, 'report.final');
-      expect(const PickedFile(name: 'data.json').suggestedTitle, 'data.json');
+      expect(const PickedFile(name: 'data.json').suggestedTitle, 'data');
+      expect(const PickedFile(name: 'events.jsonl').suggestedTitle, 'events');
+      expect(const PickedFile(name: 'stream.ndjson').suggestedTitle, 'stream');
+      expect(const PickedFile(name: 'server.LOG').suggestedTitle, 'server');
+      // Not a format we parse, so the suffix is part of the name.
+      expect(const PickedFile(name: 'archive.parquet').suggestedTitle, 'archive.parquet');
       expect(const PickedFile(name: '.csv').suggestedTitle, '.csv');
+    });
+
+    test('the extension is offered to the engine as weak evidence', () {
+      expect(const PickedFile(name: 'sales.CSV').extension, 'csv');
+      expect(const PickedFile(name: 'events.jsonl').extension, 'jsonl');
+      expect(const PickedFile(name: 'report.final.csv').extension, 'csv');
+      expect(const PickedFile(name: 'no_extension').extension, isNull);
+      expect(const PickedFile(name: '.csv').extension, isNull);
+      expect(const PickedFile(name: 'trailing.').extension, isNull);
+    });
+
+    test('extensionOf handles the awkward names', () {
+      expect(extensionOf('a.b.c'), 'c');
+      expect(extensionOf('UPPER.TXT'), 'txt');
+      expect(extensionOf(''), isNull);
+      expect(extensionOf('.'), isNull);
+      expect(extensionOf('a.'), isNull);
+      expect(extensionOf('.hidden'), isNull);
     });
   });
 
@@ -107,6 +130,38 @@ void main() {
         PickedFile(name: 'quarterly.csv', bytes: Uint8List(4)),
       );
       expect(runner.lastRequest!.title, 'quarterly');
+      expect(runner.lastRequest!.extension, 'csv');
+      expect(runner.lastRequest!.formatHint, isNull);
+      c.dispose();
+    });
+
+    test('no hint means the engine decides', () async {
+      final runner = FakeImportRunner();
+      final c = make(runner);
+      await c.importBytes(Uint8List(4), title: 'X');
+      expect(runner.lastRequest!.formatHint, isNull);
+      expect(runner.lastRequest!.extension, isNull);
+      c.dispose();
+    });
+
+    test('an explicit hint reaches the engine unchanged', () async {
+      final runner = FakeImportRunner();
+      final c = make(runner);
+      await c.importBytes(Uint8List(4), title: 'X', formatHint: 'jsonl');
+      expect(runner.lastRequest!.formatHint, 'jsonl');
+      c.dispose();
+    });
+
+    test('a picked file forwards both the hint and its extension', () async {
+      final runner = FakeImportRunner();
+      final c = make(runner);
+      await c.importPicked(
+        PickedFile(name: 'ambiguous.txt', bytes: Uint8List(4)),
+        formatHint: 'log',
+      );
+      expect(runner.lastRequest!.formatHint, 'log');
+      // The extension still travels: the engine ignores it when a hint is present.
+      expect(runner.lastRequest!.extension, 'txt');
       c.dispose();
     });
   });

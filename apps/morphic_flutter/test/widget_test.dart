@@ -48,12 +48,14 @@ class FakeBridge implements MorphicBridge {
   List<dynamic> listWorkspaces(String storageRoot) => [];
 
   @override
-  Map<String, dynamic> importCsv({
+  Map<String, dynamic> importFile({
     required Uint8List bytes,
     required String storageRoot,
     required String title,
     required String workspaceId,
     required String nowIso,
+    String? formatHint,
+    String? extension,
     void Function(Map<String, dynamic> progress)? onProgress,
   }) =>
       {
