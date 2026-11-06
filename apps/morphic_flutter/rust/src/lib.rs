@@ -633,14 +633,8 @@ mod tests {
             .unwrap()
             .contains("no longer available"));
         assert!(v["profile"].is_null());
-        assert!(
-            v["doc"]["workspace"]["components"]
-                .as_array()
-                .unwrap()
-                .len()
-                > 0,
-            "the layout survives a missing source"
-        );
+        let components = v["doc"]["workspace"]["components"].as_array().unwrap();
+        assert!(!components.is_empty(), "the layout survives");
         // Data operations are a typed error string, never a panic or a silent empty page.
         let q = json(unsafe { morphic_query_page(rp.as_ptr(), id.as_ptr(), std::ptr::null()) });
         assert!(q["error"].as_str().unwrap().contains("unavailable"));
