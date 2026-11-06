@@ -106,7 +106,10 @@ fn score_corpus(l: &Labels) -> Score {
         let profile = profile_fixture(&f.path);
         let mut actual: BTreeMap<&str, (String, String)> = BTreeMap::new();
         for p in &profile.fields {
-            let facts = (p.dtype.as_str().to_string(), role_str(p.inference.role).to_string());
+            let facts = (
+                p.dtype.as_str().to_string(),
+                role_str(p.inference.role).to_string(),
+            );
             actual.insert(p.name.as_str(), facts);
         }
 
@@ -115,8 +118,11 @@ fn score_corpus(l: &Labels) -> Score {
             s.fields += 1;
             match actual.get(name.as_str()) {
                 None => {
-                    misses.push(format!("`{name}`: labelled, but no such column was emitted"));
-                    s.problems.push(format!("{}: missing column {name}", f.path));
+                    misses.push(format!(
+                        "`{name}`: labelled, but no such column was emitted"
+                    ));
+                    s.problems
+                        .push(format!("{}: missing column {name}", f.path));
                 }
                 Some((dtype, role)) => {
                     if *dtype == want.dtype {
@@ -140,7 +146,8 @@ fn score_corpus(l: &Labels) -> Score {
         for name in actual.keys() {
             if !f.fields.contains_key(*name) {
                 misses.push(format!("`{name}`: emitted by the parser but unlabelled"));
-                s.problems.push(format!("{}: unlabelled column {name}", f.path));
+                s.problems
+                    .push(format!("{}: unlabelled column {name}", f.path));
             }
         }
 
@@ -296,7 +303,15 @@ fn label_vocabulary_matches_the_engine() {
     ] {
         assert_eq!(dtype.as_str(), spelled);
     }
-    let roles = ["unknown", "temporal", "measure", "dimension", "severity", "identifier", "text"];
+    let roles = [
+        "unknown",
+        "temporal",
+        "measure",
+        "dimension",
+        "severity",
+        "identifier",
+        "text",
+    ];
     for f in labels().files {
         for (name, want) in &f.fields {
             assert!(
