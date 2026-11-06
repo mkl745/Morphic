@@ -24,11 +24,30 @@ ADR update.
 | `flutter_riverpod` | ^3.3 | presentation state (ADR-0004) | mature; exit = controllers isolate it |
 | `riverpod_annotation` + dev `riverpod_generator`, `build_runner` | ^3.x / current | provider codegen where useful | optional; can hand-write providers |
 | `go_router` | ^18.1 | navigation/deep links | flutter.dev verified, feature-complete |
-| `file_picker` | ^11.0 | SAF import — **adopted in M1.1 task 1.1.7** | community but standard; sits behind `PlatformFileSource`, so the exit (`file_selector` or a platform channel) touches one file. APK permissions are audited in CI (`tools/check_apk_permissions.py`) |
+| `file_picker` | **^12.0** | SAF import — **adopted in M1.1 task 1.1.7** | community but standard; sits behind `PlatformFileSource`, so the exit (`file_selector` or a platform channel) touches one file. APK permissions are audited in CI (`tools/check_apk_permissions.py`). **11.x is unusable on this toolchain** — see the note below |
 | `path_provider` | ^2.1 | storage root for EngineConfig | flutter.dev verified |
 | `intl` | current | number/date formatting, l10n seam | flutter.dev ecosystem |
 | `share_handler` *(stretch)* | current | Share-to-Morphic (M1.6 stretch) | evaluate at task start; drop without architecture impact |
 | dev: `flutter_lints` (or `very_good_analysis`), `mocktail`, `integration_test`, `golden_toolkit` *(optional)* | current | quality infra | dev-only |
+
+### Why `file_picker` 12 and not the originally planned 11
+
+Task 1.1.7 first pinned `^11.0`. It resolved and analyzed cleanly, but the Android build
+failed: 11.0.3 applies the **Kotlin Gradle Plugin**, and Flutter 3.47 / AGP 9 use **Built-in
+Kotlin**. The plugin's own `isAgp9OrAbove` branch skips applying KGP without opting into the
+built-in mechanism, so its Kotlin sources never compile and
+`GeneratedPluginRegistrant` cannot find `com.mr.flutter.plugin.filepicker.FilePickerPlugin`.
+Flutter warns about exactly this ("Future versions of Flutter will fail to build if your app
+uses plugins that apply KGP"); here it already fails.
+
+12.0.0 federates the plugin (`file_picker_android` and friends), detects Built-in Kotlin
+explicitly, and replaces the AGP-9-removed `lintOptions` with `lint`. It also raises the
+floor to Flutter 3.38 / Dart 3.10, which this project already exceeds.
+
+The v12 API is a better fit anyway: `pickFile()` returns a single `PlatformFile` with
+`length()` and `readAsBytes()`, so the size ceiling is checked **before** any bytes are
+loaded, and a real filesystem path is preferred so the controller's `reading` stage
+describes work that genuinely happens.
 
 **Not adopted (and why):** `fl_chart`/chart libs (ADR-0008: own painters), `freezed`
 (frb generates DTOs; UI state is small), `dio`/`http` (no network in MVP), `hive`/`isar`/

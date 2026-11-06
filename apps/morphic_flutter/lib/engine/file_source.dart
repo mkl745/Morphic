@@ -54,14 +54,20 @@ abstract interface class PlatformFileSource {
 }
 
 /// SAF-backed picker. Needs no storage permission and no network permission.
+///
+/// Pinned to file_picker **12**: version 11 applies the Kotlin Gradle Plugin, which Flutter
+/// 3.47's Built-in Kotlin (AGP 9) no longer compiles, so its `FilePickerPlugin` class was
+/// missing from the APK and the build failed. v12 detects Built-in Kotlin and federates the
+/// Android implementation. See dependency-strategy §2.
 class FilePickerSource implements PlatformFileSource {
   const FilePickerSource({this.maxBytes = defaultMaxBytes});
 
-  /// Temporary ceiling until ingest streams from disk (M1.2).
+  /// Ceiling until ingest streams from disk (M1.2).
   ///
-  /// The picker hands back the whole file in memory and the engine currently decodes it in
-  /// one pass, so an unbounded pick can exhaust a 4 GB phone. Refusing with an explanation
-  /// is better than an OOM kill. The M1.1 perf budget is 10 MB, well inside this.
+  /// The engine decodes the source in one pass, so an unbounded import can exhaust a 4 GB
+  /// phone. v12 exposes `length()` before any read, so this is checked *before* the bytes
+  /// are pulled into memory — refusing with an explanation beats an OOM kill. The M1.1
+  /// perf budget is 10 MB, well inside this.
   static const int defaultMaxBytes = 64 * 1024 * 1024;
 
   /// Only formats the engine can actually parse today: delimiter-sniffed text (`,`, `;`,
@@ -73,23 +79,26 @@ class FilePickerSource implements PlatformFileSource {
 
   @override
   Future<PickedFile?> pick() async {
-    final FilePickerResult? result;
+    final PlatformFile? file;
     try {
-      // file_picker 11 replaced the `FilePicker.platform` singleton with static methods
-      // on an `abstract final class`. Pinned here so a v12 change fails loudly at this one
-      // call site rather than somewhere in the UI.
-      result = await FilePicker.pickFiles(
+      // `pickFile` is v12's single-selection API; `pickFiles` now defaults to multi-select.
+      file = await FilePicker.pickFile(
         dialogTitle: 'Choose a CSV file',
         type: FileType.custom,
         allowedExtensions: extensions,
-        withData: true,
       );
     } catch (e) {
       throw FileSelectionException('could not open the file picker: $e');
     }
-    if (result == null || result.files.isEmpty) return null;
-    final f = result.files.single;
-    final size = f.bytes?.length ?? f.size;
+    // Cancelling is a normal outcome, not an error.
+    if (file == null) return null;
+
+    final int size;
+    try {
+      size = await file.length();
+    } catch (e) {
+      throw FileSelectionException('could not determine the file size: $e');
+    }
     if (size > maxBytes) {
       final mb = (size / (1024 * 1024)).toStringAsFixed(1);
       final limit = (maxBytes / (1024 * 1024)).round();
@@ -98,16 +107,20 @@ class FilePickerSource implements PlatformFileSource {
         'streaming larger files arrives in a later update.',
       );
     }
-    if (f.bytes == null && f.path == null) {
-      throw const FileSelectionException(
-        'the picker returned a file with no readable data or path',
-      );
+
+    // Prefer a real filesystem path: the controller then performs the read, so the
+    // `reading` stage describes work that actually happens. Android SAF usually hands back
+    // a content URI instead, where `path` is null and the bytes must be read here.
+    final path = file.path;
+    if (path != null) {
+      return PickedFile(name: file.name, path: path, sizeBytes: size);
     }
-    return PickedFile(
-      name: f.name,
-      bytes: f.bytes,
-      path: f.path,
-      sizeBytes: size,
-    );
+    final Uint8List bytes;
+    try {
+      bytes = await file.readAsBytes();
+    } catch (e) {
+      throw FileSelectionException('could not read the chosen file: $e');
+    }
+    return PickedFile(name: file.name, bytes: bytes, sizeBytes: size);
   }
 }
