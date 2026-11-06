@@ -604,9 +604,9 @@ mod tests {
         );
     }
 
-    /// Documents a real heuristic limit rather than hiding it: morphic-semantic labels a
-    /// >=99%-unique integer column an Identifier, so an all-distinct numeric column earns
-    /// no measure metric. Scored role selection is M1.4 work.
+    /// Documents a real heuristic limit rather than hiding it: morphic-semantic labels an
+    /// integer column that is at least 99% unique an Identifier, so an all-distinct numeric
+    /// column earns no measure metric. Scored role selection is M1.4 work.
     #[test]
     fn all_distinct_integers_are_treated_as_identifiers_not_measures() {
         let root = temp_root("idlike");
