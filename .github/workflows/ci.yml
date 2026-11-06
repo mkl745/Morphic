@@ -94,6 +94,10 @@ jobs:
             grep -E "^test .* FAILED" /tmp/test.log | head -n 40 || true
             grep -A 6 "panicked at" /tmp/test.log | head -n 120 || true
             echo '```'
+            echo "### Parser fuzz smoke"
+            echo '```'
+            cat target/fuzz-smoke.md 2>/dev/null || echo "fuzz report not produced"
+            echo '```'
             echo "### AT-02 schema accuracy"
             echo '```'
             cat target/schema-accuracy.md 2>/dev/null || echo "scorecard not produced"

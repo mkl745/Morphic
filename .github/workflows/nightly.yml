@@ -31,7 +31,17 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - run: cargo test --workspace --release
+      - run: cargo test --workspace --release --no-fail-fast
+      # The same seeded mutation harness CI runs on every push, with a much longer stream.
+      # Coverage-guided fuzzing (cargo-fuzz) is still not adopted: it needs a nightly toolchain
+      # and a corpus directory, and a fuzzer nobody runs is worth less than a smoke everybody
+      # runs. This is the deep version of the smoke, not a replacement for one.
+      - name: Deep parser fuzz smoke
+        env:
+          MORPHIC_FUZZ_CASES: "40000"
+        run: |
+          cargo test -p morphic-ingest --test fuzz_smoke --release
+          cat target/fuzz-smoke.md
 
   perf-baseline:
     name: Perf baseline (criterion)
@@ -57,5 +67,11 @@ jobs:
           path: perf-baseline/
           retention-days: 90
 
-  # Emulator runtime smoke runs in ci.yml (manual boot). Parser fuzz + the Dart
-  # frame-timing collector are added in M1.1 (docs/engineering/ci-cd.md).
+  # Emulator runtime smoke runs in ci.yml (manual boot). The parser fuzz smoke landed with
+  # the M1.2 exit work and runs in both places; the Dart frame-timing collector is still owed.
+  #
+  # NOTE: this workflow is not registered with GitHub yet. GitHub only registers workflow
+  # files that exist on the DEFAULT branch, and this one lives on a feature branch, so
+  # `gh workflow run nightly.yml` returns 404 and the schedule has never fired. It will start
+  # working when the branch merges to main. Until then CI is what actually runs, which is why
+  # the fuzz smoke and the AT-02 scorer were both put there rather than only here.
