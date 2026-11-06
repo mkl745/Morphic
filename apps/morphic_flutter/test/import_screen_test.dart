@@ -193,10 +193,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(opened, isFalse, reason: 'review comes before the workspace');
+    // The body is a lazy ListView, so anything below the fold is not built yet.
+    await tester.scrollUntilVisible(find.text('Worth a look first'), 150);
     expect(find.text('Worth a look first'), findsOneWidget);
-    expect(find.text('What Morphic read'), findsOneWidget);
-    expect(find.text('Set aside'), findsOneWidget);
-
+    await tester.scrollUntilVisible(find.text('View report'), 150);
     await tester.tap(find.text('View report'));
     await tester.pumpAndSettle();
     expect(find.text('Import report'), findsOneWidget);

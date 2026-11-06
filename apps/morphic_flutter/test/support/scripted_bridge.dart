@@ -206,7 +206,6 @@ class ScriptedBridge implements MorphicBridge {
     return {'componentId': componentId, 'value': metrics[componentId], 'revision': 1};
   }
 
-  @override
   /// What [cancelImport] reports, and every id it was asked to cancel.
   bool cancelResult = false;
   final List<String> cancelCalls = [];

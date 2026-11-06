@@ -97,7 +97,6 @@ class FakeBridge implements MorphicBridge {
       {'componentId': componentId, 'value': 12, 'revision': 1};
 
   @override
-  @override
   bool cancelImport({required String workspaceId}) => false;
 
   @override

@@ -199,7 +199,7 @@ class _ImportScreenState extends State<ImportScreen> {
     final controller = _controller;
     final busy = controller?.isBusy ?? false;
     final failure = controller?.failure;
-    final error = _pickError ?? (failure == null ? null : failure.headline);
+    final error = _pickError ?? failure?.headline;
     final facts = controller?.facts;
 
     return Scaffold(
@@ -251,16 +251,16 @@ class _ImportScreenState extends State<ImportScreen> {
             const SizedBox(height: MorphicSpace.md),
             _CancelledCard(onRetry: _pick),
           ],
-          if (facts != null) ...[
-            const SizedBox(height: MorphicSpace.md),
-            _ImportFactsCard(facts: facts, onReport: _showReport),
-          ],
           if (_readyId != null) ...[
             const SizedBox(height: MorphicSpace.md),
             _ReviewCard(
               onOpen: () => _openWorkspace(_readyId!),
               onReport: _showReport,
             ),
+          ],
+          if (facts != null) ...[
+            const SizedBox(height: MorphicSpace.md),
+            _ImportFactsCard(facts: facts, onReport: _showReport),
           ],
           if (error != null) ...[
             const SizedBox(height: MorphicSpace.md),

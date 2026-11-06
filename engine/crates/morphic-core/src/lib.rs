@@ -219,6 +219,12 @@ impl Engine {
                 rows_read: p.rows_read as u64,
                 bytes_read: p.bytes_read,
             });
+        })
+        .map_err(|e| match e {
+            // Normalise: a caller matching on CoreError must have exactly one cancellation
+            // variant, whether the parser noticed first or the pre-write checkpoint did.
+            morphic_ingest::IngestError::Cancelled => CoreError::Cancelled,
+            other => CoreError::Ingest(other),
         })?;
         let profile = morphic_semantic::profile(&table);
         // Content-addressed: the dataset's identity is its hash, so importing the same file

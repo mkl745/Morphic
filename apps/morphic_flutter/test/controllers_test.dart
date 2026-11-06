@@ -143,7 +143,6 @@ class RecordingBridge implements MorphicBridge {
     return {'componentId': componentId, 'value': metricValue, 'revision': 7};
   }
 
-  @override
   bool cancelResult = false;
 
   @override
