@@ -342,7 +342,7 @@ fn mutation_smoke_never_panics_and_always_returns_a_typed_outcome() {
     let started = Instant::now();
 
     for case in 0..cases {
-        let (name, base) = pick_seed(&mut rng, seeds);
+        let (name, base) = pick_seed(&mut rng, &seeds);
         let name = name.clone();
         let mut bytes = base.clone();
         for _ in 0..(1 + rng.below(3)) {
