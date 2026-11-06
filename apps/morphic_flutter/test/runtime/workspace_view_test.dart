@@ -111,7 +111,12 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(DeferredComponent), findsOneWidget);
+    // The headline is visible while collapsed, so the component is never silent.
     expect(find.text('line_chart renders in M1.4'), findsOneWidget);
+    // The long rationale is behind a tap, keeping the data table above the fold.
+    expect(find.textContaining('Why this was generated:'), findsNothing);
+    await tester.tap(find.byType(ExpansionTile));
+    await tester.pumpAndSettle();
     expect(find.textContaining('Why this was generated:'), findsOneWidget);
   });
 
@@ -146,6 +151,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('pie_chart is reserved'), findsOneWidget);
+    await tester.tap(find.byType(ExpansionTile));
+    await tester.pumpAndSettle();
     expect(find.textContaining('did not pass validation'), findsOneWidget);
   });
 

@@ -328,7 +328,7 @@ jobs:
               sleep 2
               adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1
               adb pull /sdcard/ui.xml /tmp/ui.xml >/dev/null 2>&1
-              if [ -n "$(python3 tools/read_row_range.py /tmp/ui.xml)" ]; then GEN=1; break; fi
+              if [ -n "$(python3 tools/read_row_range.py /tmp/ui.xml --signature)" ]; then GEN=1; break; fi
               if [ $((i % 2)) = 0 ]; then
                 adb shell input swipe 540 1600 540 500 300 >/dev/null 2>&1
               fi
@@ -338,8 +338,9 @@ jobs:
               python3 tools/ui_texts.py /tmp/ui.xml || head -c 2000 /tmp/ui.xml
               exit 1
             fi
-            BEFORE="$(python3 tools/read_row_range.py /tmp/ui.xml)"
-            echo "RUNTIME_OK: live paged table rendered, range $BEFORE"
+            BEFORE="$(python3 tools/read_row_range.py /tmp/ui.xml --signature)"
+            echo "RUNTIME_OK: live table rendered, range $(python3 tools/read_row_range.py /tmp/ui.xml)"
+            echo "  first row: $BEFORE"
             echo "=== paging must be executed by Rust ==="
             python3 tools/tap_poc.py "Next page"
             PAGE=0
@@ -347,11 +348,14 @@ jobs:
               sleep 3
               adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1
               adb pull /sdcard/ui.xml /tmp/ui.xml >/dev/null 2>&1
-              AFTER="$(python3 tools/read_row_range.py /tmp/ui.xml)"
+              AFTER="$(python3 tools/read_row_range.py /tmp/ui.xml --signature)"
               if [ -n "$AFTER" ] && [ "$AFTER" != "$BEFORE" ]; then PAGE=1; break; fi
             done
             if [ "$PAGE" = "1" ]; then
-              echo "PAGING_OK: $BEFORE -> $AFTER"
+              echo "PAGING_OK: first row changed"
+              echo "  before: $BEFORE"
+              echo "  after:  $AFTER"
+              echo "  range:  $(python3 tools/read_row_range.py /tmp/ui.xml)"
             else
               echo "PAGING_MISSING"; echo "--- visible nodes ---"
               python3 tools/ui_texts.py /tmp/ui.xml || head -c 2000 /tmp/ui.xml

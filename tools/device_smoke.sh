@@ -91,6 +91,7 @@ wait_for_text() { # text, attempts
   return 1
 }
 row_range() { python3 tools/read_row_range.py /tmp/ui.xml 2>/dev/null; }
+row_sig() { python3 tools/read_row_range.py /tmp/ui.xml --signature 2>/dev/null; }
 scroll_down() { "${ADB[@]}" shell input swipe 540 1600 540 500 300 >/dev/null 2>&1; }
 wait_for_range() { # attempts
   # The table is below the metric cards and chart placeholders, and uiautomator only dumps
@@ -99,7 +100,7 @@ wait_for_range() { # attempts
   for ((i=0; i<attempts; i++)); do
     sleep 2
     ui_dump
-    if [ -n "$(row_range)" ]; then return 0; fi
+    if [ -n "$(row_sig)" ]; then return 0; fi
     if (( i % 2 == 1 )); then scroll_down; fi
   done
   return 1
@@ -146,6 +147,7 @@ RANGE_BEFORE=""
 if python3 tools/tap_poc.py "Generate workspace" >/tmp/morphic-tap-gen.log 2>&1 \
    && wait_for_range 20; then
   RANGE_BEFORE="$(row_range)"
+  SIG_BEFORE="$(row_sig)"
   CHECKS[generateWorkspace]=pass
   note "workspace row range: ${RANGE_BEFORE:-unknown}"
 else
@@ -160,11 +162,12 @@ if [ "${CHECKS[generateWorkspace]:-fail}" = "pass" ] \
   sleep 3
   ui_dump
   RANGE_AFTER="$(row_range)"
-  if [ -n "$RANGE_AFTER" ] && [ "$RANGE_AFTER" != "$RANGE_BEFORE" ]; then
+  SIG_AFTER="$(row_sig)"
+  if [ -n "$SIG_AFTER" ] && [ "$SIG_AFTER" != "$SIG_BEFORE" ]; then
     CHECKS[tablePaging]=pass; note "paged: ${RANGE_BEFORE} -> ${RANGE_AFTER}"
   else
     CHECKS[tablePaging]=fail
-    note "row range did not advance (${RANGE_BEFORE} -> ${RANGE_AFTER:-none}); a single-page dataset cannot verify paging"
+    note "first row did not change (${RANGE_BEFORE:-?} -> ${RANGE_AFTER:-?}); a single-page dataset cannot verify paging"
   fi
 else
   CHECKS[tablePaging]=fail; note "paging not exercised (needs a workspace with >1 page)"
@@ -178,7 +181,8 @@ if [ "${CHECKS[generateWorkspace]:-fail}" = "pass" ]; then
      && python3 tools/tap_poc.py "Sample Logs" >/tmp/morphic-tap-reopen.log 2>&1 \
      && wait_for_range 20; then
     RANGE_REOPEN="$(row_range)"
-    if [ -n "$RANGE_REOPEN" ] && [ "$RANGE_REOPEN" = "$RANGE_BEFORE" ]; then
+    SIG_REOPEN="$(row_sig)"
+    if [ -n "$SIG_REOPEN" ] && [ "$SIG_REOPEN" = "$SIG_BEFORE" ]; then
       CHECKS[reopenIdentical]=pass; note "reopened to the first page: ${RANGE_REOPEN}"
     else
       CHECKS[reopenIdentical]=fail

@@ -2,8 +2,11 @@
 ///
 /// The compiler already emits `line_chart`, `bar_chart`, and `timeline`; their painters land
 /// in M1.4. Rather than dropping them — which would make a generated workspace look emptier
-/// than it is — each is labelled with what it is and when it renders. The engine's own
-/// explanation is still shown, so the user can see *why* the component was chosen.
+/// than it is — each is labelled with what it is and when it renders.
+///
+/// Deliberately **compact**: a generated workspace can contain several of these above the
+/// data table, and a wall of "not implemented" cards would push the actual data off screen.
+/// The headline stays visible; the long explanation is behind a tap.
 library;
 
 import 'package:flutter/material.dart';
@@ -62,47 +65,31 @@ class DeferredComponent extends StatelessWidget {
     final theme = Theme.of(context);
     final status = _status();
     final explanation = ctx.explanation['detail'] as String?;
+    final isDeferred = deferredUntil.containsKey(ctx.type);
 
     return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(MorphicSpace.lg),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Row(
-              children: [
-                Icon(status.icon, color: theme.colorScheme.primary),
-                const SizedBox(width: MorphicSpace.md),
-                Expanded(
-                  child: Text(ctx.title, style: theme.textTheme.titleSmall),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: MorphicSpace.sm, vertical: 2),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(MorphicRadius.sm),
-                    border: Border.all(color: theme.dividerColor),
-                  ),
-                  child: Text(ctx.type, style: theme.textTheme.labelSmall),
-                ),
-              ],
-            ),
-            const SizedBox(height: MorphicSpace.sm),
-            Text(
-              status.headline,
-              style: theme.textTheme.bodyMedium
-                  ?.copyWith(color: MorphicColors.warning),
-            ),
-            const SizedBox(height: MorphicSpace.xs),
-            Text(status.detail, style: theme.textTheme.bodySmall),
-            if (explanation != null && explanation.isNotEmpty) ...[
-              const SizedBox(height: MorphicSpace.sm),
-              Text('Why this was generated: $explanation',
-                  style: theme.textTheme.bodySmall),
-            ],
-          ],
+      clipBehavior: Clip.antiAlias,
+      child: ExpansionTile(
+        leading: Icon(status.icon, color: theme.colorScheme.primary),
+        title: Text(ctx.title, style: theme.textTheme.titleSmall),
+        subtitle: Text(
+          status.headline,
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: isDeferred ? MorphicColors.warning : MorphicColors.error,
+          ),
         ),
+        tilePadding: const EdgeInsets.symmetric(horizontal: MorphicSpace.lg),
+        childrenPadding: const EdgeInsets.fromLTRB(
+            MorphicSpace.lg, 0, MorphicSpace.lg, MorphicSpace.lg),
+        expandedCrossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(status.detail, style: theme.textTheme.bodySmall),
+          if (explanation != null && explanation.isNotEmpty) ...[
+            const SizedBox(height: MorphicSpace.sm),
+            Text('Why this was generated: $explanation',
+                style: theme.textTheme.bodySmall),
+          ],
+        ],
       ),
     );
   }

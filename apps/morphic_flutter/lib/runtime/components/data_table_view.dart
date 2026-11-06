@@ -283,7 +283,17 @@ class _DataTableViewState extends State<DataTableView> {
             offset: p.offset, rowCount: p.rows.length, totalRows: p.totalRows);
     return Row(
       children: [
-        Expanded(child: Text(label, style: theme.textTheme.labelSmall)),
+        // An explicit semantics node: the range is the pager's state, so it must be
+        // exposed to assistive tech and to UI automation rather than relying on how
+        // Flutter happens to merge sibling text.
+        Expanded(
+          child: Semantics(
+            container: true,
+            explicitChildNodes: true,
+            label: label,
+            child: Text(label, style: theme.textTheme.labelSmall),
+          ),
+        ),
         IconButton(
           onPressed: _offset > 0 && _state != _Load.pending ? _prev : null,
           icon: const Icon(Icons.chevron_left),
