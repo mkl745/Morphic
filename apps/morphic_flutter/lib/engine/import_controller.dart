@@ -15,6 +15,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 
 import 'bridge.dart';
+import 'clipboard_source.dart';
 import 'file_source.dart';
 import 'import_failure.dart';
 import 'import_facts.dart';
@@ -226,6 +227,35 @@ class ImportController extends ChangeNotifier {
       clock: clock,
       formatHint: formatHint,
       extension: file.extension,
+    );
+  }
+
+  /// Import text the user pasted. The bytes are already encoded and size-checked by the
+  /// clipboard source, so there is no reading stage to report — inventing one would be a
+  /// fake progress step.
+  ///
+  /// No extension is offered: a clipboard has no file name, so the contents must decide the
+  /// format. That is the detector's job and it does it better than a guess from context.
+  Future<String?> importClipboard(
+    ClipboardContent content, {
+    String? title,
+    DateTime? now,
+    String? formatHint,
+  }) async {
+    if (isBusy) return null;
+    _begin();
+    final clock = now ?? DateTime.now();
+    final id = 'w_${clock.millisecondsSinceEpoch}';
+    final name = title ?? 'Clipboard text';
+    _lastBytes = content.bytes;
+    _lastTitle = name;
+    _lastExtension = null;
+    return _runImport(
+      content.bytes,
+      title: name,
+      id: id,
+      clock: clock,
+      formatHint: formatHint,
     );
   }
 

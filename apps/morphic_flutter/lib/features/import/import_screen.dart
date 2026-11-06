@@ -12,6 +12,7 @@ import 'package:flutter/material.dart';
 
 import '../../design_system/tokens.dart';
 import '../../engine/bridge_scope.dart';
+import '../../engine/clipboard_source.dart';
 import '../../engine/engine_controller.dart';
 import '../../engine/file_source.dart';
 import '../../engine/import_controller.dart';
@@ -25,10 +26,17 @@ import '../workspace/workspace_args.dart';
 const String kAutoDetect = 'auto';
 
 class ImportScreen extends StatefulWidget {
-  const ImportScreen({super.key, this.fileSource, this.runner});
+  const ImportScreen({
+    super.key,
+    this.fileSource,
+    this.clipboardSource,
+    this.runner,
+  });
 
-  /// Injected in tests. Production uses the SAF picker and a worker isolate.
+  /// Injected in tests. Production uses the SAF picker, the system clipboard and a worker
+  /// isolate.
   final PlatformFileSource? fileSource;
+  final PlatformClipboardSource? clipboardSource;
   final ImportRunner? runner;
 
   @override
@@ -38,9 +46,11 @@ class ImportScreen extends StatefulWidget {
 class _ImportScreenState extends State<ImportScreen> {
   ImportController? _controller;
   PlatformFileSource? _source;
+  PlatformClipboardSource? _clipboard;
   PickedFile? _picked;
   String? _pickError;
   bool _picking = false;
+  bool _readingClipboard = false;
 
   /// Set when an import succeeded but deserves review before the workspace is opened.
   String? _readyId;
@@ -72,6 +82,7 @@ class _ImportScreenState extends State<ImportScreen> {
     _initialized = true;
     final scope = BridgeScope.of(context);
     _source = widget.fileSource ?? const FilePickerSource();
+    _clipboard = widget.clipboardSource ?? const SystemClipboardSource();
     _controller = ImportController(
       bridge: scope.bridge,
       storageRoot: scope.storageRoot,
@@ -123,6 +134,57 @@ class _ImportScreenState extends State<ImportScreen> {
     });
     // Cancelling is a normal outcome, not an error.
     if (file != null) await _import(file);
+  }
+
+  /// Read the clipboard and import whatever text is there. An empty clipboard is reported
+  /// plainly, not as a failure; the format is always detected from the contents because a
+  /// clipboard has no file name to take an extension from.
+  Future<void> _paste() async {
+    final clipboard = _clipboard;
+    final controller = _controller;
+    if (clipboard == null || controller == null || controller.isBusy) return;
+    setState(() {
+      _readingClipboard = true;
+      _pickError = null;
+    });
+    final ClipboardContent? content;
+    try {
+      content = await clipboard.readText();
+    } on ClipboardReadException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _readingClipboard = false;
+        _pickError = e.message;
+      });
+      return;
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _readingClipboard = false;
+        _pickError = 'Morphic was unable to read the clipboard: $e';
+      });
+      return;
+    }
+    if (!mounted) return;
+    if (content == null) {
+      setState(() {
+        _readingClipboard = false;
+        _pickError = 'The clipboard has no text to import. Copy some rows or JSON first.';
+      });
+      return;
+    }
+    setState(() {
+      _readingClipboard = false;
+      // Reuse the file card so a paste and a pick look the same once the bytes are in hand.
+      _picked = PickedFile(
+        name: 'Clipboard text',
+        bytes: content.bytes,
+        sizeBytes: content.byteLength,
+      );
+    });
+    final id = await controller.importClipboard(content, formatHint: _formatHint);
+    if (!mounted) return;
+    _afterImport(id);
   }
 
   Future<void> _import(PickedFile file) async {
@@ -217,6 +279,21 @@ class _ImportScreenState extends State<ImportScreen> {
             onPressed: (busy || _picking) ? null : _pick,
             icon: const Icon(Icons.file_open_outlined),
             label: Text(_picking ? 'Opening picker…' : 'Choose a file'),
+          ),
+          const SizedBox(height: MorphicSpace.sm),
+          OutlinedButton.icon(
+            onPressed: (busy || _picking || _readingClipboard) ? null : _paste,
+            icon: const Icon(Icons.content_paste_outlined),
+            label: Text(
+              _readingClipboard ? 'Reading clipboard…' : 'Paste from clipboard',
+            ),
+          ),
+          const SizedBox(height: MorphicSpace.sm),
+          Text(
+            'Android may show its own notice when an app reads the clipboard. '
+            'The text stays on this device.',
+            style: theme.textTheme.bodySmall
+                ?.copyWith(color: theme.colorScheme.onSurface.withValues(alpha: 0.6)),
           ),
           const SizedBox(height: MorphicSpace.lg),
           DropdownButtonFormField<String>(

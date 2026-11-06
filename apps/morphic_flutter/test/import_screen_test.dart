@@ -13,6 +13,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:morphic_flutter/engine/bridge.dart';
 import 'package:morphic_flutter/engine/bridge_scope.dart';
+import 'package:morphic_flutter/engine/clipboard_source.dart';
 import 'package:morphic_flutter/engine/file_source.dart';
 import 'package:morphic_flutter/features/import/import_screen.dart';
 import 'package:morphic_flutter/features/workspace/workspace_args.dart';
@@ -25,6 +26,7 @@ Widget host({
   required FakeImportRunner runner,
   required void Function(WorkspaceArgs) onWorkspace,
   ScriptedBridge? bridge,
+  PlatformClipboardSource? clipboard,
 }) =>
     MaterialApp(
       initialRoute: '/',
@@ -32,7 +34,11 @@ Widget host({
         '/': (_) => BridgeScope(
               bridge: bridge ?? ScriptedBridge(),
               storageRoot: '/tmp/morphic',
-              child: ImportScreen(fileSource: source, runner: runner),
+              child: ImportScreen(
+                fileSource: source,
+                clipboardSource: clipboard ?? FakeClipboardSource(),
+                runner: runner,
+              ),
             ),
         '/workspace': (context) {
           onWorkspace(
@@ -49,8 +55,22 @@ PickedFile csv() => PickedFile(
       sizeBytes: 2048,
     );
 
+/// A surface tall enough that every card is genuinely on screen.
+///
+/// The import body is a lazy `ListView`, and a finder can match a widget sitting in its
+/// cache extent — built, but not hit-testable. These tests assert content and behaviour, not
+/// layout, so giving them room removes a whole class of false failures. (1.2.4 learned this
+/// the hard way: `scrollUntilVisible` stops at "found", which is not "visible".)
+void useTallSurface(WidgetTester tester) {
+  tester.view.physicalSize = const Size(800, 2400);
+  tester.view.devicePixelRatio = 1.0;
+  addTearDown(tester.view.resetPhysicalSize);
+  addTearDown(tester.view.resetDevicePixelRatio);
+}
+
 void main() {
   testWidgets('offers a picker and states the supported formats', (tester) async {
+    useTallSurface(tester);
     await tester.pumpWidget(host(
       source: FakeFileSource(),
       runner: FakeImportRunner(),
@@ -71,6 +91,7 @@ void main() {
 
   testWidgets('the format defaults to auto-detect and can be overridden',
       (tester) async {
+    useTallSurface(tester);
     final runner = FakeImportRunner();
     await tester.pumpWidget(host(
       source: FakeFileSource(file: csv()),
@@ -98,6 +119,7 @@ void main() {
   });
 
   testWidgets('leaving the format alone sends no hint', (tester) async {
+    useTallSurface(tester);
     final runner = FakeImportRunner();
     await tester.pumpWidget(host(
       source: FakeFileSource(file: csv()),
@@ -116,6 +138,7 @@ void main() {
   });
 
   testWidgets('a running import can be cancelled from the UI', (tester) async {
+    useTallSurface(tester);
     final gate = Completer<void>();
     final bridge = ScriptedBridge()..cancelResult = true;
     await tester.pumpWidget(host(
@@ -142,6 +165,7 @@ void main() {
 
   testWidgets('a cancelled import says nothing was saved, without an error card',
       (tester) async {
+    useTallSurface(tester);
     await tester.pumpWidget(host(
       source: FakeFileSource(file: csv()),
       runner: FakeImportRunner(
@@ -165,13 +189,7 @@ void main() {
 
   testWidgets('quarantined rows keep the user on the report instead of navigating',
       (tester) async {
-    // A tall surface so every card is genuinely on screen. A finder can match a widget
-    // sitting in the ListView's cache extent — built, but not hit-testable — so scrolling
-    // until "found" is not the same as scrolling until visible.
-    tester.view.physicalSize = const Size(800, 2400);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
+    useTallSurface(tester);
     var opened = false;
     await tester.pumpWidget(host(
       source: FakeFileSource(file: csv()),
@@ -214,6 +232,7 @@ void main() {
 
   testWidgets('an engine failure shows human copy and keeps the raw evidence',
       (tester) async {
+    useTallSurface(tester);
     await tester.pumpWidget(host(
       source: FakeFileSource(file: csv()),
       runner: FakeImportRunner(
@@ -238,7 +257,94 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('pasted text is imported without opening the picker', (tester) async {
+    useTallSurface(tester);
+    final source = FakeFileSource(file: csv());
+    final runner = FakeImportRunner();
+    final clipboard = FakeClipboardSource(content: clipboardText('a,b\n1,2\n'));
+    WorkspaceArgs? args;
+    await tester.pumpWidget(host(
+      source: source,
+      runner: runner,
+      clipboard: clipboard,
+      onWorkspace: (a) => args = a,
+    ));
+    await tester.pump();
+
+    await tester.tap(find.text('Paste from clipboard'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+
+    expect(clipboard.calls, 1);
+    expect(source.calls, 0, reason: 'pasting must not open the file picker');
+    expect(runner.lastRequest!.title, 'Clipboard text');
+    expect(runner.lastRequest!.extension, isNull);
+    expect(args, isNotNull, reason: 'a clean paste opens the workspace');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('an empty clipboard is explained, not imported', (tester) async {
+    useTallSurface(tester);
+    final runner = FakeImportRunner();
+    await tester.pumpWidget(host(
+      source: FakeFileSource(),
+      runner: runner,
+      clipboard: FakeClipboardSource(),
+      onWorkspace: (_) {},
+    ));
+    await tester.pump();
+
+    await tester.tap(find.text('Paste from clipboard'));
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(runner.runs, 0);
+    expect(find.textContaining('The clipboard has no text'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a clipboard refusal is shown with its own explanation', (tester) async {
+    useTallSurface(tester);
+    final runner = FakeImportRunner();
+    await tester.pumpWidget(host(
+      source: FakeFileSource(),
+      runner: runner,
+      clipboard: FakeClipboardSource(
+        failure: const ClipboardReadException(
+          'The clipboard holds 90.0 MB of text. This build reads up to 64 MB at once; '
+          'save it to a file and import a smaller part.',
+        ),
+      ),
+      onWorkspace: (_) {},
+    ));
+    await tester.pump();
+
+    await tester.tap(find.text('Paste from clipboard'));
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(runner.runs, 0);
+    expect(find.textContaining('90.0 MB'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('the clipboard button states the platform notice honestly',
+      (tester) async {
+    useTallSurface(tester);
+    await tester.pumpWidget(host(
+      source: FakeFileSource(),
+      runner: FakeImportRunner(),
+      onWorkspace: (_) {},
+    ));
+    await tester.pump();
+    expect(find.text('Paste from clipboard'), findsOneWidget);
+    expect(find.textContaining('Android may show its own notice'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('cancelling the picker is not an error', (tester) async {
+    useTallSurface(tester);
     final source = FakeFileSource();
     final runner = FakeImportRunner();
     await tester.pumpWidget(host(
@@ -260,6 +366,7 @@ void main() {
 
   testWidgets('a successful pick opens the workspace with warnings attached',
       (tester) async {
+    useTallSurface(tester);
     WorkspaceArgs? args;
     final runner = FakeImportRunner(
       warnings: const ["Detected ';' as the delimiter."],
@@ -288,6 +395,7 @@ void main() {
 
   testWidgets('shows the picked file and live engine progress while importing',
       (tester) async {
+    useTallSurface(tester);
     final gate = Completer<void>();
     await tester.pumpWidget(host(
       source: FakeFileSource(file: csv()),
@@ -317,6 +425,7 @@ void main() {
   });
 
   testWidgets('a refused file is explained and can be retried', (tester) async {
+    useTallSurface(tester);
     final source = FakeFileSource(
       failure: const FileSelectionException('That file is 512.0 MB.'),
     );
@@ -340,6 +449,7 @@ void main() {
   });
 
   testWidgets('an engine failure is shown, not navigated past', (tester) async {
+    useTallSurface(tester);
     await tester.pumpWidget(host(
       source: FakeFileSource(file: csv()),
       runner: FakeImportRunner(failure: Exception('ingest: empty file')),

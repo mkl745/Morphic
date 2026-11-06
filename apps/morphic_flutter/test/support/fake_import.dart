@@ -7,7 +7,10 @@
 library;
 
 import 'dart:async';
+import 'dart:convert';
+import 'dart:typed_data';
 
+import 'package:morphic_flutter/engine/clipboard_source.dart';
 import 'package:morphic_flutter/engine/file_source.dart';
 import 'package:morphic_flutter/engine/import_progress.dart';
 import 'package:morphic_flutter/engine/import_runner.dart';
@@ -59,6 +62,27 @@ class FakeImportRunner implements ImportRunner {
     return result;
   }
 }
+
+/// A clipboard that returns a scripted answer, or throws like a platform refusal.
+class FakeClipboardSource implements PlatformClipboardSource {
+  FakeClipboardSource({this.content, this.failure});
+
+  final ClipboardContent? content;
+  final Object? failure;
+
+  int calls = 0;
+
+  @override
+  Future<ClipboardContent?> readText() async {
+    calls++;
+    if (failure != null) throw failure!;
+    return content;
+  }
+}
+
+/// Text content built the way the real source builds it: UTF-8 encoded once.
+ClipboardContent clipboardText(String text) =>
+    ClipboardContent(text: text, bytes: Uint8List.fromList(utf8.encode(text)));
 
 /// A picker that returns a scripted answer, or throws like the real one does.
 class FakeFileSource implements PlatformFileSource {

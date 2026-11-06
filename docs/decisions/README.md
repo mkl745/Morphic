@@ -18,3 +18,5 @@ unless noted. New decisions get the next number; superseded ADRs are kept and li
 | [0011](ADR-0011-github-actions-ci.md) | GitHub Actions: CI, drift gates, signed releases, nightly quality | Accepted |
 | [0012](ADR-0012-dependency-policy.md) | Minimal, pinned, audited dependencies; license allowlist | Accepted |
 | [0013](ADR-0013-design-system-material-foundation.md) | Custom design system on Material 3; hand-built chart painters | Accepted |
+| [0014](ADR-0014-bridge-transport.md) | Keep the typed C ABI for M1.1; flutter_rust_bridge deferred to M1.7 | Accepted |
+| [0015](ADR-0015-share-to-morphic.md) | Share-to-Morphic: share_handler rejected on AGP 9; better_share_handler in M1.6 | Accepted |

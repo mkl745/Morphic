@@ -461,4 +461,70 @@ class ThrowingCancelBridge extends ScriptedBridge {
   @override
   bool cancelImport({required String workspaceId}) =>
       throw const MorphicBridgeException('cancel unavailable');
+
+  group('clipboard import (1.2.5)', () {
+    test('pasted text is imported with no extension to bias detection', () async {
+      final runner = FakeImportRunner();
+      final c = make(runner);
+      final content = clipboardText('a,b\n1,2\n');
+      final id = await c.importClipboard(content, now: DateTime.utc(2026, 11, 6, 12));
+      expect(id, isNotNull);
+      final r = runner.lastRequest!;
+      expect(r.bytes, content.bytes);
+      expect(r.title, 'Clipboard text');
+      expect(r.extension, isNull,
+          reason: 'a clipboard has no file name, so the contents must decide');
+      expect(r.formatHint, isNull);
+      c.dispose();
+    });
+
+    test('a caller-supplied title is honoured', () async {
+      final runner = FakeImportRunner();
+      final c = make(runner);
+      await c.importClipboard(clipboardText('x'), title: 'Pasted logs');
+      expect(runner.lastRequest!.title, 'Pasted logs');
+      c.dispose();
+    });
+
+    test('an explicit format hint still reaches the engine', () async {
+      final runner = FakeImportRunner();
+      final c = make(runner);
+      await c.importClipboard(clipboardText('{"a":1}'), formatHint: 'jsonl');
+      expect(runner.lastRequest!.formatHint, 'jsonl');
+      c.dispose();
+    });
+
+    test('pasted text can be re-imported as another format', () async {
+      final runner = FakeImportRunner();
+      final c = make(runner);
+      await c.importClipboard(clipboardText('a,b\n1,2\n'));
+      expect(c.canReimport, isTrue);
+      await c.reimport(formatHint: 'txt', now: DateTime.utc(2026, 11, 6, 13));
+      expect(runner.lastRequest!.formatHint, 'txt');
+      expect(runner.lastRequest!.extension, isNull);
+      c.dispose();
+    });
+
+    test('pasting while an import runs is refused', () async {
+      final gate = Completer<void>();
+      final runner = FakeImportRunner(gate: gate);
+      final c = make(runner);
+      final first = c.importBytes(Uint8List(1), title: 'First');
+      await Future<void>.delayed(Duration.zero);
+      expect(await c.importClipboard(clipboardText('x')), isNull);
+      expect(runner.runs, 1);
+      gate.complete();
+      await first;
+      c.dispose();
+    });
+
+    test('a paste reports no reading stage, because no reading happens', () async {
+      final c = make(FakeImportRunner(events: kProgressEvents));
+      await c.importClipboard(clipboardText('a,b\n1,2\n'));
+      expect(c.stage, ImportStage.done);
+      expect(c.progress, isNotNull, reason: 'real engine events still arrive');
+      c.dispose();
+    });
+  });
+
 }
