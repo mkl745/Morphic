@@ -1,18 +1,24 @@
 #!/usr/bin/env python3
-"""Tap the 'Run proof of concept' button by parsing a uiautomator UI dump.
+"""Tap a button by text, parsing a uiautomator UI dump.
+
+Defaults to 'Run proof of concept'; pass any label as argv[1] (e.g. "Generate workspace").
+Set MORPHIC_ADB_SERIAL to target a specific device.
 
 Used by the CI Android runtime smoke (ci.yml) to drive the real app on the emulator and
 verify the Rust CSV-profiling proof of concept end to end. Reads /tmp/ui.xml (produced by
 `adb shell uiautomator dump` + `adb pull`), finds the button node (text or content-desc),
 and taps its center. Prints visible nodes if the button is not found, to aid debugging.
 """
+import os
 import re
 import subprocess
 import sys
 import xml.etree.ElementTree as ET
 
 UI_XML = "/tmp/ui.xml"
-BUTTON_TEXT = "Run proof of concept"
+BUTTON_TEXT = sys.argv[1] if len(sys.argv) > 1 else "Run proof of concept"
+_serial = os.environ.get("MORPHIC_ADB_SERIAL")
+ADB = ["adb"] + (["-s", _serial] if _serial else [])
 
 
 def main() -> int:
@@ -45,7 +51,7 @@ def main() -> int:
         return 1
     x1, y1, x2, y2 = map(int, match.groups())
     cx, cy = (x1 + x2) // 2, (y1 + y2) // 2
-    subprocess.run(["adb", "shell", "input", "tap", str(cx), str(cy)], check=True)
+    subprocess.run(ADB + ["shell", "input", "tap", str(cx), str(cy)], check=True)
     print(f"tapped {BUTTON_TEXT!r} at ({cx}, {cy})")
     return 0
 

@@ -47,6 +47,7 @@ if [ -z "$SERIAL" ]; then
   SERIAL="${DEVICES[0]}"
 fi
 ADB=(adb -s "$SERIAL")
+export MORPHIC_ADB_SERIAL="$SERIAL"
 prop() { "${ADB[@]}" shell getprop "$1" 2>/dev/null | tr -d '\r'; }
 
 # --- physical-device assertion (the whole point) -------------------------------
@@ -89,6 +90,16 @@ wait_for_text() { # text, attempts
   done
   return 1
 }
+row_range() { python3 tools/read_row_range.py /tmp/ui.xml 2>/dev/null; }
+wait_for_range() { # attempts
+  local attempts="${1:-20}" i
+  for ((i=0; i<attempts; i++)); do
+    sleep 3
+    ui_dump
+    if [ -n "$(row_range)" ]; then return 0; fi
+  done
+  return 1
+}
 pkg() { "${ADB[@]}" shell pm list packages | grep morphic | head -1 | sed 's/package://' | tr -d '\r'; }
 launch() {
   local p; p="$(pkg)"
@@ -96,7 +107,7 @@ launch() {
   "${ADB[@]}" shell monkey -p "$p" -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1
 }
 
-echo "== 1/7 install =="
+echo "== 1/10 install =="
 if "${ADB[@]}" install -r "$APK" >/tmp/morphic-install.log 2>&1; then
   CHECKS[install]=pass
 else
@@ -105,19 +116,19 @@ fi
 PKG="$(pkg)"
 [ -n "$PKG" ] || die "MORPHIC package not found after install"
 
-echo "== 2/7 cold start =="
+echo "== 2/10 cold start =="
 "${ADB[@]}" logcat -c >/dev/null 2>&1 || true
 "${ADB[@]}" shell am force-stop "$PKG" >/dev/null 2>&1
 if launch && wait_for_text "MORPHIC" 15; then CHECKS[coldStart]=pass; else CHECKS[coldStart]=fail; fi
 
-echo "== 3/7 engine FFI =="
+echo "== 3/10 engine FFI =="
 if wait_for_text "Rust engine connected" 20; then
   CHECKS[engineFfi]=pass
 else
   CHECKS[engineFfi]=fail; note "home never showed the live Rust engine version"
 fi
 
-echo "== 4/7 proof of concept (Rust CSV profiling) =="
+echo "== 4/10 proof of concept (Rust CSV profiling) =="
 if python3 tools/tap_poc.py >/tmp/morphic-tap.log 2>&1 && wait_for_text "Detected schema" 15; then
   CHECKS[poc]=pass
   ROWS="$(grep -o '[0-9]* rows' /tmp/ui.xml 2>/dev/null | head -1)"
@@ -126,7 +137,56 @@ else
   CHECKS[poc]=fail; note "PoC did not render a Rust-computed profile ($(tail -1 /tmp/morphic-tap.log))"
 fi
 
-echo "== 5/7 airplane mode (offline guarantee) =="
+echo "== 5/10 generate workspace (real import -> live runtime) =="
+RANGE_BEFORE=""
+if python3 tools/tap_poc.py "Generate workspace" >/tmp/morphic-tap-gen.log 2>&1 \
+   && wait_for_range 20; then
+  RANGE_BEFORE="$(row_range)"
+  CHECKS[generateWorkspace]=pass
+  note "workspace row range: ${RANGE_BEFORE:-unknown}"
+else
+  CHECKS[generateWorkspace]=fail
+  note "Generate workspace did not reach a paged runtime table ($(tail -1 /tmp/morphic-tap-gen.log))"
+fi
+
+echo "== 6/10 table paging (engine-driven) =="
+if [ "${CHECKS[generateWorkspace]:-fail}" = "pass" ] \
+   && python3 tools/tap_poc.py "Next page" >/tmp/morphic-tap-next.log 2>&1; then
+  sleep 3
+  ui_dump
+  RANGE_AFTER="$(row_range)"
+  if [ -n "$RANGE_AFTER" ] && [ "$RANGE_AFTER" != "$RANGE_BEFORE" ]; then
+    CHECKS[tablePaging]=pass; note "paged: ${RANGE_BEFORE} -> ${RANGE_AFTER}"
+  else
+    CHECKS[tablePaging]=fail
+    note "row range did not advance (${RANGE_BEFORE} -> ${RANGE_AFTER:-none}); a single-page dataset cannot verify paging"
+  fi
+else
+  CHECKS[tablePaging]=fail; note "paging not exercised (needs a workspace with >1 page)"
+fi
+
+echo "== 7/10 save + reopen identical =="
+if [ "${CHECKS[generateWorkspace]:-fail}" = "pass" ]; then
+  "${ADB[@]}" shell am force-stop "$PKG" >/dev/null 2>&1
+  sleep 2
+  if launch && wait_for_text "Sample Logs" 20 \
+     && python3 tools/tap_poc.py "Sample Logs" >/tmp/morphic-tap-reopen.log 2>&1 \
+     && wait_for_range 20; then
+    RANGE_REOPEN="$(row_range)"
+    if [ -n "$RANGE_REOPEN" ] && [ "$RANGE_REOPEN" = "$RANGE_BEFORE" ]; then
+      CHECKS[reopenIdentical]=pass; note "reopened to the first page: ${RANGE_REOPEN}"
+    else
+      CHECKS[reopenIdentical]=fail
+      note "reopen state differs (${RANGE_BEFORE} vs ${RANGE_REOPEN:-none})"
+    fi
+  else
+    CHECKS[reopenIdentical]=fail; note "saved workspace not listed or not openable after process death"
+  fi
+else
+  CHECKS[reopenIdentical]=fail; note "skipped: no workspace was generated"
+fi
+
+echo "== 8/10 airplane mode (offline guarantee) =="
 AIR_OK=0
 if [ "$AIRPLANE_MANUAL" = "1" ]; then
   note "airplane mode attested manually by $TESTER"
@@ -150,7 +210,7 @@ else
   CHECKS[airplaneMode]=fail
 fi
 
-echo "== 6/7 process death & relaunch =="
+echo "== 9/10 process death & relaunch =="
 "${ADB[@]}" shell am force-stop "$PKG" >/dev/null 2>&1
 sleep 2
 if launch && wait_for_text "Rust engine connected" 20; then
@@ -159,7 +219,7 @@ else
   CHECKS[processDeath]=fail
 fi
 
-echo "== 7/7 crash log =="
+echo "== 10/10 crash log =="
 if "${ADB[@]}" logcat -d -s AndroidRuntime:E >/tmp/morphic-crash.log 2>&1 \
    && ! grep -q "FATAL EXCEPTION" /tmp/morphic-crash.log; then
   CHECKS[noCrash]=pass
@@ -168,7 +228,7 @@ else
 fi
 
 RESULT=pass
-for k in install coldStart engineFfi poc airplaneMode processDeath noCrash; do
+for k in install coldStart engineFfi poc generateWorkspace tablePaging reopenIdentical airplaneMode processDeath noCrash; do
   [ "${CHECKS[$k]:-fail}" = "pass" ] || RESULT=fail
 done
 
@@ -183,12 +243,16 @@ TESTER="$TESTER" STAMP="$STAMP" RESULT="$RESULT" NOTES="$NOTES" \
 C_install="${CHECKS[install]:-fail}" C_coldStart="${CHECKS[coldStart]:-fail}" \
 C_engineFfi="${CHECKS[engineFfi]:-fail}" C_poc="${CHECKS[poc]:-fail}" \
 C_airplaneMode="${CHECKS[airplaneMode]:-fail}" C_processDeath="${CHECKS[processDeath]:-fail}" \
+C_generateWorkspace="${CHECKS[generateWorkspace]:-fail}" \
+C_tablePaging="${CHECKS[tablePaging]:-fail}" \
+C_reopenIdentical="${CHECKS[reopenIdentical]:-fail}" \
 C_noCrash="${CHECKS[noCrash]:-fail}" OUT="$OUT" \
 python3 - <<'PY'
 import json, os
 e = os.environ
 checks = {k: e["C_" + k] for k in
-          ("install","coldStart","engineFfi","poc","airplaneMode","processDeath","noCrash")}
+          ("install","coldStart","engineFfi","poc","generateWorkspace","tablePaging",
+           "reopenIdentical","airplaneMode","processDeath","noCrash")}
 doc = {
     "schema": "morphic/device-evidence/1",
     "appVersion": e["APP_VERSION"],
@@ -211,8 +275,8 @@ PY
 
 echo
 echo "================ RESULT: $RESULT ================"
-for k in install coldStart engineFfi poc airplaneMode processDeath noCrash; do
-  printf '  %-14s %s\n' "$k" "${CHECKS[$k]:-fail}"
+for k in install coldStart engineFfi poc generateWorkspace tablePaging reopenIdentical airplaneMode processDeath noCrash; do
+  printf '  %-18s %s\n' "$k" "${CHECKS[$k]:-fail}"
 done
 [ -n "$NOTES" ] && echo "  notes: $NOTES"
 echo "Commit $OUT with the milestone."

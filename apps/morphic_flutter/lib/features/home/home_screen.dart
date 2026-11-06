@@ -204,7 +204,7 @@ class _WorkspaceList extends StatelessWidget {
                       storageRoot: scope.storageRoot,
                     );
                     await engine.open(item['id'] as String);
-                    if (!mounted) return;
+                    if (!context.mounted) return;
                     // A failed open is intentionally still navigated: WorkspaceView renders
                     // the engine's error with a retry instead of a silent no-op tap.
                     Navigator.of(context).pushNamed(

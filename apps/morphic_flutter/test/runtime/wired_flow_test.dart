@@ -4,7 +4,6 @@
 /// drives the real screens: Home → PoC → Generate → workspace, and Home → reopen.
 library;
 
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:morphic_flutter/app.dart';
 import 'package:morphic_flutter/runtime/components/data_table_view.dart';
