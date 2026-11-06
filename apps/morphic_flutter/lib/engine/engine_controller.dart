@@ -148,10 +148,17 @@ class EngineController extends ChangeNotifier {
     }
   }
 
-  /// The value behind a metric card. Null means "no data", which is not the same as zero.
+  /// The value behind a metric card.
+  ///
+  /// A returned `null` means **no data** — a real answer, distinct from zero. A *failure*
+  /// therefore cannot also be signalled by null, so it is recorded and **rethrown**: the
+  /// caller must be able to tell "the engine could not compute this" from "there is nothing
+  /// to compute". Compare [page], where an empty page is a value and null means failure.
   Future<Object?> metric(String componentId) async {
     final id = _workspaceId;
-    if (id == null) return null;
+    if (id == null) {
+      throw StateError('no workspace open');
+    }
     try {
       final res = bridge.metricData(
         storageRoot: storageRoot,
@@ -162,7 +169,7 @@ class EngineController extends ChangeNotifier {
     } catch (e) {
       _error = e.toString();
       notifyListeners();
-      return null;
+      rethrow;
     }
   }
 

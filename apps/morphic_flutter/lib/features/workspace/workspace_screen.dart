@@ -1,18 +1,48 @@
 import 'package:flutter/material.dart';
 
 import '../../design_system/tokens.dart';
+import '../../engine/engine_controller.dart';
+import '../../runtime/component_registry.dart';
+import '../../runtime/workspace_view.dart';
 
-/// Phase 0 workspace view: renders the *generated* workspace document's structure and
-/// the engine's explanations. The full interactive component runtime (tables, charts,
-/// timelines) is M1.1–M1.4; here we prove the schema was generated and persisted.
+/// Workspace host.
+///
+/// With an [EngineController] it renders the **live runtime** (task 1.1.5): real values,
+/// engine-driven paging, explicit loading/empty/error states. Without one it falls back to
+/// the Phase 0 *structural* view, which shows the generated document and its explanations —
+/// still useful for inspecting a saved document, and kept so existing callers keep working.
 class WorkspaceScreen extends StatelessWidget {
-  const WorkspaceScreen({super.key, this.document});
+  const WorkspaceScreen({
+    super.key,
+    this.document,
+    this.controller,
+    this.registry,
+  });
 
-  /// Optional injected document (used by tests); otherwise read from route arguments.
+  /// Optional injected document (structural view / tests); otherwise read from route args.
   final Map<String, dynamic>? document;
+
+  /// When present, the interactive runtime is used instead of the structural view.
+  final EngineController? controller;
+  final ComponentRegistry? registry;
 
   @override
   Widget build(BuildContext context) {
+    final ctl = controller;
+    if (ctl != null) {
+      final ws = ctl.doc?['workspace'] as Map<String, dynamic>?;
+      return Scaffold(
+        appBar: AppBar(title: Text(ws?['title'] as String? ?? 'Workspace')),
+        body: WorkspaceView(
+          controller: ctl,
+          registry: registry ?? ComponentRegistry(),
+          onRetry: ctl.workspaceId == null
+              ? null
+              : () => ctl.open(ctl.workspaceId!),
+        ),
+      );
+    }
+
     final doc =
         document ?? ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
     final ws = doc?['workspace'] as Map<String, dynamic>?;
