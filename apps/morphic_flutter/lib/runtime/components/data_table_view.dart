@@ -265,6 +265,7 @@ class _DataTableViewState extends State<DataTableView> {
                     row: row,
                     widthOf: _columnWidth,
                     striped: i.isOdd,
+                    rowNumber: page.offset + i + 1,
                   );
                 },
               ),
@@ -349,6 +350,7 @@ class _DataRow extends StatelessWidget {
     required this.row,
     required this.widthOf,
     required this.striped,
+    required this.rowNumber,
   });
 
   final List<String> columns;
@@ -356,36 +358,49 @@ class _DataRow extends StatelessWidget {
   final double Function(String) widthOf;
   final bool striped;
 
+  /// Absolute row number in the dataset, not the index within this page.
+  final int rowNumber;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isNullStyle = theme.textTheme.bodySmall
         ?.copyWith(color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.55));
-    return ColoredBox(
-      color: striped
-          ? theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.35)
-          : const Color(0x00000000),
-      child: Row(
-        children: [
-          for (var i = 0; i < columns.length; i++)
-            SizedBox(
-              width: widthOf(columns[i]),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: MorphicSpace.sm),
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    formatCell(i < row.length ? row[i] : null),
-                    overflow: TextOverflow.ellipsis,
-                    maxLines: 1,
-                    style: (i < row.length && row[i] == null)
-                        ? isNullStyle
-                        : theme.textTheme.bodySmall,
+    final values = [
+      for (var i = 0; i < columns.length; i++)
+        i < row.length ? row[i] : null,
+    ];
+
+    // A row is one semantic unit with a stable identity: assistive tech reads
+    // "Row 12: eu, 10, —" rather than five disconnected cells, and UI automation can tell a
+    // data row apart from a header or a metric card.
+    return Semantics(
+      container: true,
+      label: 'Row $rowNumber: ${values.map(formatCell).join(', ')}',
+      child: ColoredBox(
+        color: striped
+            ? theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.35)
+            : const Color(0x00000000),
+        child: Row(
+          children: [
+            for (var i = 0; i < columns.length; i++)
+              SizedBox(
+                width: widthOf(columns[i]),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: MorphicSpace.sm),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      formatCell(values[i]),
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 1,
+                      style: values[i] == null ? isNullStyle : theme.textTheme.bodySmall,
+                    ),
                   ),
                 ),
               ),
-            ),
-        ],
+          ],
+        ),
       ),
     );
   }

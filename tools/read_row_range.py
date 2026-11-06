@@ -21,15 +21,21 @@ RANGE = re.compile(r"([\d,]+)\s*[-\u2010-\u2015]\s*([\d,]+)\s+of\s+([\d,]+)")
 EMPTY = re.compile(r"\b0\s+of\s+([\d,]+)")
 
 
+ROW = re.compile(r"Row\s+(\d+):\s*(.*)", re.DOTALL)
+
+
 def first_data_row(tree) -> str:
-    """The first node that looks like a rendered data row (multi-cell, not a header)."""
+    """The first explicitly-labelled data row.
+
+    The runtime labels rows `Row N: a, b, c`. Matching that identity — rather than guessing
+    from line breaks and digits — is what keeps a metric card or a merged header from being
+    mistaken for table data.
+    """
     for node in tree.iter("node"):
         for attr in ("text", "content-desc"):
-            raw = node.get(attr, "")
-            # Data rows carry values (digits); a merged header row does not.
-            if (raw.count("\n") >= 2 and any(c.isdigit() for c in raw)
-                    and not RANGE.search(raw)):
-                return " ".join(raw.split())[:200]
+            m = ROW.search(node.get(attr, ""))
+            if m:
+                return f"Row {m.group(1)}: " + " ".join(m.group(2).split())[:200]
     return ""
 
 

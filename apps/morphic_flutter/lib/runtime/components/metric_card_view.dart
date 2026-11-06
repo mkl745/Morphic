@@ -87,7 +87,17 @@ class _MetricCardViewState extends State<MetricCardView> {
             ],
             if (detail != null && detail.isNotEmpty) ...[
               const SizedBox(height: MorphicSpace.sm),
-              Text(detail, style: theme.textTheme.bodySmall),
+              // Clamped so several metrics plus chart placeholders cannot push the data
+              // table off a phone screen. The full rationale stays one long-press away.
+              Tooltip(
+                message: detail,
+                child: Text(
+                  detail,
+                  style: theme.textTheme.bodySmall,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
             ],
           ],
         ),
