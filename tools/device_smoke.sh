@@ -91,12 +91,16 @@ wait_for_text() { # text, attempts
   return 1
 }
 row_range() { python3 tools/read_row_range.py /tmp/ui.xml 2>/dev/null; }
+scroll_down() { "${ADB[@]}" shell input swipe 540 1600 540 500 300 >/dev/null 2>&1; }
 wait_for_range() { # attempts
+  # The table is below the metric cards and chart placeholders, and uiautomator only dumps
+  # ON-SCREEN nodes, so scroll until the pager footer is actually visible.
   local attempts="${1:-20}" i
   for ((i=0; i<attempts; i++)); do
-    sleep 3
+    sleep 2
     ui_dump
     if [ -n "$(row_range)" ]; then return 0; fi
+    if (( i % 2 == 1 )); then scroll_down; fi
   done
   return 1
 }
@@ -147,6 +151,7 @@ if python3 tools/tap_poc.py "Generate workspace" >/tmp/morphic-tap-gen.log 2>&1 
 else
   CHECKS[generateWorkspace]=fail
   note "Generate workspace did not reach a paged runtime table ($(tail -1 /tmp/morphic-tap-gen.log))"
+  python3 tools/ui_texts.py /tmp/ui.xml --limit 25 || true
 fi
 
 echo "== 6/10 table paging (engine-driven) =="

@@ -322,14 +322,21 @@ jobs:
             echo "=== generate workspace: real import must reach the live runtime ==="
             python3 tools/tap_poc.py "Generate workspace"
             GEN=0
-            for i in $(seq 1 20); do
-              sleep 3
+            # The table sits below the metric cards and chart placeholders, and uiautomator
+            # only dumps ON-SCREEN nodes — so scroll until the pager footer is visible.
+            for i in $(seq 1 14); do
+              sleep 2
               adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1
               adb pull /sdcard/ui.xml /tmp/ui.xml >/dev/null 2>&1
               if [ -n "$(python3 tools/read_row_range.py /tmp/ui.xml)" ]; then GEN=1; break; fi
+              if [ $((i % 2)) = 0 ]; then
+                adb shell input swipe 540 1600 540 500 300 >/dev/null 2>&1
+              fi
             done
             if [ "$GEN" != "1" ]; then
-              echo "RUNTIME_MISSING"; echo "--- UI dump ---"; head -c 3000 /tmp/ui.xml; exit 1
+              echo "RUNTIME_MISSING"; echo "--- visible nodes ---"
+              python3 tools/ui_texts.py /tmp/ui.xml || head -c 2000 /tmp/ui.xml
+              exit 1
             fi
             BEFORE="$(python3 tools/read_row_range.py /tmp/ui.xml)"
             echo "RUNTIME_OK: live paged table rendered, range $BEFORE"
@@ -346,7 +353,9 @@ jobs:
             if [ "$PAGE" = "1" ]; then
               echo "PAGING_OK: $BEFORE -> $AFTER"
             else
-              echo "PAGING_MISSING"; echo "--- UI dump ---"; head -c 3000 /tmp/ui.xml; exit 1
+              echo "PAGING_MISSING"; echo "--- visible nodes ---"
+              python3 tools/ui_texts.py /tmp/ui.xml || head -c 2000 /tmp/ui.xml
+              exit 1
             fi
             echo "NOTE: emulator evidence only — does not satisfy the physical-device rule."
           } > /tmp/emu_test.log 2>&1
