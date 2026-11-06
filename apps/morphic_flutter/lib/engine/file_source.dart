@@ -75,7 +75,10 @@ class FilePickerSource implements PlatformFileSource {
   Future<PickedFile?> pick() async {
     final FilePickerResult? result;
     try {
-      result = await FilePicker.platform.pickFiles(
+      // file_picker 11 replaced the `FilePicker.platform` singleton with static methods
+      // on an `abstract final class`. Pinned here so a v12 change fails loudly at this one
+      // call site rather than somewhere in the UI.
+      result = await FilePicker.pickFiles(
         dialogTitle: 'Choose a CSV file',
         type: FileType.custom,
         allowedExtensions: extensions,
