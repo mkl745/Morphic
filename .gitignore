@@ -41,6 +41,10 @@ apps/morphic_flutter/ios/Runner/GeneratedPluginRegistrant.*
 *.dylib
 *.dll
 
+# Python (tooling)
+__pycache__/
+*.pyc
+
 # OS / editor
 .DS_Store
 Thumbs.db
