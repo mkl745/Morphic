@@ -911,7 +911,10 @@ mod tests {
     fn escaped_quotes_and_backslashes_survive_the_scan() {
         let (t, _) = parse(r#"[{"a":"he said \"hi, there\" [ok]"},{"a":"trail\\"}]"#);
         assert_eq!(t.row_count, 2);
-        assert_eq!(texts(&t, "a"), vec!["he said \"hi, there\" [ok]", "trail\\"]);
+        assert_eq!(
+            texts(&t, "a"),
+            vec!["he said \"hi, there\" [ok]", "trail\\"]
+        );
     }
 
     #[test]
