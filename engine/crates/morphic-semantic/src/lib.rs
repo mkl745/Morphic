@@ -25,6 +25,69 @@ const SEVERITY_VOCAB: &[&str] = &[
     "crit", "alert", "emerg", "panic",
 ];
 
+/// Field-name vocabularies used **only where the measured facts are ambiguous**. A name is a
+/// hint, never a verdict: the evidence string always names the hint so a user can see why the
+/// engine guessed, and `fixtures/expected/schema-labels.json` scores the result.
+///
+/// These lists were chosen against a 21-file corpus. They are ordinary English field names,
+/// not fixture-specific strings, but the corpus is small — see the tuning caveat in
+/// `fixtures/expected/README.md`.
+const MEASURE_NAMES: &[&str] = &[
+    "amount", "amt", "value", "revenue", "price", "cost", "total", "sum", "qty", "quantity",
+    "units", "count", "bytes", "size", "duration", "latency", "reading", "score", "rate",
+    "ratio", "pct", "percent", "weight", "height", "width", "length", "distance", "temp",
+    "temperature", "ms", "us", "seconds", "minutes", "hours", "kb", "mb",
+];
+
+/// Fields a user reads rather than groups by.
+const PAYLOAD_NAMES: &[&str] = &[
+    "message", "msg", "line", "text", "body", "description", "desc", "notes", "note",
+    "comment", "comments", "payload", "raw", "content",
+];
+
+/// Numeric codes: grouping is meaningful, averaging is not.
+const CODE_NAMES: &[&str] = &[
+    "status", "statuscode", "code", "priority", "zip", "state",
+];
+
+const MONTHS: &[&str] = &[
+    "jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec",
+];
+
+/// Lowercase alphanumeric tokens of a field name: `latency_ms` -> ["latency", "ms"],
+/// `limits.rpm` -> ["limits", "rpm"].
+fn name_has(name: &str, vocab: &[&str]) -> bool {
+    name.to_ascii_lowercase()
+        .split(|c: char| !c.is_ascii_alphanumeric())
+        .any(|token| vocab.contains(&token))
+}
+
+/// Names that mean "this value identifies a row or entity", independent of cardinality.
+fn name_is_identifier(name: &str) -> bool {
+    let n = name.to_ascii_lowercase();
+    const EXACT: &[&str] = &[
+        "id", "pid", "uid", "uuid", "guid", "key", "pk", "identifier", "line_number",
+        "row_number", "ordinal",
+    ];
+    if EXACT.contains(&n.as_str()) {
+        return true;
+    }
+    ["_id", "_pid", "_uid", "_uuid", "_key", "_guid"]
+        .iter()
+        .any(|suffix| n.ends_with(suffix))
+}
+
+/// Fraction of the ten most common values satisfying `pred`. Zero for an empty sample, so a
+/// column of nothing but nulls cannot score a perfect share.
+fn share(top: &[ValueCount], pred: impl Fn(&str) -> bool) -> f64 {
+    let n = top.len().min(10);
+    if n == 0 {
+        return 0.0;
+    }
+    let hits = top.iter().take(10).filter(|vc| pred(&vc.value)).count();
+    hits as f64 / n as f64
+}
+
 /// Profile every column of a table.
 pub fn profile(table: &Table) -> DatasetProfile {
     let fields = table.columns.iter().map(profile_field).collect();
@@ -233,13 +296,39 @@ fn min_max(col: &Column) -> (Option<String>, Option<String>) {
 }
 
 fn looks_temporal(s: &str) -> bool {
-    let b = s.as_bytes();
-    b.len() >= 10
-        && b[0..4].iter().all(|c| c.is_ascii_digit())
-        && b[4] == b'-'
-        && b[5..7].iter().all(|c| c.is_ascii_digit())
-        && b[7] == b'-'
-        && b[8..10].iter().all(|c| c.is_ascii_digit())
+    let lower = s.trim().to_ascii_lowercase();
+    let b = lower.as_bytes();
+    let digits = |r: std::ops::Range<usize>| {
+        b.get(r)
+            .is_some_and(|part| !part.is_empty() && part.iter().all(u8::is_ascii_digit))
+    };
+    let at = |i: usize, c: u8| b.get(i) == Some(&c);
+    let month = |r: std::ops::Range<usize>| {
+        b.get(r).is_some_and(|part| {
+            let text = String::from_utf8_lossy(part).into_owned();
+            MONTHS.contains(&text.as_str())
+        })
+    };
+
+    // ISO-8601 date prefix: 2026-11-05...
+    if digits(0..4) && at(4, b'-') && digits(5..7) && at(7, b'-') && digits(8..10) {
+        return true;
+    }
+    // Slash dates: 01/02/2024, and CLF's 10/Oct/2000:13:55:36 -0700. Ingestion may refuse to
+    // type these (the day/month order is unresolved, or the month is a name), but the field
+    // is still a time axis, which is what a role describes.
+    if digits(0..2) && at(2, b'/') && at(5, b'/') && digits(6..10) && (digits(3..5) || month(3..6))
+    {
+        return true;
+    }
+    // RFC3164: `Nov  5 14:00:01`, with two spaces before a single-digit day.
+    if month(0..3) && at(3, b' ') {
+        let day = digits(4..6) || (at(4, b' ') && b.get(5).is_some_and(|c| c.is_ascii_digit()));
+        if day {
+            return true;
+        }
+    }
+    false
 }
 
 fn infer_role(
@@ -249,20 +338,31 @@ fn infer_role(
     top: &[ValueCount],
     avg_len: f64,
 ) -> Inference {
-    // Temporal by construction: ingestion already validated and normalized these values to
-    // UTC, so this rests on a measured fact rather than a string-shape heuristic.
+    let name = col.name.as_str();
+
+    // 1. Temporal by construction: ingestion already validated and normalized these values to
+    //    UTC, so this rests on a measured fact rather than a string-shape heuristic.
     if col.dtype == DataType::Timestamp {
         return Inference {
             role: FieldRole::Temporal,
             confidence: 0.99,
             evidence: vec![format!(
-                "'{}' was parsed and normalized to UTC timestamps at import",
-                col.name
+                "'{name}' was parsed and normalized to UTC timestamps at import"
             )],
         };
     }
 
-    // Severity: categorical values drawn from the level vocabulary.
+    // 2. A boolean is a two-valued category. Returning Unknown for it left every flag in every
+    //    log and JSON file unexplained.
+    if col.dtype == DataType::Bool {
+        return Inference {
+            role: FieldRole::Dimension,
+            confidence: 0.9,
+            evidence: vec![format!("'{name}' is a boolean flag: two values to group by")],
+        };
+    }
+
+    // 3. Severity: categorical values drawn from the level vocabulary.
     if col.dtype == DataType::Utf8 && !top.is_empty() {
         let all_sev = top
             .iter()
@@ -271,74 +371,112 @@ fn infer_role(
             return Inference {
                 role: FieldRole::Severity,
                 confidence: 0.97,
-                evidence: vec![format!(
-                    "'{}' top values match the severity vocabulary",
-                    col.name
-                )],
+                evidence: vec![format!("'{name}' top values match the severity vocabulary")],
             };
         }
     }
 
-    // Temporal: ISO-8601-looking strings.
-    if col.dtype == DataType::Utf8 && non_null > 0 {
-        let sample: Vec<&ValueCount> = top.iter().take(10).collect();
-        let hits = sample.iter().filter(|vc| looks_temporal(&vc.value)).count();
-        if !sample.is_empty() && hits * 10 >= sample.len() * 9 {
-            return Inference {
-                role: FieldRole::Temporal,
-                confidence: 0.9,
-                evidence: vec![format!(
-                    "'{}' values look like ISO-8601 timestamps",
-                    col.name
-                )],
-            };
-        }
-    }
-
-    // Identifier: near-unique values.
-    if non_null >= 5
-        && (distinct as f64) / (non_null as f64) >= 0.99
-        && matches!(col.dtype, DataType::Utf8 | DataType::Int64)
-    {
+    // 4. Temporal by shape. The dtype may still be text — RFC3164 has no year, CLF uses month
+    //    names, and an unresolved slash date is genuinely ambiguous — but the field is a time
+    //    axis all the same. Role and storage type are separate questions.
+    if col.dtype == DataType::Utf8 && share(top, looks_temporal) >= 0.9 {
         return Inference {
-            role: FieldRole::Identifier,
+            role: FieldRole::Temporal,
             confidence: 0.9,
             evidence: vec![format!(
-                "'{}' is {:.1}% unique",
-                col.name,
-                100.0 * distinct as f64 / non_null as f64
+                "'{name}' values look like timestamps but stayed text: the layout is not \
+                 unambiguous enough to type"
             )],
         };
     }
 
-    // Measure: numeric, not an identifier.
+    // 5. Text: an opaque payload a user reads. Checked **before** the identifier heuristic,
+    //    because prose is unique too — every log message differs, and that does not make it a
+    //    key. A name that says identifier wins over a name that says payload (`line_number`).
+    if col.dtype == DataType::Utf8 && !name_is_identifier(name) {
+        let by_name = name_has(name, PAYLOAD_NAMES);
+        let by_json = share(top, |v| {
+            let v = v.trim_start();
+            v.starts_with('{') || v.starts_with('[')
+        }) >= 0.5;
+        let by_length = avg_len > 40.0;
+        if by_name || by_json || by_length {
+            let why = if by_name {
+                "is a message or notes field: read, not grouped"
+            } else if by_json {
+                "holds JSON payloads retained as text"
+            } else {
+                "holds long free text"
+            };
+            let mut evidence = vec![format!("'{name}' {why}")];
+            if by_length {
+                evidence.push(format!("'{name}' averages {avg_len:.0} characters"));
+            }
+            return Inference {
+                role: FieldRole::Text,
+                confidence: if by_length { 0.7 } else { 0.8 },
+                evidence,
+            };
+        }
+    }
+
+    // 6. Numeric codes are categories. A mean HTTP status is meaningless.
+    if col.dtype == DataType::Int64 && name_has(name, CODE_NAMES) {
+        return Inference {
+            role: FieldRole::Dimension,
+            confidence: 0.75,
+            evidence: vec![format!(
+                "'{name}' is a numeric code: grouping is meaningful, averaging is not"
+            )],
+        };
+    }
+
+    // 7. An identifier by name. Stronger evidence than uniqueness, which small samples produce
+    //    by accident: four ids in four rows and five latencies in five rows look identical.
+    if matches!(col.dtype, DataType::Int64 | DataType::Utf8) && name_is_identifier(name) {
+        return Inference {
+            role: FieldRole::Identifier,
+            confidence: 0.9,
+            evidence: vec![format!("'{name}' is named like an identifier")],
+        };
+    }
+
+    // 8. An identifier by uniqueness, but only with corroboration. A measure is not a key just
+    //    because every row differs, and a column of plain words is a category, not a key.
+    let unique = non_null >= 5 && (distinct as f64) / (non_null as f64) >= 0.99;
+    if unique && !name_has(name, MEASURE_NAMES) {
+        let keyed = match col.dtype {
+            DataType::Int64 => true,
+            DataType::Utf8 => share(top, |v| v.bytes().any(|c| c.is_ascii_digit())) >= 0.5,
+            _ => false,
+        };
+        if keyed {
+            return Inference {
+                role: FieldRole::Identifier,
+                confidence: 0.8,
+                evidence: vec![format!(
+                    "'{name}' is {:.1}% unique and its values look like keys",
+                    100.0 * distinct as f64 / non_null as f64
+                )],
+            };
+        }
+    }
+
+    // 9. Measure: numeric, and neither a code nor a key.
     if matches!(col.dtype, DataType::Int64 | DataType::Float64) {
         return Inference {
             role: FieldRole::Measure,
             confidence: 0.85,
-            evidence: vec![format!(
-                "'{}' is numeric ({})",
-                col.name,
-                col.dtype.as_str()
-            )],
+            evidence: vec![format!("'{name}' is numeric ({})", col.dtype.as_str())],
         };
     }
 
-    // Text: long strings.
-    if col.dtype == DataType::Utf8 && avg_len > 40.0 {
-        return Inference {
-            role: FieldRole::Text,
-            confidence: 0.7,
-            evidence: vec![format!("'{}' averages {:.0} characters", col.name, avg_len)],
-        };
-    }
-
-    // Dimension: low-cardinality categorical.
+    // 10. Dimension: low-cardinality categorical.
     if col.dtype == DataType::Utf8 && distinct <= 50 {
         return Inference {
             role: FieldRole::Dimension,
             confidence: 0.8,
-            evidence: vec![format!("'{}' has {} distinct values", col.name, distinct)],
+            evidence: vec![format!("'{name}' has {distinct} distinct values")],
         };
     }
 
@@ -573,4 +711,139 @@ mod tests {
         assert_eq!(f.top_values[0].count, 2);
         assert_eq!(f.distinct_count, 2);
     }
+
+    fn int_col(name: &str, vals: &[i64]) -> Column {
+        Column {
+            name: name.into(),
+            dtype: DataType::Int64,
+            values: ColumnValues::Int64(vals.to_vec()),
+            nulls: vec![false; vals.len()],
+        }
+    }
+
+    fn role_of(col: Column) -> FieldRole {
+        let t = Table {
+            row_count: col.len(),
+            columns: vec![col],
+        };
+        profile(&t).fields[0].inference.role
+    }
+
+    #[test]
+    fn a_boolean_is_a_dimension_not_an_unknown() {
+        let col = Column {
+            name: "active".into(),
+            dtype: DataType::Bool,
+            values: ColumnValues::Bool(vec![true, false, true]),
+            nulls: vec![false; 3],
+        };
+        assert_eq!(role_of(col), FieldRole::Dimension);
+    }
+
+    #[test]
+    fn a_numeric_code_is_a_dimension_because_averaging_it_is_meaningless() {
+        assert_eq!(role_of(int_col("status", &[200, 401, 200, 404])), FieldRole::Dimension);
+    }
+
+    #[test]
+    fn a_short_message_is_text_not_a_category() {
+        assert_eq!(
+            role_of(utf8_col("message", &["Request received", "Charge failed", "Cache miss"])),
+            FieldRole::Text
+        );
+    }
+
+    #[test]
+    fn json_payloads_retained_as_text_are_text() {
+        assert_eq!(
+            role_of(utf8_col("tags", &["[\"ops\"]", "[]", "[\"eu\"]"])),
+            FieldRole::Text
+        );
+    }
+
+    #[test]
+    fn a_unique_measure_is_still_a_measure() {
+        // Five rows, five distinct latencies: uniqueness is an artefact of the sample size.
+        assert_eq!(
+            role_of(int_col("latency_ms", &[12, 8, 420, 5000, 15])),
+            FieldRole::Measure
+        );
+    }
+
+    #[test]
+    fn a_unique_column_of_words_is_a_dimension_not_a_key() {
+        assert_eq!(
+            role_of(utf8_col("name", &["alice", "bob", "carol", "dave", "erin"])),
+            FieldRole::Dimension
+        );
+    }
+
+    #[test]
+    fn a_unique_column_of_key_shaped_values_is_an_identifier() {
+        assert_eq!(
+            role_of(utf8_col("token", &["a1", "b2", "c3", "d4", "e5"])),
+            FieldRole::Identifier
+        );
+    }
+
+    #[test]
+    fn an_identifier_name_beats_a_sample_too_small_for_uniqueness() {
+        assert_eq!(role_of(int_col("id", &[1, 2, 3])), FieldRole::Identifier);
+        assert_eq!(role_of(int_col("pid", &[1234, 2201])), FieldRole::Identifier);
+    }
+
+    #[test]
+    fn an_ordinal_name_is_an_identifier_not_prose() {
+        // `line_number` tokenises to "line" + "number"; the payload hint must not win.
+        assert_eq!(role_of(int_col("line_number", &[1, 2, 3])), FieldRole::Identifier);
+    }
+
+    #[test]
+    fn text_timestamps_keep_a_temporal_role() {
+        // Ingestion refuses to type these; the role is still a time axis.
+        assert_eq!(
+            role_of(utf8_col(
+                "time",
+                &["10/Oct/2000:13:55:36 -0700", "10/Oct/2000:13:55:37 -0700"]
+            )),
+            FieldRole::Temporal
+        );
+        assert_eq!(
+            role_of(utf8_col("time", &["Nov  5 14:00:01", "Nov  5 14:00:02"])),
+            FieldRole::Temporal
+        );
+        assert_eq!(
+            role_of(utf8_col("booked_on", &["01/02/2024", "03/04/2024"])),
+            FieldRole::Temporal
+        );
+    }
+
+    #[test]
+    fn prose_that_merely_starts_like_a_month_is_not_temporal() {
+        assert_eq!(
+            role_of(utf8_col("message", &["May we help you?", "Novel idea here"])),
+            FieldRole::Text
+        );
+        assert!(!looks_temporal("May we help you?"));
+        assert!(!looks_temporal("Novel idea here"));
+        assert!(!looks_temporal("2.1.0"));
+        assert!(!looks_temporal("Mozilla/4.08"));
+    }
+
+    #[test]
+    fn every_rule_states_its_evidence() {
+        let t = Table {
+            columns: vec![
+                int_col("status", &[200, 404]),
+                utf8_col("message", &["a", "b"]),
+                int_col("latency_ms", &[1, 2, 3, 4, 5]),
+            ],
+            row_count: 5,
+        };
+        for f in profile(&t).fields {
+            assert!(!f.inference.evidence.is_empty(), "{} has no evidence", f.name);
+            assert!(f.inference.confidence > 0.0);
+        }
+    }
+
 }

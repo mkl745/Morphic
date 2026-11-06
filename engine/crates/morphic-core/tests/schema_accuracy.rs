@@ -1,9 +1,9 @@
 //! AT-02 — schema detection accuracy, scored against hand-written ground truth.
 //!
-//! The claim in `docs/roadmap/mvp-acceptance-tests.md` is ">= 95% per-field type accuracy and
-//! >= 85% role accuracy across a labelled corpus of >= 20 valid files, with every inference
-//! carrying confidence and evidence". Until this file existed that claim was unmeasurable:
-//! there were labels in prose (`fixtures/manifest.json`'s `expect` strings) and no scorer.
+//! The claim in `docs/roadmap/mvp-acceptance-tests.md` is at least 95% per-field type accuracy
+//! and at least 85% role accuracy across a labelled corpus of 20 or more valid files, with
+//! every inference carrying confidence and evidence. Until this file existed that claim was
+//! unmeasurable: there were labels in prose (the manifest's `expect` strings) and no scorer.
 //!
 //! Ground truth lives in `fixtures/expected/schema-labels.json` and is authored **from the
 //! file contents, never from the profiler's output** — scoring a program against its own

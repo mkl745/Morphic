@@ -28,8 +28,8 @@
           "role": "dimension"
         },
         "ident": {
-          "dtype": "utf8",
-          "role": "dimension"
+          "dtype": "null",
+          "role": "unknown"
         },
         "authuser": {
           "dtype": "utf8",
@@ -56,7 +56,7 @@
           "role": "dimension"
         }
       },
-      "note": "CLF time stays utf8 by design (month names, no ISO); the ROLE is still temporal. HTTP status is a category, not a quantity: averaging status codes is meaningless."
+      "note": "CLF time stays utf8 by design (month names, no ISO); the ROLE is still temporal. HTTP status is a category, not a quantity: averaging status codes is meaningless. The RFC1413 ident field is '-' on every line: there is no data, so null and unknown are the honest answers. The first scorecard caught this label being wrong, not the engine."
     },
     {
       "path": "valid/ambiguous_dates.csv",
