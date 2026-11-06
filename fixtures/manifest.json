@@ -25,6 +25,8 @@
     {"path": "valid/syslog.log", "format": "log", "expect": "syslog pattern; host/service/pid extracted; PRI 34 -> FATAL; time stays text (no year) with a warning"},
     {"path": "valid/access.log", "format": "log", "expect": "common-log combined; status/bytes int64; '-' becomes null; time stays text (month names) with a warning"},
     {"path": "valid/logfmt.log", "format": "log", "expect": "logfmt pattern; time/level/service/message from aliases; latency_ms int64; retry bool with nulls"},
-    {"path": "malformed/mixed.log", "format": "log", "expect": "iso-level below the 70% confidence bar; 2 unmatched lines kept verbatim in message; never crashes"}
+    {"path": "malformed/mixed.log", "format": "log", "expect": "iso-level below the 70% confidence bar; 2 unmatched lines kept verbatim in message; never crashes"},
+    {"path": "valid/sales.csv", "format": "csv", "expect": "12 rows; order_id identifier, ordered_at timestamp, 3 measures, notes text; AT-02 product-shaped case"},
+    {"path": "valid/sensors.json", "format": "json", "expect": "6 rows; site.room/site.building flattened; ok bool; taken_at timestamp"}
   ]
 }

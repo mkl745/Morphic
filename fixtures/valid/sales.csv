@@ -1,0 +1,13 @@
+order_id,ordered_at,region,channel,units,unit_price,revenue,sales_rep,notes
+1001,2026-03-01T09:15:00Z,Europe,Web,3,19.50,58.50,Ana Ferreira,"Bulk order, expedited shipping requested"
+1002,2026-03-01T11:02:00Z,APAC,Partner,12,49.99,599.88,Ben Okafor,Renewal of the annual support contract
+1003,2026-03-02T08:41:00Z,Europe,Retail,1,899.00,899.00,Chen Wei,"Replacement under warranty, no charge"
+1004,2026-03-02T14:20:00Z,LATAM,Web,5,129.99,649.95,Dana Levi,First order from a newly opened account
+1005,2026-03-03T07:55:00Z,Europe,Web,2,19.50,39.00,Ana Ferreira,Customer asked for an invoice by post
+1006,2026-03-03T16:30:00Z,MEA,Partner,8,249.00,1992.00,Emil Novak,Discount approved by the regional lead
+1007,2026-03-04T10:10:00Z,APAC,Retail,3,49.99,149.97,Farah Haddad,Ships together with the maintenance kit
+1008,2026-03-04T12:45:00Z,LATAM,Web,20,19.50,390.00,Gus Moreau,Warehouse asked to split the delivery
+1009,2026-03-05T09:05:00Z,Europe,Partner,4,1299.50,5198.00,Hana Sato,Contract signed after the on-site demo
+1010,2026-03-05T13:22:00Z,MEA,Web,1,249.00,249.00,Emil Novak,Customer requested a callback tomorrow
+1011,2026-03-06T08:30:00Z,APAC,Web,6,49.99,299.94,Ben Okafor,"Second order this month, same config"
+1012,2026-03-06T15:48:00Z,LATAM,Retail,2,899.00,1798.00,Dana Levi,Return pending for one damaged unit

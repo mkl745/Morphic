@@ -1,0 +1,520 @@
+{
+  "schema": "morphic/schema-labels/1",
+  "purpose": "AT-02 ground truth: per-field dtype and semantic role for every valid fixture.",
+  "labelledBy": "hand, from the file contents \u2014 never from the profiler's output",
+  "rules": [
+    "dtype is what the bytes justify, not what would be convenient. A date whose day/month order is unresolved is utf8; a resolved one is timestamp.",
+    "role is what the field MEANS. A utf8 column of CLF timestamps is still temporal; an int column of HTTP status codes is a dimension, because averaging it is meaningless.",
+    "identifier means the value identifies a row/entity (ids, pids, ordinals). Uniqueness in a small sample is not evidence of identity: latency_ms and qty are measures.",
+    "text means an opaque payload a user reads, not a category a user groups by.",
+    "A boolean is a two-valued dimension.",
+    "Where a label is genuinely debatable the file carries a note saying why. These labels are meant to be argued with; changing one is a reviewable edit, not a silent fix."
+  ],
+  "targets": {
+    "dtypeAccuracy": 0.95,
+    "roleAccuracy": 0.85
+  },
+  "files": [
+    {
+      "path": "valid/access.log",
+      "format": "log",
+      "fields": {
+        "time": {
+          "dtype": "utf8",
+          "role": "temporal"
+        },
+        "host": {
+          "dtype": "utf8",
+          "role": "dimension"
+        },
+        "ident": {
+          "dtype": "utf8",
+          "role": "dimension"
+        },
+        "authuser": {
+          "dtype": "utf8",
+          "role": "dimension"
+        },
+        "message": {
+          "dtype": "utf8",
+          "role": "text"
+        },
+        "status": {
+          "dtype": "int64",
+          "role": "dimension"
+        },
+        "bytes": {
+          "dtype": "int64",
+          "role": "measure"
+        },
+        "referer": {
+          "dtype": "utf8",
+          "role": "dimension"
+        },
+        "user_agent": {
+          "dtype": "utf8",
+          "role": "dimension"
+        }
+      },
+      "note": "CLF time stays utf8 by design (month names, no ISO); the ROLE is still temporal. HTTP status is a category, not a quantity: averaging status codes is meaningless."
+    },
+    {
+      "path": "valid/ambiguous_dates.csv",
+      "format": "csv",
+      "fields": {
+        "booked_on": {
+          "dtype": "utf8",
+          "role": "temporal"
+        },
+        "amount": {
+          "dtype": "int64",
+          "role": "measure"
+        }
+      },
+      "note": "Day/month order is unresolved, so utf8 is the correct dtype. The field is still a date."
+    },
+    {
+      "path": "valid/day_first_dates.csv",
+      "format": "csv",
+      "fields": {
+        "shipped_on": {
+          "dtype": "timestamp",
+          "role": "temporal"
+        },
+        "amount": {
+          "dtype": "int64",
+          "role": "measure"
+        }
+      },
+      "note": "25/12 resolves the order, so this one really is a timestamp."
+    },
+    {
+      "path": "valid/events.jsonl",
+      "format": "jsonl",
+      "fields": {
+        "ts": {
+          "dtype": "timestamp",
+          "role": "temporal"
+        },
+        "event": {
+          "dtype": "utf8",
+          "role": "dimension"
+        },
+        "latency_ms": {
+          "dtype": "int64",
+          "role": "measure"
+        },
+        "user.city": {
+          "dtype": "utf8",
+          "role": "dimension"
+        }
+      },
+      "note": "latency_ms happens to be unique across these five rows; it is still a measure, not a key."
+    },
+    {
+      "path": "valid/headerless.csv",
+      "format": "csv",
+      "fields": {
+        "column_1": {
+          "dtype": "int64",
+          "role": "measure"
+        },
+        "column_2": {
+          "dtype": "float64",
+          "role": "measure"
+        },
+        "column_3": {
+          "dtype": "int64",
+          "role": "measure"
+        }
+      },
+      "note": "No header and no evidence of identity, so the numeric columns are measures."
+    },
+    {
+      "path": "valid/latin1.csv",
+      "format": "csv",
+      "fields": {
+        "name": {
+          "dtype": "utf8",
+          "role": "dimension"
+        },
+        "city": {
+          "dtype": "utf8",
+          "role": "dimension"
+        }
+      },
+      "note": "Two rows: too little evidence to call a name column identifying."
+    },
+    {
+      "path": "valid/logfmt.log",
+      "format": "log",
+      "fields": {
+        "time": {
+          "dtype": "timestamp",
+          "role": "temporal"
+        },
+        "level": {
+          "dtype": "utf8",
+          "role": "severity"
+        },
+        "service": {
+          "dtype": "utf8",
+          "role": "dimension"
+        },
+        "message": {
+          "dtype": "utf8",
+          "role": "text"
+        },
+        "latency_ms": {
+          "dtype": "int64",
+          "role": "measure"
+        },
+        "retry": {
+          "dtype": "bool",
+          "role": "dimension"
+        }
+      },
+      "note": "A boolean flag is a two-valued category. retry appears on one line only."
+    },
+    {
+      "path": "valid/mixed_types.csv",
+      "format": "csv",
+      "fields": {
+        "id": {
+          "dtype": "int64",
+          "role": "identifier"
+        },
+        "name": {
+          "dtype": "utf8",
+          "role": "dimension"
+        },
+        "amount": {
+          "dtype": "float64",
+          "role": "measure"
+        },
+        "active": {
+          "dtype": "bool",
+          "role": "dimension"
+        },
+        "ts": {
+          "dtype": "timestamp",
+          "role": "temporal"
+        }
+      },
+      "note": "name is a person label you would group by, not a key; five unique names in five rows is an artefact of the sample size."
+    },
+    {
+      "path": "valid/naive_timestamps.csv",
+      "format": "csv",
+      "fields": {
+        "when": {
+          "dtype": "timestamp",
+          "role": "temporal"
+        },
+        "reading": {
+          "dtype": "int64",
+          "role": "measure"
+        }
+      },
+      "note": "No offset: typed as timestamp with the UTC assumption disclosed."
+    },
+    {
+      "path": "valid/nested.json",
+      "format": "json",
+      "fields": {
+        "id": {
+          "dtype": "int64",
+          "role": "identifier"
+        },
+        "user.city": {
+          "dtype": "utf8",
+          "role": "dimension"
+        },
+        "user.geo.lat": {
+          "dtype": "float64",
+          "role": "measure"
+        },
+        "user.geo.lon": {
+          "dtype": "float64",
+          "role": "measure"
+        },
+        "tags": {
+          "dtype": "utf8",
+          "role": "text"
+        },
+        "a.b.c.d": {
+          "dtype": "utf8",
+          "role": "text"
+        }
+      },
+      "note": "tags is an array retained as JSON text; a.b.c.d sits at the depth cap and is retained as JSON text. Both are opaque payloads, not categories to group by."
+    },
+    {
+      "path": "valid/notes.txt",
+      "format": "txt",
+      "fields": {
+        "line_number": {
+          "dtype": "int64",
+          "role": "identifier"
+        },
+        "line": {
+          "dtype": "utf8",
+          "role": "text"
+        }
+      },
+      "note": "line_number is an ordinal that identifies a row, not a quantity to sum."
+    },
+    {
+      "path": "valid/records.json",
+      "format": "json",
+      "fields": {
+        "id": {
+          "dtype": "int64",
+          "role": "identifier"
+        },
+        "metric": {
+          "dtype": "utf8",
+          "role": "dimension"
+        },
+        "value": {
+          "dtype": "float64",
+          "role": "measure"
+        },
+        "host": {
+          "dtype": "utf8",
+          "role": "dimension"
+        }
+      }
+    },
+    {
+      "path": "valid/semicolon.csv",
+      "format": "csv",
+      "fields": {
+        "region": {
+          "dtype": "utf8",
+          "role": "dimension"
+        },
+        "revenue": {
+          "dtype": "float64",
+          "role": "measure"
+        },
+        "units": {
+          "dtype": "int64",
+          "role": "measure"
+        }
+      }
+    },
+    {
+      "path": "valid/server_logs.log",
+      "format": "log",
+      "fields": {
+        "time": {
+          "dtype": "timestamp",
+          "role": "temporal"
+        },
+        "level": {
+          "dtype": "utf8",
+          "role": "severity"
+        },
+        "service": {
+          "dtype": "utf8",
+          "role": "dimension"
+        },
+        "message": {
+          "dtype": "utf8",
+          "role": "text"
+        },
+        "latency": {
+          "dtype": "int64",
+          "role": "measure"
+        }
+      }
+    },
+    {
+      "path": "valid/single_object.json",
+      "format": "json",
+      "fields": {
+        "service": {
+          "dtype": "utf8",
+          "role": "dimension"
+        },
+        "version": {
+          "dtype": "utf8",
+          "role": "dimension"
+        },
+        "healthy": {
+          "dtype": "bool",
+          "role": "dimension"
+        },
+        "limits.rpm": {
+          "dtype": "int64",
+          "role": "measure"
+        },
+        "limits.burst": {
+          "dtype": "int64",
+          "role": "measure"
+        }
+      },
+      "note": "A version string is a label, not a number. One row, so cardinality proves nothing."
+    },
+    {
+      "path": "valid/syslog.log",
+      "format": "log",
+      "fields": {
+        "time": {
+          "dtype": "utf8",
+          "role": "temporal"
+        },
+        "level": {
+          "dtype": "utf8",
+          "role": "severity"
+        },
+        "host": {
+          "dtype": "utf8",
+          "role": "dimension"
+        },
+        "service": {
+          "dtype": "utf8",
+          "role": "dimension"
+        },
+        "pid": {
+          "dtype": "int64",
+          "role": "identifier"
+        },
+        "message": {
+          "dtype": "utf8",
+          "role": "text"
+        }
+      },
+      "note": "RFC3164 time has no year and stays utf8; the role is still temporal. pid identifies a process even though only two lines carry one."
+    },
+    {
+      "path": "valid/tab.tsv",
+      "format": "csv",
+      "fields": {
+        "a": {
+          "dtype": "int64",
+          "role": "measure"
+        },
+        "b": {
+          "dtype": "float64",
+          "role": "measure"
+        },
+        "c": {
+          "dtype": "utf8",
+          "role": "dimension"
+        }
+      }
+    },
+    {
+      "path": "valid/timestamps.csv",
+      "format": "csv",
+      "fields": {
+        "event_id": {
+          "dtype": "int64",
+          "role": "identifier"
+        },
+        "occurred_at": {
+          "dtype": "timestamp",
+          "role": "temporal"
+        },
+        "value": {
+          "dtype": "float64",
+          "role": "measure"
+        }
+      }
+    },
+    {
+      "path": "valid/tolerant_types.csv",
+      "format": "csv",
+      "fields": {
+        "name": {
+          "dtype": "utf8",
+          "role": "dimension"
+        },
+        "qty": {
+          "dtype": "int64",
+          "role": "measure"
+        }
+      },
+      "note": "qty is a quantity that happens to be unique in 20 rows; one cell is quarantined at the 95% tolerance. name holds single letters: a category, not a key."
+    },
+    {
+      "path": "valid/sales.csv",
+      "format": "csv",
+      "fields": {
+        "order_id": {
+          "dtype": "int64",
+          "role": "identifier"
+        },
+        "ordered_at": {
+          "dtype": "timestamp",
+          "role": "temporal"
+        },
+        "region": {
+          "dtype": "utf8",
+          "role": "dimension"
+        },
+        "channel": {
+          "dtype": "utf8",
+          "role": "dimension"
+        },
+        "units": {
+          "dtype": "int64",
+          "role": "measure"
+        },
+        "unit_price": {
+          "dtype": "float64",
+          "role": "measure"
+        },
+        "revenue": {
+          "dtype": "float64",
+          "role": "measure"
+        },
+        "sales_rep": {
+          "dtype": "utf8",
+          "role": "dimension"
+        },
+        "notes": {
+          "dtype": "utf8",
+          "role": "text"
+        }
+      },
+      "note": "The product-shaped case: one key, one time axis, four categories, three measures, one free-text note. This is what a real import looks like."
+    },
+    {
+      "path": "valid/sensors.json",
+      "format": "json",
+      "fields": {
+        "sensor_id": {
+          "dtype": "utf8",
+          "role": "identifier"
+        },
+        "reading": {
+          "dtype": "float64",
+          "role": "measure"
+        },
+        "unit": {
+          "dtype": "utf8",
+          "role": "dimension"
+        },
+        "ok": {
+          "dtype": "bool",
+          "role": "dimension"
+        },
+        "taken_at": {
+          "dtype": "timestamp",
+          "role": "temporal"
+        },
+        "site.room": {
+          "dtype": "utf8",
+          "role": "dimension"
+        },
+        "site.building": {
+          "dtype": "utf8",
+          "role": "dimension"
+        }
+      }
+    }
+  ]
+}

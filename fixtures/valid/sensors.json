@@ -1,0 +1,8 @@
+[
+  {"sensor_id": "S-01", "site": {"room": "lab-a", "building": "north"}, "reading": 21.5, "unit": "C", "ok": true, "taken_at": "2026-03-01T10:00:00Z"},
+  {"sensor_id": "S-02", "site": {"room": "lab-a", "building": "north"}, "reading": 22.0, "unit": "C", "ok": true, "taken_at": "2026-03-01T10:05:00Z"},
+  {"sensor_id": "S-03", "site": {"room": "lab-b", "building": "north"}, "reading": 19.5, "unit": "C", "ok": false, "taken_at": "2026-03-01T10:10:00Z"},
+  {"sensor_id": "S-04", "site": {"room": "lab-b", "building": "south"}, "reading": 21.5, "unit": "C", "ok": true, "taken_at": "2026-03-01T10:15:00Z"},
+  {"sensor_id": "S-05", "site": {"room": "store", "building": "south"}, "reading": 68.0, "unit": "F", "ok": true, "taken_at": "2026-03-01T10:20:00Z"},
+  {"sensor_id": "S-06", "site": {"room": "store", "building": "south"}, "reading": 68.0, "unit": "F", "ok": false, "taken_at": "2026-03-01T10:25:00Z"}
+]

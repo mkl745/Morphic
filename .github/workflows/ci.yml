@@ -77,6 +77,10 @@ jobs:
             echo '```'
             tail -n 80 /tmp/test.log
             echo '```'
+            echo "### AT-02 schema accuracy"
+            echo '```'
+            cat target/schema-accuracy.md 2>/dev/null || echo "scorecard not produced"
+            echo '```'
           } > /tmp/report.md
           jq -Rs '{body: .}' < /tmp/report.md > /tmp/payload.json
           curl -sS -X POST \
