@@ -44,9 +44,9 @@ const MAX_CASE_TIME: Duration = Duration::from_secs(10);
 const NASTY: &[&[u8]] = &[
     b"\0",
     b"\xff\xfe",
-    b"\xc3",           // truncated UTF-8 sequence
-    b"\xed\xa0\x80",   // lone surrogate, invalid UTF-8
-    b"\xef\xbb\xbf",   // BOM in the middle of a stream
+    b"\xc3",         // truncated UTF-8 sequence
+    b"\xed\xa0\x80", // lone surrogate, invalid UTF-8
+    b"\xef\xbb\xbf", // BOM in the middle of a stream
     b"\"",
     b"\"\"",
     b"\\",
@@ -117,14 +117,26 @@ fn seed_corpus() -> Vec<(String, Vec<u8>)> {
         ("synthetic/deep_json", br#"{"a":{"a":{"a":{"a":{"a":1}}}}}"#),
         ("synthetic/quote_flood", b"a,b\n\"\"\"\"\"\",2\n"),
         ("synthetic/wide_row", b"a,b,c,d,e,f\n1,2,3,4,5,6\n"),
-        ("synthetic/iso_flood", b"t\n2026-01-01T00:00:00Z\n2026-01-01T00:00:01Z\n"),
-        ("synthetic/logfmt", b"time=2026-01-01T00:00:00Z level=error msg=\"x\" n=1\n"),
-        ("synthetic/clf", b"1.2.3.4 - - [10/Oct/2000:13:55:36 -0700] \"GET / HTTP/1.0\" 200 1\n"),
+        (
+            "synthetic/iso_flood",
+            b"t\n2026-01-01T00:00:00Z\n2026-01-01T00:00:01Z\n",
+        ),
+        (
+            "synthetic/logfmt",
+            b"time=2026-01-01T00:00:00Z level=error msg=\"x\" n=1\n",
+        ),
+        (
+            "synthetic/clf",
+            b"1.2.3.4 - - [10/Oct/2000:13:55:36 -0700] \"GET / HTTP/1.0\" 200 1\n",
+        ),
     ];
     for (name, bytes) in extra {
         seeds.push(((*name).to_string(), bytes.to_vec()));
     }
-    assert!(seeds.len() >= 20, "the seed corpus is too small to be worth mutating");
+    assert!(
+        seeds.len() >= 20,
+        "the seed corpus is too small to be worth mutating"
+    );
     seeds
 }
 
@@ -162,7 +174,11 @@ fn mutate_once(rng: &mut Rng, seeds: &[(String, Vec<u8>)], bytes: Vec<u8>) -> Ve
         }
         2 => {
             let token = NASTY[rng.below(NASTY.len())];
-            let at = if bytes.is_empty() { 0 } else { rng.below(bytes.len()) };
+            let at = if bytes.is_empty() {
+                0
+            } else {
+                rng.below(bytes.len())
+            };
             insert_at(&bytes, at, token)
         }
         3 => {
@@ -232,7 +248,11 @@ fn mutate_once(rng: &mut Rng, seeds: &[(String, Vec<u8>)], bytes: Vec<u8>) -> Ve
             out
         }
         _ => {
-            let at = if bytes.is_empty() { 0 } else { rng.below(bytes.len()) };
+            let at = if bytes.is_empty() {
+                0
+            } else {
+                rng.below(bytes.len())
+            };
             insert_at(&bytes, at, b"\n")
         }
     }
@@ -288,11 +308,9 @@ fn check_invariants(table: &Table, report: &ImportReport, label: &str) {
         );
         if let Some(len) = buffer_len(&col.values) {
             assert_eq!(
-                len,
-                table.row_count,
+                len, table.row_count,
                 "{label}: column '{}' buffer holds {len} values for {} rows",
-                col.name,
-                table.row_count
+                col.name, table.row_count
             );
         }
     }
@@ -333,7 +351,10 @@ fn mutation_smoke_never_panics_and_always_returns_a_typed_outcome() {
         bytes.truncate(MAX_CASE_BYTES);
         biggest = biggest.max(bytes.len());
 
-        let label = format!("case {case} from {name} ({} bytes, seed {seed})", bytes.len());
+        let label = format!(
+            "case {case} from {name} ({} bytes, seed {seed})",
+            bytes.len()
+        );
         let opts = opts_for(&name);
         let t0 = Instant::now();
         let outcome = ingest_with(&bytes, &opts, None, &mut |_| {});
@@ -357,10 +378,20 @@ fn mutation_smoke_never_panics_and_always_returns_a_typed_outcome() {
                 if case % 32 == 0 {
                     let repeat = ingest_with(&bytes, &opts, None, &mut |_| {});
                     let (again, report2) = repeat.expect("deterministic reparse");
-                    assert_eq!(again.row_count, table.row_count, "{label}: row count drifted");
-                    assert_eq!(again.field_names(), table.field_names(), "{label}: names drifted");
+                    assert_eq!(
+                        again.row_count, table.row_count,
+                        "{label}: row count drifted"
+                    );
+                    assert_eq!(
+                        again.field_names(),
+                        table.field_names(),
+                        "{label}: names drifted"
+                    );
                     assert_eq!(report2.format, report.format, "{label}: format drifted");
-                    assert_eq!(report2.warnings, report.warnings, "{label}: warnings drifted");
+                    assert_eq!(
+                        report2.warnings, report.warnings,
+                        "{label}: warnings drifted"
+                    );
                 }
             }
             Err(e) => {
@@ -379,8 +410,17 @@ fn mutation_smoke_never_panics_and_always_returns_a_typed_outcome() {
     let total = started.elapsed();
     let mut card = String::new();
     writeln!(card, "# Parser fuzz smoke\n").unwrap();
-    writeln!(card, "- seed: `{seed}` (set `MORPHIC_FUZZ_SEED` to change it)").unwrap();
-    writeln!(card, "- cases: **{cases}**, seeded from {} corpus files", seeds.len()).unwrap();
+    writeln!(
+        card,
+        "- seed: `{seed}` (set `MORPHIC_FUZZ_SEED` to change it)"
+    )
+    .unwrap();
+    writeln!(
+        card,
+        "- cases: **{cases}**, seeded from {} corpus files",
+        seeds.len()
+    )
+    .unwrap();
     writeln!(card, "- accepted as a table: **{ok}**").unwrap();
     writeln!(card, "- refused with a typed error: **{}**", cases - ok).unwrap();
     writeln!(card, "- largest input: {biggest} bytes").unwrap();
@@ -406,7 +446,10 @@ fn mutation_smoke_never_panics_and_always_returns_a_typed_outcome() {
 
     // A smoke that quietly stopped exercising the parsers would still be green, so assert the
     // stream really did reach both outcomes and more than one format.
-    assert!(ok > 0, "no case produced a table; the mutation stream is degenerate");
+    assert!(
+        ok > 0,
+        "no case produced a table; the mutation stream is degenerate"
+    );
     assert!(
         cases - ok > 0,
         "no case was refused; the mutation stream is not exercising failure paths"
@@ -421,7 +464,11 @@ fn mutation_smoke_never_panics_and_always_returns_a_typed_outcome() {
 #[test]
 fn structural_attacks_are_refused_with_typed_errors() {
     // Wide: more columns than the cap.
-    let wide = format!("{}\n{}\n", vec!["c"; 3000].join(","), vec!["1"; 3000].join(","));
+    let wide = format!(
+        "{}\n{}\n",
+        vec!["c"; 3000].join(","),
+        vec!["1"; 3000].join(",")
+    );
     let opts = IngestOptions {
         format_hint: Some("csv".into()),
         ..Default::default()
