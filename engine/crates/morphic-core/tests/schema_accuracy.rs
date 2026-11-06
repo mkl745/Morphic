@@ -194,6 +194,15 @@ fn score_corpus(l: &Labels) -> Score {
         100.0 * l.targets.role_accuracy
     )
     .unwrap();
+    // This caveat travels with the number. A score on the corpus the rules were tuned against
+    // is an upper bound, and a printed percentage without that context is an overclaim.
+    writeln!(
+        s.card,
+        "\n> **Tuning caveat.** These heuristics were revised against this corpus, so this \
+         score is an upper bound on accuracy, not a generalisation estimate. See \
+         `fixtures/expected/README.md` for how to turn it into one."
+    )
+    .unwrap();
     if !detail.is_empty() {
         writeln!(s.card, "\n## Every miss{detail}").unwrap();
     }

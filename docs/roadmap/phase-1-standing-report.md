@@ -15,10 +15,10 @@ not from memory.
 | Milestones code-complete | **2 of 7** (M1.1, M1.2) |
 | Milestones not started | **5** (M1.3 → M1.7) |
 | Milestone exits formally met | **0 of 7** |
-| Acceptance tests fully green | **2 of 19** (AT-03, AT-10) |
-| Acceptance tests partially evidenced | **9** |
+| Acceptance tests fully green | **3 of 19** (AT-02, AT-03, AT-10) |
+| Acceptance tests partially evidenced | **8** |
 | Acceptance tests not yet started | **8** |
-| Evidence gaps no task row covers | **7** (see §6) |
+| Evidence gaps no task row covers | **6** (see §6) |
 | Remaining core effort, by the plan's own S/M/L legend | **40–69 focused days** |
 
 **The most important finding is the last row.** The plan estimates *all of Phase 1* at 30–40
@@ -97,7 +97,7 @@ three ABIs.
 | Test | Subject | State | What is missing |
 |---|---|---|---|
 | AT-01 | Vertical slice | partial | 10 MB → ≤ 3 s never measured; no mid-class device |
-| AT-02 | Detection accuracy | **not met** | 19 valid fixtures (spec wants ≥ 20), **no labels, no scorer** |
+| AT-02 | Detection accuracy | **green** | 100% dtype / 100% role on 21 files — but tuned against that corpus, so it is an upper bound |
 | AT-03 | JSON breadth | **green** | the 256 MiB refusal is proven with a lowered ceiling, not a real 256 MB file |
 | AT-04 | Logs & TXT | partial | extraction ✓; the **timeline** it requires is task 1.4.4 |
 | AT-05 | Malformed safety | partial | corpus + cancel ✓; **fuzz never run** |
@@ -123,22 +123,20 @@ M1.2's exit cannot be reached during M1.2. Split AT-04 into *extraction* (M1.2, 
 
 ---
 
-## 6. Seven gaps that no task row covers
+## 6. Six gaps that no task row covers
 
 These will not be closed by working through the task list, because no task owns them:
 
 1. **Mid-class device evidence.** The matrix requires a Pixel 6a/7a-class phone for *every*
    milestone exit. Both available devices (C51, A15) are low class. Nothing downstream can be
    signed off until this is solved.
-2. **AT-02's labeled corpus and scorer.** 19 valid fixtures, no labels, no scoring harness.
-   The accuracy claim (≥ 95% types, ≥ 85% roles) is currently unmeasurable.
-3. **No fuzz target, and the nightly workflow has never executed.** M1.2's exit and all of
+2. **No fuzz target, and the nightly workflow has never executed.** M1.2's exit and all of
    M1.7's reliability week depend on it.
-4. **The 10 MB → ≤ 3 s hypothesis is unmeasured.** It is the product's central claim.
-5. **Zero golden images.** Task 1.1.5 promised them; M1.4 and M1.6 both assume they exist.
-6. **The report sheet shows caveat counts, not the quarantined rows themselves.** Users can
+3. **The 10 MB → ≤ 3 s hypothesis is unmeasured.** It is the product's central claim.
+4. **Zero golden images.** Task 1.1.5 promised them; M1.4 and M1.6 both assume they exist.
+5. **The report sheet shows caveat counts, not the quarantined rows themselves.** Users can
    see *that* 12 rows were set aside but not *which* — the honest-reporting promise is half kept.
-7. **Release size and signing.** ~48 MB fat APK against a ≤ 40 MB per-ABI target; signing
+6. **Release size and signing.** ~48 MB fat APK against a ≤ 40 MB per-ABI target; signing
    secrets unconfigured; only a dry-run prerelease has been produced.
 
 ---
@@ -154,9 +152,9 @@ expensive later:
 
 1. **Get one mid-class device run** (or formally re-plan the matrix with evidence). This is the
    single blocker on the most exits.
-2. **Build the AT-02 scorer** and add labels to the corpus (19 → 20+ files). Detection quality
-   is already implemented; measuring it now means M1.4's planner accuracy work inherits a
-   working harness instead of inventing one.
+2. ~~Build the AT-02 scorer.~~ **Done** — 21 labelled files, 90 fields, scored in CI, and the
+   first measurement drove six real heuristic fixes. M1.4's planner accuracy work now inherits
+   the harness. Next step is held-out files, not more tuning.
 3. **Add a fuzz target and run the nightly once.** Cheap now with five parsers; expensive after
    M1.7 finds the crashes for us.
 
