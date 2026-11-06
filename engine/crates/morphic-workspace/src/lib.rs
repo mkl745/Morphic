@@ -45,6 +45,12 @@ pub trait WorkspaceStore {
     fn load_workspace(&self, id: &str) -> Result<WorkspaceDoc, StoreError>;
     fn list_workspaces(&self) -> Result<Vec<WorkspaceMeta>, StoreError>;
     fn delete_workspace(&self, id: &str) -> Result<(), StoreError>;
+
+    /// Persist the imported source bytes so a reopened workspace can be queried, not just
+    /// described. M1.1 stores the original file verbatim; content-addressing and dedupe
+    /// arrive with the storage hardening in task 1.1.6.
+    fn save_source(&self, id: &str, bytes: &[u8]) -> Result<(), StoreError>;
+    fn load_source(&self, id: &str) -> Result<Vec<u8>, StoreError>;
 }
 
 /// Folder-per-workspace file backend rooted at an app-private directory.
@@ -164,6 +170,20 @@ impl WorkspaceStore for FileStore {
 
     fn list_workspaces(&self) -> Result<Vec<WorkspaceMeta>, StoreError> {
         Ok(self.read_library()?.workspaces)
+    }
+
+    fn save_source(&self, id: &str, bytes: &[u8]) -> Result<(), StoreError> {
+        let dir = self.workspace_dir(id);
+        fs::create_dir_all(&dir)?;
+        atomic_write(&dir.join("source.csv"), bytes)
+    }
+
+    fn load_source(&self, id: &str) -> Result<Vec<u8>, StoreError> {
+        let path = self.workspace_dir(id).join("source.csv");
+        if !path.exists() {
+            return Err(StoreError::NotFound(format!("{id}/source.csv")));
+        }
+        Ok(fs::read(&path)?)
     }
 
     fn delete_workspace(&self, id: &str) -> Result<(), StoreError> {

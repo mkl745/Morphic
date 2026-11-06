@@ -1,0 +1,194 @@
+/// Owns the view of one open workspace (M1.1 task 1.1.4).
+///
+/// Rust holds canonical state; this controller only *requests* and *caches* it. It never
+/// computes an aggregation, a page, or a type — those come back from the engine so the UI
+/// cannot drift from the data.
+library;
+
+import 'package:flutter/foundation.dart';
+
+import 'bridge.dart';
+
+/// One page of rows plus the metadata a pager needs.
+class PageResult {
+  const PageResult({
+    required this.rows,
+    required this.totalRows,
+    required this.offset,
+    required this.limit,
+    required this.hasMore,
+  });
+
+  factory PageResult.fromJson(Map<String, dynamic> json) => PageResult(
+        rows: (json['rows'] as List? ?? const [])
+            .map((r) => (r as List).toList())
+            .toList(),
+        totalRows: (json['totalRows'] as num?)?.toInt() ?? 0,
+        offset: (json['offset'] as num?)?.toInt() ?? 0,
+        limit: (json['limit'] as num?)?.toInt() ?? 0,
+        hasMore: json['hasMore'] as bool? ?? false,
+      );
+
+  final List<List<dynamic>> rows;
+  final int totalRows;
+  final int offset;
+  final int limit;
+  final bool hasMore;
+
+  bool get isEmpty => rows.isEmpty;
+}
+
+class EngineController extends ChangeNotifier {
+  EngineController({required this.bridge, required this.storageRoot});
+
+  final MorphicBridge bridge;
+  final String storageRoot;
+
+  String? _workspaceId;
+  String? get workspaceId => _workspaceId;
+
+  Map<String, dynamic>? _doc;
+  Map<String, dynamic>? get doc => _doc;
+
+  Map<String, dynamic>? _profile;
+  Map<String, dynamic>? get profile => _profile;
+
+  int _revision = 0;
+  int get revision => _revision;
+
+  bool _busy = false;
+  bool get busy => _busy;
+
+  String? _error;
+  String? get error => _error;
+
+  /// Components in layout order, as the runtime should render them.
+  List<Map<String, dynamic>> get components {
+    final ws = _doc?['workspace'];
+    if (ws is! Map<String, dynamic>) return const [];
+    final comps = (ws['components'] as List? ?? const [])
+        .whereType<Map<String, dynamic>>()
+        .toList();
+    final layout = ws['layout'];
+    if (layout is Map<String, dynamic>) {
+      final order = (layout['order'] as List? ?? const []).cast<dynamic>();
+      if (order.isNotEmpty) {
+        final rank = {for (var i = 0; i < order.length; i++) order[i]: i};
+        comps.sort((a, b) =>
+            (rank[a['id']] ?? 1 << 30).compareTo(rank[b['id']] ?? 1 << 30));
+      }
+    }
+    return comps;
+  }
+
+  void _applySnapshot(Map<String, dynamic> snap) {
+    _doc = snap['doc'] as Map<String, dynamic>?;
+    _profile = snap['profile'] as Map<String, dynamic>?;
+    _revision = (snap['revision'] as num?)?.toInt() ?? 0;
+  }
+
+  /// Adopt a snapshot the importer already produced, avoiding a redundant round trip.
+  void adoptImport(Map<String, dynamic> outcome, String workspaceId) {
+    _workspaceId = workspaceId;
+    _error = null;
+    _doc = outcome['doc'] as Map<String, dynamic>?;
+    _profile = outcome['profile'] as Map<String, dynamic>?;
+    final ws = _doc?['workspace'];
+    _revision = ws is Map<String, dynamic>
+        ? ((ws['revision'] as num?)?.toInt() ?? 1)
+        : 1;
+    notifyListeners();
+  }
+
+  /// Open (or reopen) a workspace. Rust rehydrates the session from persisted source.
+  Future<bool> open(String workspaceId) async {
+    _busy = true;
+    _error = null;
+    notifyListeners();
+    try {
+      final snap = bridge.snapshot(
+        storageRoot: storageRoot,
+        workspaceId: workspaceId,
+      );
+      _workspaceId = workspaceId;
+      _applySnapshot(snap);
+      return true;
+    } catch (e) {
+      _error = e.toString();
+      return false;
+    } finally {
+      _busy = false;
+      notifyListeners();
+    }
+  }
+
+  /// Fetch one page. Returns null (and sets [error]) rather than throwing into the UI.
+  Future<PageResult?> page({int offset = 0, int limit = 256, String? search}) async {
+    final id = _workspaceId;
+    if (id == null) {
+      _error = 'no workspace open';
+      notifyListeners();
+      return null;
+    }
+    try {
+      final res = bridge.queryPage(
+        storageRoot: storageRoot,
+        workspaceId: id,
+        plan: {
+          'offset': offset,
+          'limit': limit,
+          if (search != null && search.isNotEmpty) 'search': search,
+        },
+      );
+      return PageResult.fromJson(res);
+    } catch (e) {
+      _error = e.toString();
+      notifyListeners();
+      return null;
+    }
+  }
+
+  /// The value behind a metric card. Null means "no data", which is not the same as zero.
+  Future<Object?> metric(String componentId) async {
+    final id = _workspaceId;
+    if (id == null) return null;
+    try {
+      final res = bridge.metricData(
+        storageRoot: storageRoot,
+        workspaceId: id,
+        componentId: componentId,
+      );
+      return res['value'];
+    } catch (e) {
+      _error = e.toString();
+      notifyListeners();
+      return null;
+    }
+  }
+
+  /// Release the engine's in-memory session. The saved workspace is untouched.
+  Future<void> closeWorkspace() async {
+    final id = _workspaceId;
+    if (id == null) return;
+    try {
+      bridge.closeWorkspace(storageRoot: storageRoot, workspaceId: id);
+    } catch (e) {
+      _error = e.toString();
+    }
+    _workspaceId = null;
+    _doc = null;
+    _profile = null;
+    _revision = 0;
+    notifyListeners();
+  }
+
+  List<dynamic> library() {
+    try {
+      return bridge.listWorkspaces(storageRoot);
+    } catch (e) {
+      _error = e.toString();
+      notifyListeners();
+      return const [];
+    }
+  }
+}

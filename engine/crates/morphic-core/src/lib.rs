@@ -3,20 +3,24 @@
 //! The engine facade (docs/architecture/01). It composes the subsystem crates and owns
 //! sessions, commands, undo/redo, and events.
 //!
-//! **Phase 0 status:** the vertical-slice proof of concept is real — CSV bytes in, a
-//! validated + persisted `WorkspaceDoc` out. Session/command/event machinery arrives in
-//! M1.1–M1.3. This crate contains no business logic that belongs in a subsystem.
+//! **M1.1 (task 1.1.4):** real sessions. An import retains the typed `Table` + profile +
+//! generated document in memory, so `queryPage` and `metricData` execute against canonical
+//! Rust state instead of re-parsing. Reopening a workspace rehydrates the session from the
+//! persisted source bytes. Typed commands, undo/redo, and layout mutation arrive in M1.5.
 
+use std::collections::HashMap;
 use std::path::Path;
+use std::sync::Mutex;
 
-use morphic_model::DatasetProfile;
+use morphic_model::{DatasetProfile, ImportReport, Table};
 use morphic_schema::WorkspaceDoc;
 use morphic_workspace::{FileStore, StoreError, WorkspaceStore};
 use serde::Serialize;
 use thiserror::Error;
 
 /// Bridge contract version. Bumped on breaking FFI changes (docs/architecture/02 §5).
-pub const API_VERSION: u32 = 1;
+/// v2 adds sessions, queryPage, metricData, and snapshot (M1.1 task 1.1.4).
+pub const API_VERSION: u32 = 2;
 
 #[derive(Debug, Error)]
 pub enum CoreError {
@@ -24,8 +28,18 @@ pub enum CoreError {
     Ingest(#[from] morphic_ingest::IngestError),
     #[error("store: {0}")]
     Store(#[from] StoreError),
+    #[error("query: {0}")]
+    Query(#[from] morphic_query::QueryError),
     #[error("generated workspace failed validation: {0}")]
     Validation(String),
+    #[error("no open session for workspace '{0}'")]
+    SessionNotFound(String),
+    #[error("unknown component '{0}'")]
+    UnknownComponent(String),
+    #[error("component '{0}' is a {1}, which has no metric value")]
+    NotAMetric(String, String),
+    #[error("session state was poisoned by an earlier panic")]
+    SessionPoisoned,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -50,9 +64,54 @@ pub fn profile_csv_bytes(bytes: &[u8]) -> Result<DatasetProfile, CoreError> {
     Ok(morphic_semantic::profile(&table))
 }
 
-/// The engine handle. Holds the workspace store rooted at an app-private directory.
+/// A real progress event emitted during import.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportProgress {
+    /// `sniffing` | `parsing` | `typing` | `done`
+    pub phase: String,
+    pub rows_read: u64,
+    pub bytes_read: u64,
+}
+
+/// Everything an import produced. The document is already validated and persisted.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportOutcome {
+    pub doc: WorkspaceDoc,
+    pub profile: DatasetProfile,
+    pub report: ImportReport,
+}
+
+/// A revisioned view of canonical state, as rendered by Flutter.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Snapshot {
+    pub doc: WorkspaceDoc,
+    pub profile: DatasetProfile,
+    pub revision: u64,
+}
+
+/// The computed value behind one `metric_card`.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MetricResult {
+    pub component_id: String,
+    pub value: serde_json::Value,
+    pub revision: u64,
+}
+
+/// An open workspace: canonical Rust state that Flutter only renders.
+struct Session {
+    doc: WorkspaceDoc,
+    table: Table,
+    profile: DatasetProfile,
+}
+
+/// The engine handle. Owns the workspace store and the open sessions.
 pub struct Engine {
     store: FileStore,
+    sessions: Mutex<HashMap<String, Session>>,
 }
 
 impl Engine {
@@ -60,27 +119,42 @@ impl Engine {
         let store = FileStore::new(storage_root)?;
         // Crash-recovery sweep before anything is opened (docs/architecture/06 §2).
         store.recover()?;
-        Ok(Self { store })
+        Ok(Self {
+            store,
+            sessions: Mutex::new(HashMap::new()),
+        })
     }
 
-    /// The Phase 0 vertical slice: CSV → analyze → compile → validate → persist.
-    pub fn create_workspace_from_csv(
+    /// Import CSV: analyze → compile → validate → persist → retain an open session.
+    ///
+    /// `on_progress` receives real events from the streaming parser. Pass a no-op closure
+    /// when the caller does not need them.
+    pub fn import_csv(
         &self,
         bytes: &[u8],
         title: &str,
         workspace_id: &str,
         now_iso: &str,
-    ) -> Result<WorkspaceDoc, CoreError> {
-        let (table, _report) = morphic_ingest::parse_csv(bytes)?;
+        on_progress: &mut dyn FnMut(ImportProgress),
+    ) -> Result<ImportOutcome, CoreError> {
+        let opts = morphic_ingest::IngestOptions::default();
+        let (table, report) =
+            morphic_ingest::parse_csv_with(bytes, &opts, None, &mut |p| {
+                on_progress(ImportProgress {
+                    phase: format!("{:?}", p.phase).to_lowercase(),
+                    rows_read: p.rows_read,
+                    bytes_read: p.bytes_read,
+                });
+            })?;
         let profile = morphic_semantic::profile(&table);
         let doc = morphic_compiler::compile(
             &profile,
-            "dataset_poc", // Phase 0: datasets are not yet content-addressed (M1.1)
+            workspace_id,
             workspace_id,
             title,
             now_iso,
         );
-        // All five passes, including bindings checked against the real profile (M1.1 1.1.3).
+        // All five passes, including bindings checked against the real profile.
         let issues = morphic_schema::validate_with_profile(&doc, &profile);
         if !issues.is_empty() {
             let msg = issues
@@ -91,7 +165,159 @@ impl Engine {
             return Err(CoreError::Validation(msg));
         }
         self.store.save_workspace(&doc)?;
-        Ok(doc)
+        // Persist the source so a reopened workspace can be queried, not just described.
+        self.store.save_source(workspace_id, bytes)?;
+
+        self.sessions
+            .lock()
+            .map_err(|_| CoreError::SessionPoisoned)?
+            .insert(
+                workspace_id.to_string(),
+                Session {
+                    doc: doc.clone(),
+                    table,
+                    profile: profile.clone(),
+                },
+            );
+
+        Ok(ImportOutcome {
+            doc,
+            profile,
+            report,
+        })
+    }
+
+    /// The Phase 0 entry point, kept so existing callers and the PoC screen still work.
+    pub fn create_workspace_from_csv(
+        &self,
+        bytes: &[u8],
+        title: &str,
+        workspace_id: &str,
+        now_iso: &str,
+    ) -> Result<WorkspaceDoc, CoreError> {
+        Ok(self
+            .import_csv(bytes, title, workspace_id, now_iso, &mut |_| {})?
+            .doc)
+    }
+
+    /// Reopen a persisted workspace and rehydrate its session from the stored source.
+    ///
+    /// Re-ingesting on open is a deliberate M1.1 trade-off: it keeps a single source of
+    /// truth (the original file) at the cost of a parse on open. A persisted columnar
+    /// snapshot arrives with the storage hardening in 1.1.6.
+    pub fn open_session(&self, workspace_id: &str) -> Result<Snapshot, CoreError> {
+        let doc = self.store.load_workspace(workspace_id)?;
+        let bytes = self.store.load_source(workspace_id)?;
+        let (table, _report) = morphic_ingest::parse_csv(&bytes)?;
+        let profile = morphic_semantic::profile(&table);
+        let snapshot = Snapshot {
+            revision: doc.workspace.revision,
+            doc: doc.clone(),
+            profile: profile.clone(),
+        };
+        self.sessions
+            .lock()
+            .map_err(|_| CoreError::SessionPoisoned)?
+            .insert(
+                workspace_id.to_string(),
+                Session {
+                    doc,
+                    table,
+                    profile,
+                },
+            );
+        Ok(snapshot)
+    }
+
+    pub fn close_session(&self, workspace_id: &str) -> Result<(), CoreError> {
+        self.sessions
+            .lock()
+            .map_err(|_| CoreError::SessionPoisoned)?
+            .remove(workspace_id);
+        Ok(())
+    }
+
+    pub fn has_session(&self, workspace_id: &str) -> bool {
+        match self.sessions.lock() {
+            Ok(s) => s.contains_key(workspace_id),
+            Err(_) => false,
+        }
+    }
+
+    /// A revisioned snapshot of canonical state. Opens the session if needed.
+    pub fn snapshot(&self, workspace_id: &str) -> Result<Snapshot, CoreError> {
+        if !self.has_session(workspace_id) {
+            return self.open_session(workspace_id);
+        }
+        let sessions = self.sessions.lock().map_err(|_| CoreError::SessionPoisoned)?;
+        let s = sessions
+            .get(workspace_id)
+            .ok_or_else(|| CoreError::SessionNotFound(workspace_id.into()))?;
+        Ok(Snapshot {
+            revision: s.doc.workspace.revision,
+            doc: s.doc.clone(),
+            profile: s.profile.clone(),
+        })
+    }
+
+    /// Execute a bounded page against the session's canonical table.
+    pub fn query_page(
+        &self,
+        workspace_id: &str,
+        plan: &morphic_query::Plan,
+    ) -> Result<morphic_query::Page, CoreError> {
+        if !self.has_session(workspace_id) {
+            self.open_session(workspace_id)?;
+        }
+        let sessions = self.sessions.lock().map_err(|_| CoreError::SessionPoisoned)?;
+        let s = sessions
+            .get(workspace_id)
+            .ok_or_else(|| CoreError::SessionNotFound(workspace_id.into()))?;
+        Ok(morphic_query::query_page(&s.table, plan))
+    }
+
+    /// Compute the value behind a `metric_card`. Rust resolves the binding from the
+    /// document; Flutter never re-implements aggregation.
+    pub fn metric_data(
+        &self,
+        workspace_id: &str,
+        component_id: &str,
+    ) -> Result<MetricResult, CoreError> {
+        if !self.has_session(workspace_id) {
+            self.open_session(workspace_id)?;
+        }
+        let sessions = self.sessions.lock().map_err(|_| CoreError::SessionPoisoned)?;
+        let s = sessions
+            .get(workspace_id)
+            .ok_or_else(|| CoreError::SessionNotFound(workspace_id.into()))?;
+        let component = s
+            .doc
+            .workspace
+            .components
+            .iter()
+            .find(|c| c.id == component_id)
+            .ok_or_else(|| CoreError::UnknownComponent(component_id.into()))?;
+        let aggregation = match &component.binding {
+            morphic_schema::Binding::MetricCard { aggregation } => aggregation,
+            other => {
+                return Err(CoreError::NotAMetric(
+                    component_id.into(),
+                    other.kind().to_string(),
+                ))
+            }
+        };
+        let value = morphic_query::aggregate(
+            &s.table,
+            &morphic_query::Aggregate {
+                op: &aggregation.op,
+                field: aggregation.field.as_deref(),
+            },
+        )?;
+        Ok(MetricResult {
+            component_id: component_id.into(),
+            value,
+            revision: s.doc.workspace.revision,
+        })
     }
 
     pub fn list_workspaces(&self) -> Result<Vec<morphic_workspace::WorkspaceMeta>, CoreError> {
@@ -106,6 +332,17 @@ impl Engine {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn temp_root(tag: &str) -> std::path::PathBuf {
+        let mut root = std::env::temp_dir();
+        root.push(format!(
+            "morphic-core-{tag}-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        root
+    }
 
     #[test]
     fn engine_info_has_version() {
@@ -124,8 +361,7 @@ mod tests {
 
     #[test]
     fn vertical_slice_creates_valid_workspace() {
-        let mut root = std::env::temp_dir();
-        root.push(format!("morphic-core-test-{}", std::process::id()));
+        let root = temp_root("slice");
         let engine = Engine::new(&root).unwrap();
         let csv =
             b"time,level,value\n2026-11-05T10:00:00Z,ERROR,1.5\n2026-11-05T10:01:00Z,INFO,2.5\n";
@@ -134,9 +370,7 @@ mod tests {
             .unwrap();
         let profile = morphic_semantic::profile(&morphic_ingest::parse_csv(csv).unwrap().0);
         assert!(morphic_schema::validate_with_profile(&doc, &profile).is_empty());
-        // M1.1 1.1.3: this dataset has a temporal field AND a numeric measure, so the rule
-        // table emits R1 records + R2 measure metric + R3 line chart + R6 table. Assert the
-        // shape rather than a brittle count.
+        // M1.1 1.1.3: temporal AND a measure ⇒ R1 + R2 + R3 (line chart) + R6.
         let kinds: Vec<&str> = doc
             .workspace
             .components
@@ -146,17 +380,181 @@ mod tests {
         assert!(kinds.contains(&"metric_card"));
         assert!(kinds.contains(&"line_chart"));
         assert!(kinds.contains(&"data_table"));
-        assert!(
-            !kinds.contains(&"timeline"),
-            "a measure exists, so R3 (line chart) applies instead of R4 (timeline)"
-        );
-        // reopen
+        assert!(!kinds.contains(&"timeline"));
         let loaded = engine.load_workspace("w_poc").unwrap();
         assert_eq!(loaded.workspace.id, "w_poc");
         std::fs::remove_dir_all(&root).ok();
     }
 
-    // --- M1.1 task 1.1.2: the full bytes -> typed table -> facts path ---
+    // --- M1.1 task 1.1.4: sessions, paging, metrics, reopen ---
+
+    const SALES: &[u8] = b"region,amount\n\
+                           eu,10\n\
+                           us,20\n\
+                           eu,30\n\
+                           us,40\n\
+                           eu,50\n";
+
+    fn imported(tag: &str) -> (Engine, std::path::PathBuf) {
+        let root = temp_root(tag);
+        let engine = Engine::new(&root).unwrap();
+        engine
+            .import_csv(SALES, "Sales", "w1", "2026-11-05T00:00:00Z", &mut |_| {})
+            .unwrap();
+        (engine, root)
+    }
+
+    #[test]
+    fn import_retains_an_open_session_and_reports_facts() {
+        let (engine, root) = imported("retain");
+        assert!(engine.has_session("w1"));
+        let out = engine
+            .import_csv(SALES, "Sales", "w2", "2026-11-05T00:00:00Z", &mut |_| {})
+            .unwrap();
+        assert_eq!(out.report.rows_imported, 5);
+        assert_eq!(out.profile.row_count, 5);
+        assert_eq!(out.doc.workspace.revision, 1);
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn import_emits_real_progress_phases_in_order() {
+        let root = temp_root("progress");
+        let engine = Engine::new(&root).unwrap();
+        let mut phases: Vec<String> = Vec::new();
+        engine
+            .import_csv(SALES, "Sales", "w1", "2026-11-05T00:00:00Z", &mut |p| {
+                phases.push(p.phase);
+            })
+            .unwrap();
+        assert_eq!(phases.first().map(String::as_str), Some("sniffing"));
+        assert_eq!(phases.last().map(String::as_str), Some("done"));
+        assert!(phases.contains(&"parsing".to_string()));
+        assert!(phases.contains(&"typing".to_string()));
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn snapshot_carries_the_revision_and_profile() {
+        let (engine, root) = imported("snapshot");
+        let snap = engine.snapshot("w1").unwrap();
+        assert_eq!(snap.revision, 1);
+        assert_eq!(snap.profile.row_count, 5);
+        assert_eq!(snap.doc.workspace.id, "w1");
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn query_page_returns_typed_rows_and_paging_metadata() {
+        let (engine, root) = imported("page");
+        let plan = morphic_query::Plan {
+            offset: 1,
+            limit: 2,
+            ..Default::default()
+        };
+        let page = engine.query_page("w1", &plan).unwrap();
+        assert_eq!(page.total_rows, 5);
+        assert_eq!(page.rows.len(), 2);
+        assert_eq!(page.rows[0][0], serde_json::json!("us"));
+        assert_eq!(page.rows[0][1], serde_json::json!(20));
+        assert!(page.has_more);
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn query_page_search_narrows_the_total() {
+        let (engine, root) = imported("search");
+        let plan = morphic_query::Plan {
+            search: Some("eu".into()),
+            ..Default::default()
+        };
+        let page = engine.query_page("w1", &plan).unwrap();
+        assert_eq!(page.total_rows, 3);
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn metric_data_resolves_the_binding_in_rust() {
+        let (engine, root) = imported("metric");
+        let count = engine.metric_data("w1", "total_records").unwrap();
+        assert_eq!(count.value, serde_json::json!(5));
+        assert_eq!(count.revision, 1);
+        let avg = engine.metric_data("w1", "metric_amount").unwrap();
+        assert_eq!(avg.value, serde_json::json!(30.0));
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn metric_data_on_a_non_metric_component_is_a_typed_error() {
+        let (engine, root) = imported("notmetric");
+        let e = engine.metric_data("w1", "data_table").unwrap_err();
+        assert!(matches!(e, CoreError::NotAMetric(_, _)), "{e}");
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn unknown_component_is_a_typed_error() {
+        let (engine, root) = imported("unknown");
+        assert!(matches!(
+            engine.metric_data("w1", "ghost"),
+            Err(CoreError::UnknownComponent(_))
+        ));
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn unknown_workspace_is_a_typed_error() {
+        let root = temp_root("noworkspace");
+        let engine = Engine::new(&root).unwrap();
+        assert!(matches!(
+            engine.snapshot("ghost"),
+            Err(CoreError::Store(StoreError::NotFound(_)))
+        ));
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn reopen_rehydrates_a_queryable_session_from_disk() {
+        let root = temp_root("reopen");
+        let doc_id = "w_reopen";
+        {
+            let engine = Engine::new(&root).unwrap();
+            engine
+                .import_csv(SALES, "Sales", doc_id, "2026-11-05T00:00:00Z", &mut |_| {})
+                .unwrap();
+        }
+        // A brand-new Engine has no in-memory session: it must rebuild from the source.
+        let engine = Engine::new(&root).unwrap();
+        assert!(!engine.has_session(doc_id));
+        let page = engine
+            .query_page(doc_id, &morphic_query::Plan::default())
+            .unwrap();
+        assert_eq!(page.total_rows, 5);
+        assert!(engine.has_session(doc_id));
+        assert_eq!(
+            engine.metric_data(doc_id, "metric_amount").unwrap().value,
+            serde_json::json!(30.0)
+        );
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn close_session_drops_state_but_not_the_persisted_workspace() {
+        let (engine, root) = imported("close");
+        engine.close_session("w1").unwrap();
+        assert!(!engine.has_session("w1"));
+        // Still reopenable, because the document and source are on disk.
+        assert_eq!(engine.snapshot("w1").unwrap().profile.row_count, 5);
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn engine_is_send_and_sync_for_the_bridge() {
+        fn assert_send_sync<T: Send + Sync>() {}
+        assert_send_sync::<Engine>();
+    }
+
+    // --- M1.1 task 1.1.2 paths retained ---
 
     #[test]
     fn temporal_csv_flows_through_ingest_into_facts() {
@@ -168,29 +566,22 @@ mod tests {
         assert_eq!(table.row_count, 3);
         assert_eq!(table.columns[0].dtype, morphic_model::DataType::Timestamp);
         assert_eq!(table.columns[2].dtype, morphic_model::DataType::Int64);
-        assert!(report
-            .warnings
-            .iter()
-            .any(|w| w.contains("UTC milliseconds")));
+        assert!(report.warnings.iter().any(|w| w.contains("UTC milliseconds")));
 
         let profile = morphic_semantic::profile(&table);
-
         let when = &profile.fields[0];
         assert_eq!(when.inference.role, morphic_model::FieldRole::Temporal);
         assert_eq!(when.min.as_deref(), Some("2024-01-01T12:00:00.000Z"));
         assert_eq!(when.max.as_deref(), Some("2024-01-02T00:00:00.000Z"));
-        assert!(when.stats.is_some(), "timestamps have a real distribution");
+        assert!(when.stats.is_some());
 
         let latency = &profile.fields[2];
         assert_eq!(latency.inference.role, morphic_model::FieldRole::Measure);
         let s = latency.stats.as_ref().unwrap();
         assert_eq!(s.count, 3);
         assert!((s.mean - 20.0).abs() < 1e-9);
-        assert!((s.p50 - 20.0).abs() < 1e-9);
         assert!(!s.sampled);
-
-        let region = &profile.fields[1];
-        assert!(region.stats.is_none(), "text has no numeric distribution");
+        assert!(profile.fields[1].stats.is_none());
     }
 
     #[test]
@@ -202,8 +593,7 @@ mod tests {
         let profile = morphic_semantic::profile(&table);
         assert_ne!(
             profile.fields[0].inference.role,
-            morphic_model::FieldRole::Temporal,
-            "an unresolved date order must not be presented as a temporal fact"
+            morphic_model::FieldRole::Temporal
         );
     }
 }

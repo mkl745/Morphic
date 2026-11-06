@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
-description = "MORPHIC FFI bridge (Phase 0 C-ABI PoC). Thin facade over morphic-core."
+description = "MORPHIC FFI bridge: stateful C-ABI facade over morphic-core."
 
 [lib]
 name = "morphic_bridge"
@@ -12,4 +12,5 @@ crate-type = ["cdylib", "staticlib", "rlib"]
 
 [dependencies]
 morphic-core.workspace = true
+morphic-query.workspace = true
 serde_json.workspace = true

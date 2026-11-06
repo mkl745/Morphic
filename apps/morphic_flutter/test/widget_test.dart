@@ -46,6 +46,59 @@ class FakeBridge implements MorphicBridge {
 
   @override
   List<dynamic> listWorkspaces(String storageRoot) => [];
+
+  @override
+  Map<String, dynamic> importCsv({
+    required Uint8List bytes,
+    required String storageRoot,
+    required String title,
+    required String workspaceId,
+    required String nowIso,
+  }) =>
+      {
+        'doc': _sampleDoc(),
+        'profile': profileCsv(bytes),
+        'report': {'rowsImported': 12, 'warnings': <String>[]},
+      };
+
+  @override
+  Map<String, dynamic> snapshot({
+    required String storageRoot,
+    required String workspaceId,
+  }) =>
+      {'doc': _sampleDoc(), 'profile': profileCsv(Uint8List(0)), 'revision': 1};
+
+  @override
+  Map<String, dynamic> queryPage({
+    required String storageRoot,
+    required String workspaceId,
+    Map<String, dynamic>? plan,
+  }) =>
+      {
+        'rows': [
+          ['eu', 10],
+          ['us', 20],
+        ],
+        'totalRows': 2,
+        'offset': 0,
+        'limit': 256,
+        'hasMore': false,
+      };
+
+  @override
+  Map<String, dynamic> metricData({
+    required String storageRoot,
+    required String workspaceId,
+    required String componentId,
+  }) =>
+      {'componentId': componentId, 'value': 12, 'revision': 1};
+
+  @override
+  Map<String, dynamic> closeWorkspace({
+    required String storageRoot,
+    required String workspaceId,
+  }) =>
+      {'closed': true};
 }
 
 Map<String, dynamic> _sampleDoc() => {

@@ -4,9 +4,10 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
-description = "MORPHIC query engine: validated plans over columnar tables (Phase 0: types + count)."
+description = "MORPHIC query engine: bounded paging and aggregation over columnar tables."
 
 [dependencies]
 morphic-model.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+thiserror.workspace = true
