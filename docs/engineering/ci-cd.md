@@ -22,7 +22,7 @@ schedule ───▶ nightly.yml ───────────────�
               ├─ emulator integration tests (API 36, API 24)
               ├─ perf harness (scripted workloads) → JSON metrics → trend artifact
               ├─ cargo-audit + cargo-deny (licenses/advisories/bans)
-              ├─ parser fuzz smoke (10 min/target)
+              ├─ deep parser fuzz smoke (40,000 mutation cases; 3,000 run in CI too)
               └─ pub outdated / cargo upgrade --dry-run report
 ```
 
@@ -80,3 +80,10 @@ the pipeline is testable before signing is set up. Keystore generation instructi
 3. Generated artifacts match their sources (no hand-edited glue, no stale schema).
 4. A real Android APK builds for all ABIs with 16 KB-aligned native libs.
 5. Nothing in the dependency graph violates license/advisory policy (nightly + deny in CI).
+
+> **Registration caveat.** `nightly.yml` exists but GitHub has not registered it: only workflow
+> files on the **default branch** are registered, and this one lives on a feature branch.
+> `gh workflow run nightly.yml` returns 404 and the cron has never fired. Anything that must
+> actually run belongs in `ci.yml` until the branch merges to `main` — which is why the AT-02
+> scorer and the parser fuzz smoke both run on every push, with the nightly carrying only the
+> longer stream.

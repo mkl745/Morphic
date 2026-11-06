@@ -17,7 +17,7 @@ marketing claims (spec §16). Reference device classes: **low** (4 GB RAM, A-ser
 | Integration (host) | `integration_test` on host lib | import→workspace→save→reopen with real engine (no mocks) | every PR |
 | Integration (emulator) | emulator API 30/36 in `ci.yml` | fast regression: boot, FFI, PoC | every PR |
 | **Integration (physical device)** | **real low/mid/flagship handsets** | full flows incl. SAF picker, lifecycle kill/restore, airplane mode | **every milestone exit + every release — MANDATORY** |
-| Fuzz | cargo-fuzz targets: csv/json/log sniffers | malformed input never panics/OOMs | nightly smoke |
+| Fuzz | seeded corpus mutation through `ingest_with` (`tests/fuzz_smoke.rs`), detection included | no panic, typed outcome, report/table agreement, bounded time, honoured cancel | **3,000 cases every CI push**; 40,000 nightly |
 | Reliability | scripted chaos | kill mid-import/mid-save; corrupt snapshot/journal/workspace; permission revocation | nightly + pre-release |
 
 ## 2. Fixture corpus (built in Phase 0, grown every milestone)
@@ -82,3 +82,24 @@ tests ([spec](../roadmap/mvp-acceptance-tests.md)) are the floor; UX studies are
 Every component: semantic summary, ≥48 dp targets, contrast ≥ 4.5:1 (token-enforced),
 text-scale 1.0–1.3 without clipping (golden at 1.3), focus traversal order tested, and
 screen-reader pass on the vertical slice before M1.7 exit.
+
+### What the fuzz smoke is, and is not
+
+`engine/crates/morphic-ingest/tests/fuzz_smoke.rs` mutates the real fixture corpus with ten
+operators and pushes every case through the public entry point, so **format detection is fuzzed
+too**. It asserts more than "did not panic": the report must agree with the table it describes,
+every column buffer must match the row count, no case may exceed a 10-second budget, identical
+bytes must reparse identically (reopen depends on it), and a pre-cancelled token must be
+honoured. It also fails if the stream stops being interesting — no tables, no refusals, or only
+one detected format means the smoke has quietly stopped testing.
+
+**cargo-fuzz is deliberately not adopted.** It needs a nightly toolchain and a maintained corpus
+directory, and this project's build environment cannot verify either locally. More decisively:
+the nightly workflow is **not registered with GitHub** (workflow files only register from the
+default branch), so a fuzzer placed there would never have run. A 3,000-case smoke on every push
+is worth more than a coverage-guided target nobody executes. Adopting cargo-fuzz is M1.7
+reliability-week work, once the branch is on `main` and the nightly actually fires.
+
+The older per-parser sweeps (`arbitrary_bytes_never_panic` in `json.rs` and its siblings) are
+still there and still useful, but they generate random bytes from a small alphabet and discard
+the result. Random bytes rarely reach a deep parser state; mutating a real file does.

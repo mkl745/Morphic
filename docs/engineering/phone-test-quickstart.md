@@ -173,6 +173,7 @@ Home, and note how long the reopen takes (budget ≤ 500 ms, also unmeasured unt
    clipboard surprise, a report that did not explain itself.
 5. If a check failed, the `notes:` line from the harness — it names the step and the reason.
 
-With a `mid` pass committed, **M1.1's exit gate can finally be assessed**. Two other items
-still block it independently (AT-02's labeled corpus and scorer, and the fuzz smoke), so a
-green phone run moves the milestone forward without closing it on its own.
+With a `mid` pass committed, **M1.1's exit gate can finally be assessed**. The two items that
+used to block it independently are now closed: AT-02 has a labelled corpus and a CI scorer, and
+the parser fuzz smoke runs on every push. What remains is the device evidence itself and the
+10 MB timing from Part C — so this session is now the critical path, not one blocker among three.
