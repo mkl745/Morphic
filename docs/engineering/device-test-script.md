@@ -1,20 +1,41 @@
-# Device test script — realme GT Neo6 SE + Galaxy A15
+# Device test script — realme C51 + Galaxy A15
 
 Concrete steps for the two phones on hand. Written 2026-11-06 against commit `38ca412`
 (CI run [42175082666](https://github.com/mkl745/Morphic/actions/runs/42175082666), all 6 jobs green).
 
 ## Your two phones and which class to record
 
-| Phone | Model code | SoC / RAM | Record as | Why |
-|---|---|---|---|---|
-| realme GT Neo6 SE | RMX3850 | Snapdragon 7+ Gen 3, 8–16 GB [1](https://www.gsmchoice.com/en/catalogue/realme/gt-neo6-se/) | **`--class mid`** | Upper-mid. Not SD 8-series, so not "flagship" under our matrix. **This is the phone that satisfies the M1.1 exit rule.** |
-| Samsung Galaxy A15 | SM-A155 / SM-A156 | Helio G99 (4G) or Dimensity 6100+ (5G), 4–8 GB [2](https://en.wikipedia.org/wiki/Samsung_Galaxy_A15) | **`--class low`** | Cortex-A76+A55, Mali-G57 MC2 — entry class. The most useful phone for honest perf numbers. |
+| Phone | Model code | SoC / RAM / storage | Record as |
+|---|---|---|---|
+| realme C51 | **RMX3830** | Unisoc Tiger T612 (12 nm), 2×A75 + 6×A55 @ 1.8 GHz, **4 GB**, **eMMC 5.1**, 720×1600 LCD, Android 13 [1](https://www.welectronics.com/shop/gsm-phones/realme-c51-rmx3830-carbon-black-64gb-4gb-ram-gsm-unlocked-phone-unisoc-tiger-t612-50mp-detail) | **`--class low`** |
+| Samsung Galaxy A15 | SM-A155 / SM-A156 | Helio G99 (4G) or Dimensity 6100+ (5G), 4–8 GB, UFS 2.2 [2](https://en.wikipedia.org/wiki/Samsung_Galaxy_A15) | **`--class low`** |
 
-Run the **A15 first**. If something is slow or janky, it will show there, and the realme will
-hide it.
+Run the **C51 first**. It is the weaker of the two — 4 GB RAM, eMMC 5.1 storage and a 12 nm
+Unisoc part — so it is the honest worst case. The A15's Helio G99 and UFS storage are
+meaningfully faster and would mask problems.
 
-> Release (M1.7) needs low + mid + **flagship**. These two cover low + mid. A release still
-> cannot be cut without an SD 8-series device — that is the gate working, not a bug.
+### ⚠ Neither phone satisfies the M1.1 exit rule
+
+Our matrix ([real-device-testing.md](real-device-testing.md) §2) sets the minimum bar for
+**every milestone exit** at **mid = "Pixel 6a / 7a class"**, and defines **low** as
+"4 GB RAM, A-series class".
+
+- realme C51 → squarely **low** (4 GB, eMMC, entry Unisoc).
+- Galaxy A15 → **low**; the matrix names A-series class explicitly.
+
+So both runs produce **low-class evidence**. That is genuinely useful — it is the hardware
+most likely to expose our memory and storage debts — but it **does not close M1.1**, and it
+does not unblock a release either (M1.7 needs low + mid + flagship).
+
+**What this pass can establish:** FFI works on Unisoc and MediaTek arm64; the offline
+guarantee; persistence across process death; paging and search correctness; low-end scroll
+smoothness. **What it cannot establish:** the mid-class milestone exit, the 10 MB perf budget,
+or flagship behaviour.
+
+To close M1.1 you need one borrow of a Pixel 6a/7a-class device (or comparable: Snapdragon
+7-series / Dimensity 7000-series with 6–8 GB). Alternatively you, as product owner, can
+explicitly revise the matrix — but that is a rule change to be recorded in an ADR, not
+something to infer from whichever phones happen to be on the desk.
 
 ---
 
@@ -115,7 +136,7 @@ Did the app close itself, freeze, or show a red error screen at any point? Note 
 ## Send me this, per phone
 
 ```
-Phone:            realme GT Neo6 SE (RMX3850)  /  Galaxy A15 (4G or 5G?)
+Phone:            realme C51 (RMX3830)  /  Galaxy A15 (4G or 5G?)
 Android version:  Settings → About phone → Android version
 RAM:              
 A1 engine:        connected?  yes / no
@@ -149,8 +170,10 @@ evidence file, and I will not write one on your behalf.
 ### B2. Per phone
 - Settings → About phone → tap **Build number** 7 times → back → **Developer options** →
   enable **USB debugging**.
-- **realme specifically:** also enable **USB debugging (Security settings)** in Developer
-  options, or simulated taps are blocked and the harness cannot drive the UI.
+- **realme specifically:** if Developer options offers **USB debugging (Security settings)**
+  (wording varies on Realme UI T), enable it too, or simulated taps are blocked and the
+  harness cannot drive the UI. Also disable any "deep optimization" / battery restriction for
+  MORPHIC, since Unisoc realme builds kill background apps aggressively.
 - Plug in USB, accept the *Allow USB debugging* prompt on the phone.
 - `adb devices` — must show the serial as `device`, not `unauthorized`.
 
@@ -158,8 +181,8 @@ evidence file, and I will not write one on your behalf.
 One phone at a time:
 
 ```bash
-# realme GT Neo6 SE
-tools/device_smoke.sh ~/Downloads/app-debug.apk --tester "Your Name" --class mid
+# realme C51 (weakest — run first)
+tools/device_smoke.sh ~/Downloads/app-debug.apk --tester "Your Name" --class low
 
 # Galaxy A15
 tools/device_smoke.sh ~/Downloads/app-debug.apk --tester "Your Name" --class low
@@ -169,7 +192,7 @@ Both plugged in at once? Target explicitly:
 
 ```bash
 adb devices                       # note the serials
-tools/device_smoke.sh ~/Downloads/app-debug.apk --tester "Your Name" --class mid --serial RMX3850SERIAL
+tools/device_smoke.sh ~/Downloads/app-debug.apk --tester "Your Name" --class low --serial RMX3830SERIAL
 ```
 
 If it reports it cannot toggle airplane mode, turn airplane mode on by hand and add
@@ -204,3 +227,6 @@ Or just paste me the JSON / the `RESULT` block and I will commit it.
 The **10 MB → workspace ≤ 3 s** budget. The sample is 30 KB and there is no file picker, so
 nothing in this script tests that number. Your A3 timing is a useful data point, not proof of
 the budget.
+
+Also unmeasured after this pass: **mid-class** and **flagship** behaviour, because neither
+phone is in those classes. M1.1 stays open until a mid-class run exists.
