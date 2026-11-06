@@ -6,7 +6,6 @@
 library;
 
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -20,7 +19,7 @@ void main() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(SystemChannels.platform, (call) async {
       if (call.method != 'Clipboard.getData') return null;
-      if (failure != null) throw failure!;
+      if (failure != null) throw failure;
       if (text == null) return null;
       return <String, dynamic>{'text': text};
     });

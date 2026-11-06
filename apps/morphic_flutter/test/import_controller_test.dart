@@ -454,14 +454,6 @@ void main() {
     });
   });
 
-}
-
-/// A bridge whose cancel call fails, to prove cancellation is best-effort.
-class ThrowingCancelBridge extends ScriptedBridge {
-  @override
-  bool cancelImport({required String workspaceId}) =>
-      throw const MorphicBridgeException('cancel unavailable');
-
   group('clipboard import (1.2.5)', () {
     test('pasted text is imported with no extension to bias detection', () async {
       final runner = FakeImportRunner();
@@ -526,5 +518,11 @@ class ThrowingCancelBridge extends ScriptedBridge {
       c.dispose();
     });
   });
+}
 
+/// A bridge whose cancel call fails, to prove cancellation is best-effort.
+class ThrowingCancelBridge extends ScriptedBridge {
+  @override
+  bool cancelImport({required String workspaceId}) =>
+      throw const MorphicBridgeException('cancel unavailable');
 }

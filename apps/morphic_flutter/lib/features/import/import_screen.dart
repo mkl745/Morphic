@@ -173,16 +173,19 @@ class _ImportScreenState extends State<ImportScreen> {
       });
       return;
     }
+    // A non-nullable copy: promotion of `content` does not survive into the closure below,
+    // because it is assigned after its declaration.
+    final pasted = content;
     setState(() {
       _readingClipboard = false;
       // Reuse the file card so a paste and a pick look the same once the bytes are in hand.
       _picked = PickedFile(
         name: 'Clipboard text',
-        bytes: content.bytes,
-        sizeBytes: content.byteLength,
+        bytes: pasted.bytes,
+        sizeBytes: pasted.byteLength,
       );
     });
-    final id = await controller.importClipboard(content, formatHint: _formatHint);
+    final id = await controller.importClipboard(pasted, formatHint: _formatHint);
     if (!mounted) return;
     _afterImport(id);
   }
