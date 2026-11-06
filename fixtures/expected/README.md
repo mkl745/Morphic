@@ -43,3 +43,28 @@ in the test, and mirror AT-02: 95% dtype, 85% role.
 The scorer also fails on **label drift in both directions** — a labelled column the parser no
 longer emits, or an emitted column nobody labelled. An unlabelled column is a hole in the
 ground truth, not a free pass.
+
+## Tuning caveat — read this before quoting the score
+
+The role heuristics in `morphic-semantic` were **revised against this corpus** after the first
+scorecard measured 72.2%. The revisions are principled (booleans are categories, prose is not a
+key, a name is stronger evidence than a five-row sample), and the vocabularies are ordinary
+English field names rather than fixture strings. But the same 21 files were used to find the
+problems and to confirm the fix.
+
+**A high score on a corpus the rules were tuned against is an upper bound, not a generalisation
+estimate.** To turn it into an estimate:
+
+1. Add files that nobody tuned against — real exports, unfamiliar column names, other locales —
+   and score them **before** touching a rule.
+2. Keep a held-out split: label new files, run the scorer, and only then decide whether a miss
+   is an engine bug or a label error. Both happen; the first scorecard found one of each.
+3. Never lower `targets` to make a run green. If the target is wrong, change it in
+   `mvp-acceptance-tests.md` with a reason, so the spec and the scorer stay in agreement.
+
+Two label decisions are worth knowing because they look like engine bugs and are not:
+
+- `access.log`'s `ident` is `-` on every line. There is no data, so `null` / `unknown` is
+  correct. The first scorecard caught this label being wrong.
+- `mixed_types.name` and `tolerant_types.name` are labelled `dimension` even though every value
+  is unique. Uniqueness in 5 and 20 rows is a property of the sample, not evidence of a key.
