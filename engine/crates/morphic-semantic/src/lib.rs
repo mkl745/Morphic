@@ -33,22 +33,64 @@ const SEVERITY_VOCAB: &[&str] = &[
 /// not fixture-specific strings, but the corpus is small — see the tuning caveat in
 /// `fixtures/expected/README.md`.
 const MEASURE_NAMES: &[&str] = &[
-    "amount", "amt", "value", "revenue", "price", "cost", "total", "sum", "qty", "quantity",
-    "units", "count", "bytes", "size", "duration", "latency", "reading", "score", "rate",
-    "ratio", "pct", "percent", "weight", "height", "width", "length", "distance", "temp",
-    "temperature", "ms", "us", "seconds", "minutes", "hours", "kb", "mb",
+    "amount",
+    "amt",
+    "value",
+    "revenue",
+    "price",
+    "cost",
+    "total",
+    "sum",
+    "qty",
+    "quantity",
+    "units",
+    "count",
+    "bytes",
+    "size",
+    "duration",
+    "latency",
+    "reading",
+    "score",
+    "rate",
+    "ratio",
+    "pct",
+    "percent",
+    "weight",
+    "height",
+    "width",
+    "length",
+    "distance",
+    "temp",
+    "temperature",
+    "ms",
+    "us",
+    "seconds",
+    "minutes",
+    "hours",
+    "kb",
+    "mb",
 ];
 
 /// Fields a user reads rather than groups by.
 const PAYLOAD_NAMES: &[&str] = &[
-    "message", "msg", "line", "text", "body", "description", "desc", "notes", "note",
-    "comment", "comments", "payload", "raw", "content",
+    "message",
+    "msg",
+    "line",
+    "text",
+    "body",
+    "description",
+    "desc",
+    "notes",
+    "note",
+    "comment",
+    "comments",
+    "payload",
+    "raw",
+    "content",
 ];
 
 /// Numeric codes: grouping is meaningful, averaging is not.
-const CODE_NAMES: &[&str] = &[
-    "status", "statuscode", "code", "priority", "zip", "state",
-];
+const CODE_NAMES: &[&str] = &["status", "statuscode", "code", "priority", "zip", "state"];
 
 const MONTHS: &[&str] = &[
     "jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec",
@@ -66,8 +108,17 @@ fn name_has(name: &str, vocab: &[&str]) -> bool {
 fn name_is_identifier(name: &str) -> bool {
     let n = name.to_ascii_lowercase();
     const EXACT: &[&str] = &[
-        "id", "pid", "uid", "uuid", "guid", "key", "pk", "identifier", "line_number",
-        "row_number", "ordinal",
+        "id",
+        "pid",
+        "uid",
+        "uuid",
+        "guid",
+        "key",
+        "pk",
+        "identifier",
+        "line_number",
+        "row_number",
+        "ordinal",
     ];
     if EXACT.contains(&n.as_str()) {
         return true;
@@ -358,7 +409,9 @@ fn infer_role(
         return Inference {
             role: FieldRole::Dimension,
             confidence: 0.9,
-            evidence: vec![format!("'{name}' is a boolean flag: two values to group by")],
+            evidence: vec![format!(
+                "'{name}' is a boolean flag: two values to group by"
+            )],
         };
     }
 
@@ -742,13 +795,19 @@ mod tests {
 
     #[test]
     fn a_numeric_code_is_a_dimension_because_averaging_it_is_meaningless() {
-        assert_eq!(role_of(int_col("status", &[200, 401, 200, 404])), FieldRole::Dimension);
+        assert_eq!(
+            role_of(int_col("status", &[200, 401, 200, 404])),
+            FieldRole::Dimension
+        );
     }
 
     #[test]
     fn a_short_message_is_text_not_a_category() {
         assert_eq!(
-            role_of(utf8_col("message", &["Request received", "Charge failed", "Cache miss"])),
+            role_of(utf8_col(
+                "message",
+                &["Request received", "Charge failed", "Cache miss"]
+            )),
             FieldRole::Text
         );
     }
@@ -789,13 +848,19 @@ mod tests {
     #[test]
     fn an_identifier_name_beats_a_sample_too_small_for_uniqueness() {
         assert_eq!(role_of(int_col("id", &[1, 2, 3])), FieldRole::Identifier);
-        assert_eq!(role_of(int_col("pid", &[1234, 2201])), FieldRole::Identifier);
+        assert_eq!(
+            role_of(int_col("pid", &[1234, 2201])),
+            FieldRole::Identifier
+        );
     }
 
     #[test]
     fn an_ordinal_name_is_an_identifier_not_prose() {
         // `line_number` tokenises to "line" + "number"; the payload hint must not win.
-        assert_eq!(role_of(int_col("line_number", &[1, 2, 3])), FieldRole::Identifier);
+        assert_eq!(
+            role_of(int_col("line_number", &[1, 2, 3])),
+            FieldRole::Identifier
+        );
     }
 
     #[test]
@@ -821,7 +886,10 @@ mod tests {
     #[test]
     fn prose_that_merely_starts_like_a_month_is_not_temporal() {
         assert_eq!(
-            role_of(utf8_col("message", &["May we help you?", "Novel idea here"])),
+            role_of(utf8_col(
+                "message",
+                &["May we help you?", "Novel idea here"]
+            )),
             FieldRole::Text
         );
         assert!(!looks_temporal("May we help you?"));
@@ -841,9 +909,12 @@ mod tests {
             row_count: 5,
         };
         for f in profile(&t).fields {
-            assert!(!f.inference.evidence.is_empty(), "{} has no evidence", f.name);
+            assert!(
+                !f.inference.evidence.is_empty(),
+                "{} has no evidence",
+                f.name
+            );
             assert!(f.inference.confidence > 0.0);
         }
     }
-
 }
