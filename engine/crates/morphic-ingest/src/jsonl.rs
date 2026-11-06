@@ -259,13 +259,9 @@ mod tests {
     #[test]
     fn json_and_jsonl_agree_on_the_same_records() {
         // The whole point of the shared records module: identical input, identical output.
-        let records = [{"a": 1, "n": {"b": "x"}}, {"a": 2, "n": {"b": "y"}}];
-        let array = serde_json::to_string(&records).unwrap();
-        let lines = records
-            .iter()
-            .map(|r| serde_json::to_string(r).unwrap())
-            .collect::<Vec<_>>()
-            .join("\n");
+        let records = [r#"{"a":1,"n":{"b":"x"}}"#, r#"{"a":2,"n":{"b":"y"}}"#];
+        let array = format!("[{}]", records.join(","));
+        let lines = records.join("\n");
         let (ta, _) = crate::json::parse_json(array.as_bytes()).unwrap();
         let (tl, _) = parse(&lines);
         assert_eq!(ta.field_names(), tl.field_names());
