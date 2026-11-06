@@ -624,8 +624,14 @@ mod tests {
         std::fs::remove_dir_all(p.join("datasets")).unwrap();
 
         let v = json(unsafe { morphic_snapshot(rp.as_ptr(), id.as_ptr()) });
-        assert_eq!(v["degraded"], true, "the UI must be told, not left guessing");
-        assert!(v["notice"].as_str().unwrap().contains("no longer available"));
+        assert_eq!(
+            v["degraded"], true,
+            "the UI must be told, not left guessing"
+        );
+        assert!(v["notice"]
+            .as_str()
+            .unwrap()
+            .contains("no longer available"));
         assert!(v["profile"].is_null());
         assert!(
             v["doc"]["workspace"]["components"]

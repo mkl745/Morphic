@@ -151,7 +151,9 @@ impl FileStore {
     }
 
     fn journal_path(&self, id: &str) -> PathBuf {
-        self.workspace_dir(id).join("journal").join("commands.jsonl")
+        self.workspace_dir(id)
+            .join("journal")
+            .join("commands.jsonl")
     }
 
     fn legacy_source_path(&self, id: &str) -> PathBuf {
@@ -609,7 +611,10 @@ mod tests {
         s.save_workspace(&doc("w1")).unwrap();
         s.delete_workspace("w1").unwrap();
         assert!(s.list_workspaces().unwrap().is_empty());
-        assert!(matches!(s.load_workspace("w1"), Err(StoreError::NotFound(_))));
+        assert!(matches!(
+            s.load_workspace("w1"),
+            Err(StoreError::NotFound(_))
+        ));
         fs::remove_dir_all(&root).ok();
     }
 
@@ -640,7 +645,8 @@ mod tests {
     fn save_compacts_the_journal_so_it_does_not_grow_forever() {
         let (s, root) = store();
         for rev in 1..=5 {
-            s.save_workspace(&doc_at("w1", rev, "2026-11-05T00:00:00Z")).unwrap();
+            s.save_workspace(&doc_at("w1", rev, "2026-11-05T00:00:00Z"))
+                .unwrap();
         }
         // Every save is acknowledged by workspace.json, so nothing needs replaying.
         assert!(!s.journal_path("w1").exists());
@@ -723,10 +729,12 @@ mod tests {
     #[test]
     fn a_crash_between_journal_and_rename_restores_the_newer_revision() {
         let (s, root) = store();
-        s.save_workspace(&doc_at("w1", 1, "2026-11-05T00:00:00Z")).unwrap();
+        s.save_workspace(&doc_at("w1", 1, "2026-11-05T00:00:00Z"))
+            .unwrap();
         // Simulate the crash: the revision-2 record is durable, but workspace.json still
         // holds revision 1 because the rename never happened.
-        s.journal_revision(&doc_at("w1", 2, "2026-11-05T01:00:00Z")).unwrap();
+        s.journal_revision(&doc_at("w1", 2, "2026-11-05T01:00:00Z"))
+            .unwrap();
         assert_eq!(
             serde_json::from_slice::<WorkspaceDoc>(&fs::read(s.doc_path("w1")).unwrap())
                 .unwrap()
@@ -738,8 +746,14 @@ mod tests {
         let report = s.recover_workspace("w1").unwrap();
         assert!(report.restored_from_journal);
         let recovered = s.load_workspace("w1").unwrap();
-        assert_eq!(recovered.workspace.revision, 2, "pre-crash revision restored");
-        assert!(!s.journal_path("w1").exists(), "journal compacted after replay");
+        assert_eq!(
+            recovered.workspace.revision, 2,
+            "pre-crash revision restored"
+        );
+        assert!(
+            !s.journal_path("w1").exists(),
+            "journal compacted after replay"
+        );
         // Recovery is idempotent.
         assert!(!s.recover_workspace("w1").unwrap().restored_from_journal);
         fs::remove_dir_all(&root).ok();
@@ -748,8 +762,10 @@ mod tests {
     #[test]
     fn a_torn_trailing_journal_line_is_dropped_not_fatal() {
         let (s, root) = store();
-        s.save_workspace(&doc_at("w1", 1, "2026-11-05T00:00:00Z")).unwrap();
-        s.journal_revision(&doc_at("w1", 2, "2026-11-05T01:00:00Z")).unwrap();
+        s.save_workspace(&doc_at("w1", 1, "2026-11-05T00:00:00Z"))
+            .unwrap();
+        s.journal_revision(&doc_at("w1", 2, "2026-11-05T01:00:00Z"))
+            .unwrap();
         // Half-written third record, as a power loss mid-append would leave.
         let path = s.journal_path("w1");
         let mut text = fs::read_to_string(&path).unwrap();
@@ -767,8 +783,10 @@ mod tests {
     #[test]
     fn corrupt_workspace_json_is_rebuilt_from_the_journal() {
         let (s, root) = store();
-        s.save_workspace(&doc_at("w1", 1, "2026-11-05T00:00:00Z")).unwrap();
-        s.journal_revision(&doc_at("w1", 4, "2026-11-05T02:00:00Z")).unwrap();
+        s.save_workspace(&doc_at("w1", 1, "2026-11-05T00:00:00Z"))
+            .unwrap();
+        s.journal_revision(&doc_at("w1", 4, "2026-11-05T02:00:00Z"))
+            .unwrap();
         fs::write(s.doc_path("w1"), b"{ not json at all").unwrap();
 
         let report = s.recover_workspace("w1").unwrap();
@@ -794,9 +812,11 @@ mod tests {
     #[test]
     fn a_stale_journal_entry_never_overwrites_a_newer_document() {
         let (s, root) = store();
-        s.save_workspace(&doc_at("w1", 9, "2026-11-05T09:00:00Z")).unwrap();
+        s.save_workspace(&doc_at("w1", 9, "2026-11-05T09:00:00Z"))
+            .unwrap();
         // An older record left behind must not roll state backwards.
-        s.journal_revision(&doc_at("w1", 3, "2026-11-05T03:00:00Z")).unwrap();
+        s.journal_revision(&doc_at("w1", 3, "2026-11-05T03:00:00Z"))
+            .unwrap();
         let report = s.recover_workspace("w1").unwrap();
         assert!(!report.restored_from_journal);
         assert_eq!(s.load_workspace("w1").unwrap().workspace.revision, 9);
@@ -826,7 +846,11 @@ mod tests {
         let mut old = doc("w_old");
         old.workspace.data_sources[0].dataset_id = "w_old".into();
         fs::create_dir_all(s.workspace_dir("w_old")).unwrap();
-        fs::write(s.doc_path("w_old"), serde_json::to_vec_pretty(&old).unwrap()).unwrap();
+        fs::write(
+            s.doc_path("w_old"),
+            serde_json::to_vec_pretty(&old).unwrap(),
+        )
+        .unwrap();
         let bytes = b"region,amount\neu,10\nus,20\n";
         fs::write(s.legacy_source_path("w_old"), bytes).unwrap();
 
@@ -840,7 +864,10 @@ mod tests {
         assert!(s.has_dataset(hash));
         assert!(!s.legacy_source_path("w_old").exists());
         assert_eq!(s.load_source("w_old").unwrap(), bytes.to_vec());
-        assert_eq!(migrated.workspace.revision, 1, "migration is not a user edit");
+        assert_eq!(
+            migrated.workspace.revision, 1,
+            "migration is not a user edit"
+        );
         // Running it again is a no-op.
         assert!(!s.migrate_legacy_source("w_old").unwrap());
         fs::remove_dir_all(&root).ok();
@@ -851,10 +878,18 @@ mod tests {
     #[test]
     fn list_is_newest_first() {
         let (s, root) = store();
-        s.save_workspace(&doc_at("old", 1, "2026-11-01T00:00:00Z")).unwrap();
-        s.save_workspace(&doc_at("new", 1, "2026-11-05T00:00:00Z")).unwrap();
-        s.save_workspace(&doc_at("mid", 1, "2026-11-03T00:00:00Z")).unwrap();
-        let ids: Vec<String> = s.list_workspaces().unwrap().into_iter().map(|w| w.id).collect();
+        s.save_workspace(&doc_at("old", 1, "2026-11-01T00:00:00Z"))
+            .unwrap();
+        s.save_workspace(&doc_at("new", 1, "2026-11-05T00:00:00Z"))
+            .unwrap();
+        s.save_workspace(&doc_at("mid", 1, "2026-11-03T00:00:00Z"))
+            .unwrap();
+        let ids: Vec<String> = s
+            .list_workspaces()
+            .unwrap()
+            .into_iter()
+            .map(|w| w.id)
+            .collect();
         assert_eq!(ids, vec!["new", "mid", "old"]);
         fs::remove_dir_all(&root).ok();
     }
@@ -862,9 +897,16 @@ mod tests {
     #[test]
     fn list_ties_are_broken_deterministically() {
         let (s, root) = store();
-        s.save_workspace(&doc_at("b", 1, "2026-11-05T00:00:00Z")).unwrap();
-        s.save_workspace(&doc_at("a", 1, "2026-11-05T00:00:00Z")).unwrap();
-        let ids: Vec<String> = s.list_workspaces().unwrap().into_iter().map(|w| w.id).collect();
+        s.save_workspace(&doc_at("b", 1, "2026-11-05T00:00:00Z"))
+            .unwrap();
+        s.save_workspace(&doc_at("a", 1, "2026-11-05T00:00:00Z"))
+            .unwrap();
+        let ids: Vec<String> = s
+            .list_workspaces()
+            .unwrap()
+            .into_iter()
+            .map(|w| w.id)
+            .collect();
         assert_eq!(ids, vec!["a", "b"]);
         fs::remove_dir_all(&root).ok();
     }
@@ -900,7 +942,10 @@ mod tests {
         .unwrap();
         let items = s.list_workspaces().unwrap();
         assert_eq!(items.len(), 1);
-        assert_eq!(items[0].revision, 0, "missing field defaults, does not fail");
+        assert_eq!(
+            items[0].revision, 0,
+            "missing field defaults, does not fail"
+        );
         assert_eq!(items[0].dataset_id, "");
         fs::remove_dir_all(&root).ok();
     }

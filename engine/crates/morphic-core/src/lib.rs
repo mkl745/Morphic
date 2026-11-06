@@ -614,7 +614,13 @@ mod tests {
         assert!(!engine.has_session("w1"));
         // Still reopenable, because the document and source are on disk.
         assert_eq!(
-            engine.snapshot("w1").unwrap().profile.as_ref().unwrap().row_count,
+            engine
+                .snapshot("w1")
+                .unwrap()
+                .profile
+                .as_ref()
+                .unwrap()
+                .row_count,
             5
         );
         std::fs::remove_dir_all(&root).ok();
@@ -854,15 +860,21 @@ mod tests {
         let mut old = out.doc.clone();
         old.workspace.data_sources[0].dataset_id = "w_old".into();
         let dir = root.join("workspaces").join("w_old");
-        std::fs::write(dir.join("workspace.json"), serde_json::to_vec_pretty(&old).unwrap())
-            .unwrap();
+        std::fs::write(
+            dir.join("workspace.json"),
+            serde_json::to_vec_pretty(&old).unwrap(),
+        )
+        .unwrap();
         std::fs::write(dir.join("source.csv"), SALES).unwrap();
         std::fs::remove_dir_all(root.join("datasets")).unwrap();
         drop(store);
 
         let reopened = Engine::new(&root).unwrap();
         let snap = reopened.open_session("w_old").unwrap();
-        assert!(!snap.degraded, "a legacy workspace must still open with its data");
+        assert!(
+            !snap.degraded,
+            "a legacy workspace must still open with its data"
+        );
         assert_eq!(snap.profile.as_ref().unwrap().row_count, 5);
         assert_eq!(
             snap.doc.workspace.data_sources[0].dataset_id,
