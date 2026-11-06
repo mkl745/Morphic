@@ -168,9 +168,7 @@ pub fn parse_json_with(
             let wrappers: Vec<&str> = map
                 .iter()
                 .filter(|(_, sub)| match sub {
-                    Value::Array(items) => {
-                        items.len() > 1 && items.iter().all(|i| i.is_object())
-                    }
+                    Value::Array(items) => items.len() > 1 && items.iter().all(|i| i.is_object()),
                     _ => false,
                 })
                 .map(|(k, _)| k.as_str())
@@ -773,7 +771,11 @@ mod tests {
     fn one_warning_per_affected_column_not_per_row() {
         let src = format!("[{}]", vec![r#"{"tags":["x"]}"#; 500].join(","));
         let (_, r) = parse(&src);
-        let n = r.warnings.iter().filter(|w| w.contains("holds JSON arrays")).count();
+        let n = r
+            .warnings
+            .iter()
+            .filter(|w| w.contains("holds JSON arrays"))
+            .count();
         assert_eq!(n, 1, "{:?}", r.warnings);
     }
 
@@ -1037,7 +1039,10 @@ mod tests {
             ..Default::default()
         };
         let err = parse_json_with(b"[1,2,3]", &opts, None, &mut |_| {}).unwrap_err();
-        assert!(matches!(err, IngestError::TooManyRows { limit: 2 }), "{err}");
+        assert!(
+            matches!(err, IngestError::TooManyRows { limit: 2 }),
+            "{err}"
+        );
     }
 
     #[test]
@@ -1046,17 +1051,25 @@ mod tests {
             max_columns: 2,
             ..Default::default()
         };
-        let err = parse_json_with(br#"[{"a":1},{"b":2},{"c":3}]"#, &opts, None, &mut |_| {})
-            .unwrap_err();
-        assert!(matches!(err, IngestError::TooManyColumns { limit: 2, .. }), "{err}");
+        let err =
+            parse_json_with(br#"[{"a":1},{"b":2},{"c":3}]"#, &opts, None, &mut |_| {}).unwrap_err();
+        assert!(
+            matches!(err, IngestError::TooManyColumns { limit: 2, .. }),
+            "{err}"
+        );
     }
 
     #[test]
     fn cancellation_is_honoured_before_work_starts() {
         let token = CancelToken::new();
         token.cancel();
-        let err = parse_json_with(b"[1,2,3]", &IngestOptions::default(), Some(&token), &mut |_| {})
-            .unwrap_err();
+        let err = parse_json_with(
+            b"[1,2,3]",
+            &IngestOptions::default(),
+            Some(&token),
+            &mut |_| {},
+        )
+        .unwrap_err();
         assert!(matches!(err, IngestError::Cancelled), "{err}");
     }
 
@@ -1083,11 +1096,16 @@ mod tests {
     #[test]
     fn progress_runs_through_every_phase_in_order() {
         let mut phases = Vec::new();
-        parse_json_with(br#"[{"a":1},{"a":2}]"#, &IngestOptions::default(), None, &mut |p| {
-            if phases.last() != Some(&p.phase) {
-                phases.push(p.phase);
-            }
-        })
+        parse_json_with(
+            br#"[{"a":1},{"a":2}]"#,
+            &IngestOptions::default(),
+            None,
+            &mut |p| {
+                if phases.last() != Some(&p.phase) {
+                    phases.push(p.phase);
+                }
+            },
+        )
         .unwrap();
         assert_eq!(
             phases,
@@ -1161,7 +1179,13 @@ mod tests {
         assert_eq!(t.row_count, 1);
         assert_eq!(
             names(&t),
-            vec!["healthy", "limits.burst", "limits.rpm", "service", "version"]
+            vec![
+                "healthy",
+                "limits.burst",
+                "limits.rpm",
+                "service",
+                "version"
+            ]
         );
         assert_eq!(col(&t, "healthy").dtype, DataType::Bool);
         assert_eq!(col(&t, "limits.rpm").dtype, DataType::Int64);
