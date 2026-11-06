@@ -1,13 +1,601 @@
 time,level,service,message,latency_ms
-2026-11-05T14:00:01Z,INFO,api,Request received,12
-2026-11-05T14:00:02Z,INFO,auth,Token validated,8
-2026-11-05T14:00:03Z,WARN,api,Slow upstream response,420
-2026-11-05T14:00:04Z,ERROR,payments,Charge failed: timeout,5000
-2026-11-05T14:00:05Z,INFO,api,Request received,15
-2026-11-05T14:00:06Z,ERROR,payments,Charge failed: timeout,5000
-2026-11-05T14:00:07Z,INFO,search,Query executed,34
-2026-11-05T14:00:08Z,DEBUG,cache,Cache miss,2
-2026-11-05T14:00:09Z,INFO,api,Request received,11
-2026-11-05T14:00:10Z,WARN,auth,Rate limit approaching,20
-2026-11-05T14:00:11Z,ERROR,api,Unhandled exception,0
-2026-11-05T14:00:12Z,INFO,payments,Charge succeeded,180
+2026-11-05T14:00:02Z,ERROR,auth,Upstream timeout,128
+2026-11-05T14:00:06Z,INFO,auth,Response sent,48
+2026-11-05T14:00:09Z,INFO,auth,Request received,20
+2026-11-05T14:00:12Z,INFO,api,Job completed,8
+2026-11-05T14:00:16Z,WARN,auth,Queue depth high,24
+2026-11-05T14:00:20Z,INFO,cache,Cache hit,64
+2026-11-05T14:00:24Z,INFO,gateway,Connection established,96
+2026-11-05T14:00:28Z,ERROR,api,Auth failed,384
+2026-11-05T14:00:31Z,WARN,auth,Retry scheduled,16
+2026-11-05T14:00:33Z,INFO,gateway,Connection established,64
+2026-11-05T14:00:34Z,ERROR,gateway,Constraint violation,256
+2026-11-05T14:00:38Z,INFO,cache,Request received,12
+2026-11-05T14:00:42Z,WARN,gateway,Cache miss storm,128
+2026-11-05T14:00:45Z,INFO,worker,Response sent,20
+2026-11-05T14:00:49Z,INFO,gateway,Response sent,8
+2026-11-05T14:00:51Z,INFO,api,Job completed,4
+2026-11-05T14:00:53Z,INFO,api,Connection established,20
+2026-11-05T14:00:57Z,INFO,auth,Job completed,20
+2026-11-05T14:00:58Z,INFO,auth,Response sent,24
+2026-11-05T14:00:59Z,INFO,cache,Request received,24
+2026-11-05T14:01:03Z,DEBUG,gateway,Pool stats sampled,24
+2026-11-05T14:01:04Z,ERROR,gateway,Constraint violation,384
+2026-11-05T14:01:05Z,INFO,gateway,Token validated,96
+2026-11-05T14:01:08Z,INFO,gateway,Job completed,20
+2026-11-05T14:01:11Z,DEBUG,db,Query plan chosen,48
+2026-11-05T14:01:15Z,DEBUG,gateway,Entering handler,24
+2026-11-05T14:01:18Z,INFO,api,Request received,64
+2026-11-05T14:01:20Z,DEBUG,worker,Pool stats sampled,64
+2026-11-05T14:01:23Z,WARN,gateway,Queue depth high,128
+2026-11-05T14:01:27Z,INFO,api,Response sent,16
+2026-11-05T14:01:30Z,ERROR,worker,Connection reset,80
+2026-11-05T14:01:31Z,INFO,worker,Token validated,24
+2026-11-05T14:01:33Z,ERROR,gateway,Upstream timeout,64
+2026-11-05T14:01:35Z,INFO,db,Request received,32
+2026-11-05T14:01:36Z,WARN,cache,Retry scheduled,24
+2026-11-05T14:01:39Z,INFO,db,Cache hit,24
+2026-11-05T14:01:43Z,INFO,db,Job completed,48
+2026-11-05T14:01:44Z,WARN,db,Retry scheduled,40
+2026-11-05T14:01:47Z,ERROR,worker,Auth failed,96
+2026-11-05T14:01:48Z,WARN,cache,Retry scheduled,48
+2026-11-05T14:01:50Z,WARN,db,Queue depth high,96
+2026-11-05T14:01:54Z,INFO,cache,Job completed,12
+2026-11-05T14:01:57Z,WARN,gateway,Cache miss storm,40
+2026-11-05T14:01:59Z,INFO,auth,Response sent,64
+2026-11-05T14:02:01Z,INFO,auth,Token validated,96
+2026-11-05T14:02:03Z,WARN,cache,Slow query,24
+2026-11-05T14:02:06Z,INFO,auth,Cache hit,96
+2026-11-05T14:02:08Z,DEBUG,db,Entering handler,64
+2026-11-05T14:02:09Z,INFO,auth,Request received,96
+2026-11-05T14:02:10Z,INFO,db,Request received,48
+2026-11-05T14:02:11Z,DEBUG,api,Query plan chosen,24
+2026-11-05T14:02:13Z,ERROR,auth,Constraint violation,768
+2026-11-05T14:02:16Z,INFO,cache,Token validated,48
+2026-11-05T14:02:20Z,INFO,api,Cache hit,12
+2026-11-05T14:02:21Z,ERROR,cache,Auth failed,256
+2026-11-05T14:02:23Z,INFO,auth,Connection established,48
+2026-11-05T14:02:27Z,INFO,worker,Response sent,8
+2026-11-05T14:02:30Z,INFO,db,Connection established,4
+2026-11-05T14:02:32Z,INFO,auth,Response sent,64
+2026-11-05T14:02:33Z,ERROR,auth,Connection reset,192
+2026-11-05T14:02:37Z,INFO,worker,Token validated,64
+2026-11-05T14:02:41Z,ERROR,gateway,Connection reset,64
+2026-11-05T14:02:45Z,INFO,api,Cache hit,64
+2026-11-05T14:02:46Z,DEBUG,auth,Query plan chosen,4
+2026-11-05T14:02:47Z,INFO,cache,Token validated,32
+2026-11-05T14:02:51Z,INFO,cache,Connection established,96
+2026-11-05T14:02:53Z,DEBUG,cache,Entering handler,64
+2026-11-05T14:02:54Z,WARN,auth,Slow query,192
+2026-11-05T14:02:57Z,INFO,cache,Response sent,12
+2026-11-05T14:02:58Z,INFO,gateway,Job completed,64
+2026-11-05T14:03:00Z,WARN,worker,Retry scheduled,32
+2026-11-05T14:03:01Z,DEBUG,db,Query plan chosen,16
+2026-11-05T14:03:02Z,INFO,auth,Cache hit,16
+2026-11-05T14:03:04Z,INFO,cache,Response sent,32
+2026-11-05T14:03:06Z,INFO,cache,Token validated,48
+2026-11-05T14:03:08Z,INFO,api,Request received,4
+2026-11-05T14:03:12Z,ERROR,auth,Constraint violation,32
+2026-11-05T14:03:13Z,ERROR,gateway,Connection reset,64
+2026-11-05T14:03:17Z,DEBUG,cache,Pool stats sampled,32
+2026-11-05T14:03:19Z,ERROR,worker,Upstream timeout,512
+2026-11-05T14:03:23Z,INFO,auth,Response sent,48
+2026-11-05T14:03:24Z,WARN,gateway,Slow query,48
+2026-11-05T14:03:28Z,DEBUG,api,Entering handler,48
+2026-11-05T14:03:32Z,INFO,auth,Job completed,16
+2026-11-05T14:03:33Z,INFO,cache,Response sent,32
+2026-11-05T14:03:36Z,ERROR,worker,Upstream timeout,96
+2026-11-05T14:03:40Z,DEBUG,gateway,Entering handler,48
+2026-11-05T14:03:44Z,INFO,auth,Request received,48
+2026-11-05T14:03:45Z,INFO,gateway,Token validated,20
+2026-11-05T14:03:47Z,WARN,gateway,Retry scheduled,96
+2026-11-05T14:03:49Z,ERROR,auth,Constraint violation,128
+2026-11-05T14:03:52Z,DEBUG,cache,Pool stats sampled,64
+2026-11-05T14:03:56Z,INFO,db,Token validated,12
+2026-11-05T14:03:58Z,DEBUG,db,Pool stats sampled,4
+2026-11-05T14:03:59Z,INFO,api,Job completed,24
+2026-11-05T14:04:03Z,INFO,worker,Cache hit,48
+2026-11-05T14:04:06Z,INFO,db,Response sent,4
+2026-11-05T14:04:09Z,INFO,worker,Request received,16
+2026-11-05T14:04:13Z,INFO,api,Job completed,96
+2026-11-05T14:04:16Z,WARN,db,Queue depth high,24
+2026-11-05T14:04:18Z,DEBUG,api,Query plan chosen,32
+2026-11-05T14:04:20Z,INFO,worker,Request received,12
+2026-11-05T14:04:21Z,INFO,cache,Cache hit,16
+2026-11-05T14:04:25Z,ERROR,gateway,Upstream timeout,80
+2026-11-05T14:04:28Z,WARN,db,Retry scheduled,8
+2026-11-05T14:04:30Z,INFO,worker,Cache hit,32
+2026-11-05T14:04:34Z,INFO,db,Request received,4
+2026-11-05T14:04:36Z,INFO,gateway,Connection established,64
+2026-11-05T14:04:39Z,DEBUG,db,Query plan chosen,64
+2026-11-05T14:04:41Z,WARN,cache,Retry scheduled,40
+2026-11-05T14:04:45Z,DEBUG,worker,Entering handler,12
+2026-11-05T14:04:48Z,DEBUG,worker,Query plan chosen,32
+2026-11-05T14:04:50Z,INFO,api,Connection established,24
+2026-11-05T14:04:53Z,WARN,cache,Retry scheduled,24
+2026-11-05T14:04:57Z,INFO,auth,Token validated,96
+2026-11-05T14:04:59Z,INFO,auth,Request received,32
+2026-11-05T14:05:02Z,ERROR,cache,Connection reset,768
+2026-11-05T14:05:04Z,INFO,auth,Connection established,48
+2026-11-05T14:05:07Z,ERROR,db,Connection reset,16
+2026-11-05T14:05:08Z,INFO,api,Job completed,16
+2026-11-05T14:05:10Z,INFO,worker,Job completed,48
+2026-11-05T14:05:14Z,INFO,db,Cache hit,64
+2026-11-05T14:05:18Z,ERROR,auth,Constraint violation,64
+2026-11-05T14:05:19Z,INFO,worker,Response sent,12
+2026-11-05T14:05:20Z,INFO,worker,Job completed,12
+2026-11-05T14:05:24Z,DEBUG,cache,Query plan chosen,48
+2026-11-05T14:05:27Z,INFO,auth,Job completed,8
+2026-11-05T14:05:30Z,INFO,db,Request received,48
+2026-11-05T14:05:33Z,INFO,gateway,Job completed,8
+2026-11-05T14:05:35Z,INFO,api,Job completed,4
+2026-11-05T14:05:38Z,INFO,cache,Token validated,48
+2026-11-05T14:05:40Z,ERROR,gateway,Connection reset,256
+2026-11-05T14:05:43Z,INFO,db,Response sent,20
+2026-11-05T14:05:46Z,INFO,api,Cache hit,48
+2026-11-05T14:05:50Z,DEBUG,auth,Entering handler,32
+2026-11-05T14:05:51Z,INFO,auth,Response sent,8
+2026-11-05T14:05:55Z,INFO,gateway,Connection established,12
+2026-11-05T14:05:57Z,WARN,gateway,Retry scheduled,64
+2026-11-05T14:05:58Z,DEBUG,auth,Entering handler,4
+2026-11-05T14:06:01Z,DEBUG,worker,Query plan chosen,4
+2026-11-05T14:06:05Z,ERROR,db,Upstream timeout,192
+2026-11-05T14:06:06Z,DEBUG,worker,Pool stats sampled,64
+2026-11-05T14:06:08Z,INFO,api,Job completed,12
+2026-11-05T14:06:10Z,INFO,auth,Token validated,24
+2026-11-05T14:06:13Z,INFO,gateway,Response sent,96
+2026-11-05T14:06:16Z,INFO,gateway,Cache hit,48
+2026-11-05T14:06:19Z,INFO,worker,Response sent,8
+2026-11-05T14:06:21Z,WARN,gateway,Retry scheduled,48
+2026-11-05T14:06:22Z,INFO,worker,Response sent,20
+2026-11-05T14:06:24Z,INFO,cache,Connection established,32
+2026-11-05T14:06:26Z,INFO,api,Job completed,32
+2026-11-05T14:06:29Z,INFO,cache,Connection established,20
+2026-11-05T14:06:32Z,INFO,cache,Connection established,64
+2026-11-05T14:06:34Z,ERROR,db,Constraint violation,64
+2026-11-05T14:06:35Z,INFO,auth,Token validated,96
+2026-11-05T14:06:36Z,INFO,api,Response sent,8
+2026-11-05T14:06:39Z,DEBUG,gateway,Query plan chosen,16
+2026-11-05T14:06:40Z,INFO,db,Cache hit,16
+2026-11-05T14:06:41Z,INFO,cache,Connection established,8
+2026-11-05T14:06:45Z,DEBUG,api,Query plan chosen,20
+2026-11-05T14:06:46Z,INFO,db,Token validated,32
+2026-11-05T14:06:47Z,INFO,gateway,Job completed,24
+2026-11-05T14:06:48Z,ERROR,cache,Connection reset,160
+2026-11-05T14:06:50Z,DEBUG,db,Pool stats sampled,4
+2026-11-05T14:06:54Z,INFO,cache,Token validated,96
+2026-11-05T14:06:58Z,ERROR,auth,Connection reset,80
+2026-11-05T14:07:00Z,WARN,api,Queue depth high,48
+2026-11-05T14:07:01Z,INFO,gateway,Response sent,20
+2026-11-05T14:07:05Z,ERROR,auth,Upstream timeout,32
+2026-11-05T14:07:06Z,DEBUG,worker,Pool stats sampled,64
+2026-11-05T14:07:07Z,DEBUG,auth,Pool stats sampled,96
+2026-11-05T14:07:10Z,DEBUG,cache,Pool stats sampled,12
+2026-11-05T14:07:12Z,DEBUG,worker,Entering handler,96
+2026-11-05T14:07:13Z,WARN,auth,Retry scheduled,48
+2026-11-05T14:07:17Z,ERROR,gateway,Connection reset,192
+2026-11-05T14:07:21Z,INFO,worker,Token validated,12
+2026-11-05T14:07:22Z,DEBUG,auth,Pool stats sampled,8
+2026-11-05T14:07:23Z,WARN,worker,Cache miss storm,40
+2026-11-05T14:07:26Z,INFO,db,Response sent,20
+2026-11-05T14:07:29Z,ERROR,gateway,Upstream timeout,768
+2026-11-05T14:07:31Z,INFO,gateway,Token validated,24
+2026-11-05T14:07:33Z,DEBUG,auth,Pool stats sampled,48
+2026-11-05T14:07:37Z,DEBUG,worker,Query plan chosen,32
+2026-11-05T14:07:39Z,INFO,cache,Connection established,32
+2026-11-05T14:07:40Z,WARN,gateway,Queue depth high,24
+2026-11-05T14:07:44Z,INFO,api,Token validated,16
+2026-11-05T14:07:48Z,WARN,worker,Queue depth high,40
+2026-11-05T14:07:49Z,INFO,gateway,Response sent,48
+2026-11-05T14:07:52Z,INFO,cache,Request received,8
+2026-11-05T14:07:54Z,ERROR,cache,Constraint violation,192
+2026-11-05T14:07:57Z,ERROR,db,Upstream timeout,192
+2026-11-05T14:07:59Z,INFO,api,Job completed,16
+2026-11-05T14:08:03Z,ERROR,api,Upstream timeout,96
+2026-11-05T14:08:05Z,WARN,auth,Slow query,16
+2026-11-05T14:08:07Z,WARN,api,Queue depth high,8
+2026-11-05T14:08:08Z,WARN,cache,Retry scheduled,16
+2026-11-05T14:08:09Z,WARN,cache,Slow query,128
+2026-11-05T14:08:11Z,INFO,api,Response sent,20
+2026-11-05T14:08:12Z,WARN,cache,Cache miss storm,8
+2026-11-05T14:08:13Z,WARN,worker,Cache miss storm,40
+2026-11-05T14:08:14Z,INFO,auth,Token validated,48
+2026-11-05T14:08:18Z,INFO,db,Response sent,20
+2026-11-05T14:08:22Z,INFO,cache,Cache hit,24
+2026-11-05T14:08:26Z,INFO,cache,Response sent,8
+2026-11-05T14:08:30Z,ERROR,gateway,Constraint violation,160
+2026-11-05T14:08:34Z,INFO,auth,Token validated,24
+2026-11-05T14:08:36Z,INFO,auth,Request received,12
+2026-11-05T14:08:37Z,WARN,db,Slow query,64
+2026-11-05T14:08:39Z,INFO,db,Cache hit,16
+2026-11-05T14:08:40Z,INFO,db,Connection established,32
+2026-11-05T14:08:41Z,INFO,gateway,Token validated,32
+2026-11-05T14:08:42Z,INFO,api,Job completed,64
+2026-11-05T14:08:43Z,WARN,auth,Retry scheduled,40
+2026-11-05T14:08:45Z,DEBUG,auth,Entering handler,4
+2026-11-05T14:08:48Z,INFO,gateway,Job completed,16
+2026-11-05T14:08:51Z,WARN,api,Slow query,192
+2026-11-05T14:08:55Z,INFO,cache,Response sent,8
+2026-11-05T14:08:58Z,ERROR,worker,Constraint violation,64
+2026-11-05T14:09:01Z,INFO,gateway,Connection established,96
+2026-11-05T14:09:04Z,INFO,db,Cache hit,32
+2026-11-05T14:09:05Z,WARN,worker,Queue depth high,48
+2026-11-05T14:09:09Z,INFO,api,Response sent,12
+2026-11-05T14:09:10Z,INFO,cache,Request received,20
+2026-11-05T14:09:13Z,INFO,cache,Token validated,32
+2026-11-05T14:09:15Z,INFO,db,Cache hit,20
+2026-11-05T14:09:18Z,INFO,gateway,Connection established,64
+2026-11-05T14:09:22Z,INFO,worker,Job completed,32
+2026-11-05T14:09:23Z,INFO,db,Request received,32
+2026-11-05T14:09:25Z,DEBUG,cache,Query plan chosen,64
+2026-11-05T14:09:28Z,INFO,worker,Token validated,20
+2026-11-05T14:09:31Z,INFO,db,Request received,4
+2026-11-05T14:09:35Z,INFO,api,Connection established,20
+2026-11-05T14:09:36Z,INFO,auth,Request received,48
+2026-11-05T14:09:38Z,DEBUG,worker,Pool stats sampled,4
+2026-11-05T14:09:39Z,ERROR,cache,Connection reset,384
+2026-11-05T14:09:40Z,INFO,auth,Cache hit,48
+2026-11-05T14:09:43Z,WARN,api,Retry scheduled,48
+2026-11-05T14:09:45Z,INFO,auth,Cache hit,48
+2026-11-05T14:09:48Z,ERROR,db,Upstream timeout,512
+2026-11-05T14:09:49Z,INFO,auth,Request received,16
+2026-11-05T14:09:50Z,ERROR,auth,Auth failed,16
+2026-11-05T14:09:52Z,DEBUG,worker,Pool stats sampled,96
+2026-11-05T14:09:54Z,WARN,worker,Retry scheduled,96
+2026-11-05T14:09:57Z,INFO,db,Request received,8
+2026-11-05T14:10:00Z,INFO,cache,Response sent,8
+2026-11-05T14:10:04Z,INFO,api,Job completed,48
+2026-11-05T14:10:07Z,DEBUG,gateway,Pool stats sampled,64
+2026-11-05T14:10:08Z,INFO,db,Token validated,24
+2026-11-05T14:10:11Z,INFO,auth,Request received,20
+2026-11-05T14:10:13Z,DEBUG,auth,Entering handler,4
+2026-11-05T14:10:16Z,INFO,gateway,Token validated,32
+2026-11-05T14:10:17Z,INFO,gateway,Connection established,20
+2026-11-05T14:10:18Z,ERROR,api,Connection reset,768
+2026-11-05T14:10:22Z,ERROR,cache,Auth failed,96
+2026-11-05T14:10:26Z,DEBUG,auth,Entering handler,48
+2026-11-05T14:10:29Z,INFO,api,Connection established,24
+2026-11-05T14:10:32Z,DEBUG,auth,Query plan chosen,24
+2026-11-05T14:10:34Z,ERROR,gateway,Constraint violation,192
+2026-11-05T14:10:38Z,DEBUG,worker,Pool stats sampled,8
+2026-11-05T14:10:41Z,INFO,gateway,Token validated,48
+2026-11-05T14:10:43Z,WARN,cache,Queue depth high,192
+2026-11-05T14:10:44Z,DEBUG,gateway,Query plan chosen,4
+2026-11-05T14:10:47Z,INFO,cache,Response sent,64
+2026-11-05T14:10:51Z,INFO,cache,Job completed,24
+2026-11-05T14:10:52Z,WARN,worker,Slow query,40
+2026-11-05T14:10:53Z,WARN,auth,Cache miss storm,8
+2026-11-05T14:10:56Z,ERROR,gateway,Auth failed,192
+2026-11-05T14:10:57Z,INFO,api,Response sent,96
+2026-11-05T14:11:00Z,DEBUG,cache,Pool stats sampled,48
+2026-11-05T14:11:01Z,INFO,gateway,Job completed,12
+2026-11-05T14:11:02Z,DEBUG,worker,Entering handler,96
+2026-11-05T14:11:05Z,INFO,db,Connection established,4
+2026-11-05T14:11:06Z,ERROR,cache,Upstream timeout,128
+2026-11-05T14:11:09Z,DEBUG,cache,Query plan chosen,16
+2026-11-05T14:11:11Z,INFO,gateway,Request received,32
+2026-11-05T14:11:12Z,INFO,db,Request received,4
+2026-11-05T14:11:13Z,ERROR,auth,Upstream timeout,16
+2026-11-05T14:11:16Z,INFO,gateway,Cache hit,12
+2026-11-05T14:11:19Z,WARN,db,Cache miss storm,24
+2026-11-05T14:11:20Z,WARN,worker,Retry scheduled,16
+2026-11-05T14:11:21Z,WARN,cache,Queue depth high,32
+2026-11-05T14:11:22Z,DEBUG,auth,Pool stats sampled,12
+2026-11-05T14:11:23Z,ERROR,cache,Constraint violation,96
+2026-11-05T14:11:25Z,WARN,cache,Cache miss storm,192
+2026-11-05T14:11:27Z,WARN,worker,Cache miss storm,32
+2026-11-05T14:11:30Z,DEBUG,api,Query plan chosen,4
+2026-11-05T14:11:31Z,WARN,gateway,Retry scheduled,192
+2026-11-05T14:11:33Z,INFO,auth,Token validated,4
+2026-11-05T14:11:37Z,DEBUG,db,Pool stats sampled,8
+2026-11-05T14:11:40Z,INFO,worker,Response sent,96
+2026-11-05T14:11:44Z,INFO,api,Connection established,4
+2026-11-05T14:11:46Z,ERROR,gateway,Connection reset,256
+2026-11-05T14:11:50Z,INFO,api,Connection established,20
+2026-11-05T14:11:52Z,ERROR,worker,Upstream timeout,96
+2026-11-05T14:11:53Z,ERROR,api,Constraint violation,192
+2026-11-05T14:11:55Z,ERROR,worker,Auth failed,16
+2026-11-05T14:11:56Z,ERROR,auth,Connection reset,512
+2026-11-05T14:11:58Z,DEBUG,worker,Pool stats sampled,4
+2026-11-05T14:11:59Z,INFO,cache,Response sent,12
+2026-11-05T14:12:02Z,WARN,cache,Queue depth high,96
+2026-11-05T14:12:06Z,WARN,auth,Retry scheduled,8
+2026-11-05T14:12:07Z,DEBUG,worker,Entering handler,96
+2026-11-05T14:12:10Z,INFO,gateway,Job completed,20
+2026-11-05T14:12:11Z,DEBUG,db,Pool stats sampled,12
+2026-11-05T14:12:15Z,DEBUG,db,Pool stats sampled,8
+2026-11-05T14:12:18Z,DEBUG,cache,Pool stats sampled,32
+2026-11-05T14:12:19Z,ERROR,gateway,Upstream timeout,256
+2026-11-05T14:12:23Z,INFO,gateway,Token validated,24
+2026-11-05T14:12:25Z,WARN,auth,Retry scheduled,192
+2026-11-05T14:12:26Z,DEBUG,auth,Pool stats sampled,96
+2026-11-05T14:12:29Z,ERROR,auth,Upstream timeout,256
+2026-11-05T14:12:31Z,INFO,auth,Token validated,96
+2026-11-05T14:12:32Z,WARN,worker,Queue depth high,48
+2026-11-05T14:12:34Z,INFO,auth,Connection established,20
+2026-11-05T14:12:35Z,WARN,gateway,Slow query,32
+2026-11-05T14:12:36Z,INFO,db,Request received,96
+2026-11-05T14:12:39Z,INFO,api,Token validated,64
+2026-11-05T14:12:43Z,DEBUG,auth,Query plan chosen,16
+2026-11-05T14:12:45Z,INFO,auth,Job completed,20
+2026-11-05T14:12:47Z,WARN,auth,Cache miss storm,96
+2026-11-05T14:12:51Z,ERROR,auth,Auth failed,256
+2026-11-05T14:12:55Z,INFO,gateway,Connection established,96
+2026-11-05T14:12:59Z,INFO,auth,Response sent,16
+2026-11-05T14:13:03Z,INFO,worker,Connection established,4
+2026-11-05T14:13:04Z,ERROR,cache,Connection reset,96
+2026-11-05T14:13:07Z,INFO,worker,Response sent,32
+2026-11-05T14:13:10Z,DEBUG,gateway,Pool stats sampled,4
+2026-11-05T14:13:11Z,INFO,auth,Job completed,4
+2026-11-05T14:13:14Z,ERROR,api,Constraint violation,64
+2026-11-05T14:13:17Z,INFO,auth,Connection established,48
+2026-11-05T14:13:19Z,WARN,api,Slow query,8
+2026-11-05T14:13:20Z,INFO,auth,Response sent,96
+2026-11-05T14:13:21Z,DEBUG,api,Query plan chosen,64
+2026-11-05T14:13:22Z,INFO,api,Request received,64
+2026-11-05T14:13:24Z,INFO,api,Cache hit,32
+2026-11-05T14:13:27Z,INFO,cache,Request received,48
+2026-11-05T14:13:30Z,INFO,cache,Job completed,48
+2026-11-05T14:13:33Z,INFO,cache,Job completed,20
+2026-11-05T14:13:36Z,WARN,cache,Cache miss storm,8
+2026-11-05T14:13:40Z,WARN,auth,Slow query,128
+2026-11-05T14:13:43Z,ERROR,auth,Connection reset,192
+2026-11-05T14:13:47Z,ERROR,worker,Constraint violation,256
+2026-11-05T14:13:50Z,ERROR,worker,Constraint violation,32
+2026-11-05T14:13:52Z,WARN,worker,Slow query,40
+2026-11-05T14:13:55Z,INFO,gateway,Connection established,24
+2026-11-05T14:13:59Z,WARN,cache,Cache miss storm,128
+2026-11-05T14:14:01Z,WARN,worker,Slow query,24
+2026-11-05T14:14:02Z,INFO,db,Connection established,96
+2026-11-05T14:14:04Z,INFO,gateway,Cache hit,12
+2026-11-05T14:14:08Z,INFO,db,Token validated,4
+2026-11-05T14:14:12Z,ERROR,cache,Connection reset,384
+2026-11-05T14:14:13Z,INFO,cache,Response sent,8
+2026-11-05T14:14:14Z,WARN,auth,Cache miss storm,24
+2026-11-05T14:14:17Z,INFO,db,Request received,48
+2026-11-05T14:14:18Z,WARN,db,Retry scheduled,24
+2026-11-05T14:14:21Z,INFO,db,Response sent,12
+2026-11-05T14:14:23Z,DEBUG,gateway,Query plan chosen,4
+2026-11-05T14:14:25Z,INFO,db,Token validated,24
+2026-11-05T14:14:28Z,ERROR,gateway,Upstream timeout,80
+2026-11-05T14:14:31Z,INFO,api,Cache hit,96
+2026-11-05T14:14:32Z,ERROR,api,Connection reset,192
+2026-11-05T14:14:35Z,INFO,api,Token validated,24
+2026-11-05T14:14:39Z,WARN,gateway,Cache miss storm,8
+2026-11-05T14:14:40Z,WARN,cache,Retry scheduled,32
+2026-11-05T14:14:41Z,INFO,auth,Request received,8
+2026-11-05T14:14:43Z,ERROR,gateway,Connection reset,80
+2026-11-05T14:14:44Z,WARN,api,Retry scheduled,64
+2026-11-05T14:14:45Z,INFO,auth,Token validated,8
+2026-11-05T14:14:49Z,INFO,auth,Cache hit,12
+2026-11-05T14:14:50Z,DEBUG,auth,Pool stats sampled,4
+2026-11-05T14:14:52Z,INFO,api,Response sent,96
+2026-11-05T14:14:55Z,DEBUG,auth,Entering handler,4
+2026-11-05T14:14:58Z,INFO,gateway,Request received,20
+2026-11-05T14:14:59Z,DEBUG,gateway,Query plan chosen,96
+2026-11-05T14:15:01Z,DEBUG,api,Pool stats sampled,32
+2026-11-05T14:15:02Z,INFO,api,Job completed,4
+2026-11-05T14:15:03Z,ERROR,gateway,Constraint violation,160
+2026-11-05T14:15:07Z,ERROR,cache,Connection reset,256
+2026-11-05T14:15:08Z,DEBUG,db,Pool stats sampled,16
+2026-11-05T14:15:11Z,INFO,gateway,Token validated,20
+2026-11-05T14:15:14Z,INFO,api,Job completed,24
+2026-11-05T14:15:18Z,ERROR,cache,Connection reset,32
+2026-11-05T14:15:19Z,DEBUG,api,Pool stats sampled,32
+2026-11-05T14:15:20Z,INFO,db,Request received,8
+2026-11-05T14:15:23Z,ERROR,api,Connection reset,64
+2026-11-05T14:15:25Z,DEBUG,api,Entering handler,24
+2026-11-05T14:15:28Z,DEBUG,db,Query plan chosen,8
+2026-11-05T14:15:31Z,DEBUG,cache,Query plan chosen,96
+2026-11-05T14:15:33Z,ERROR,worker,Connection reset,96
+2026-11-05T14:15:37Z,DEBUG,gateway,Query plan chosen,12
+2026-11-05T14:15:41Z,ERROR,auth,Constraint violation,96
+2026-11-05T14:15:43Z,ERROR,worker,Auth failed,768
+2026-11-05T14:15:45Z,ERROR,auth,Connection reset,96
+2026-11-05T14:15:48Z,INFO,gateway,Token validated,12
+2026-11-05T14:15:51Z,INFO,worker,Request received,4
+2026-11-05T14:15:54Z,INFO,cache,Connection established,8
+2026-11-05T14:15:56Z,INFO,gateway,Token validated,64
+2026-11-05T14:15:57Z,INFO,gateway,Token validated,96
+2026-11-05T14:16:01Z,INFO,auth,Job completed,12
+2026-11-05T14:16:02Z,INFO,db,Cache hit,48
+2026-11-05T14:16:05Z,WARN,worker,Cache miss storm,40
+2026-11-05T14:16:09Z,INFO,worker,Response sent,48
+2026-11-05T14:16:11Z,WARN,gateway,Retry scheduled,96
+2026-11-05T14:16:13Z,WARN,worker,Retry scheduled,128
+2026-11-05T14:16:15Z,INFO,cache,Request received,16
+2026-11-05T14:16:18Z,INFO,worker,Connection established,12
+2026-11-05T14:16:19Z,DEBUG,api,Pool stats sampled,8
+2026-11-05T14:16:23Z,WARN,api,Queue depth high,64
+2026-11-05T14:16:25Z,WARN,db,Slow query,48
+2026-11-05T14:16:27Z,INFO,gateway,Connection established,12
+2026-11-05T14:16:29Z,WARN,auth,Cache miss storm,128
+2026-11-05T14:16:31Z,INFO,api,Request received,20
+2026-11-05T14:16:34Z,ERROR,gateway,Constraint violation,16
+2026-11-05T14:16:35Z,ERROR,api,Upstream timeout,96
+2026-11-05T14:16:39Z,INFO,api,Cache hit,12
+2026-11-05T14:16:43Z,ERROR,db,Auth failed,16
+2026-11-05T14:16:46Z,INFO,worker,Job completed,64
+2026-11-05T14:16:49Z,INFO,worker,Response sent,24
+2026-11-05T14:16:50Z,ERROR,api,Constraint violation,80
+2026-11-05T14:16:53Z,INFO,cache,Token validated,24
+2026-11-05T14:16:55Z,INFO,db,Cache hit,12
+2026-11-05T14:16:58Z,DEBUG,gateway,Entering handler,12
+2026-11-05T14:16:59Z,ERROR,api,Constraint violation,192
+2026-11-05T14:17:03Z,INFO,cache,Response sent,12
+2026-11-05T14:17:06Z,INFO,worker,Request received,12
+2026-11-05T14:17:09Z,WARN,worker,Slow query,16
+2026-11-05T14:17:11Z,INFO,cache,Cache hit,12
+2026-11-05T14:17:13Z,ERROR,db,Auth failed,384
+2026-11-05T14:17:15Z,INFO,gateway,Cache hit,4
+2026-11-05T14:17:18Z,INFO,gateway,Job completed,16
+2026-11-05T14:17:20Z,WARN,db,Retry scheduled,48
+2026-11-05T14:17:23Z,ERROR,worker,Auth failed,512
+2026-11-05T14:17:26Z,WARN,api,Retry scheduled,8
+2026-11-05T14:17:30Z,ERROR,auth,Constraint violation,48
+2026-11-05T14:17:31Z,ERROR,gateway,Connection reset,256
+2026-11-05T14:17:35Z,ERROR,worker,Auth failed,32
+2026-11-05T14:17:37Z,ERROR,auth,Upstream timeout,384
+2026-11-05T14:17:40Z,DEBUG,db,Pool stats sampled,24
+2026-11-05T14:17:41Z,INFO,auth,Connection established,64
+2026-11-05T14:17:44Z,INFO,api,Cache hit,16
+2026-11-05T14:17:47Z,INFO,cache,Response sent,4
+2026-11-05T14:17:51Z,DEBUG,auth,Entering handler,32
+2026-11-05T14:17:54Z,INFO,gateway,Request received,20
+2026-11-05T14:17:58Z,DEBUG,worker,Pool stats sampled,20
+2026-11-05T14:18:00Z,INFO,api,Cache hit,48
+2026-11-05T14:18:02Z,INFO,gateway,Request received,96
+2026-11-05T14:18:06Z,WARN,worker,Queue depth high,40
+2026-11-05T14:18:10Z,INFO,worker,Request received,12
+2026-11-05T14:18:14Z,INFO,worker,Connection established,12
+2026-11-05T14:18:18Z,INFO,api,Cache hit,48
+2026-11-05T14:18:22Z,DEBUG,db,Pool stats sampled,32
+2026-11-05T14:18:24Z,WARN,db,Queue depth high,16
+2026-11-05T14:18:25Z,ERROR,db,Upstream timeout,16
+2026-11-05T14:18:29Z,INFO,auth,Request received,12
+2026-11-05T14:18:33Z,INFO,api,Job completed,4
+2026-11-05T14:18:35Z,INFO,api,Request received,8
+2026-11-05T14:18:39Z,ERROR,api,Upstream timeout,80
+2026-11-05T14:18:42Z,INFO,worker,Token validated,48
+2026-11-05T14:18:43Z,INFO,auth,Job completed,8
+2026-11-05T14:18:47Z,INFO,worker,Response sent,20
+2026-11-05T14:18:50Z,INFO,cache,Token validated,16
+2026-11-05T14:18:53Z,DEBUG,cache,Pool stats sampled,16
+2026-11-05T14:18:56Z,WARN,worker,Retry scheduled,48
+2026-11-05T14:18:59Z,DEBUG,worker,Query plan chosen,8
+2026-11-05T14:19:00Z,WARN,api,Queue depth high,128
+2026-11-05T14:19:03Z,INFO,db,Response sent,96
+2026-11-05T14:19:06Z,WARN,auth,Queue depth high,24
+2026-11-05T14:19:09Z,INFO,db,Cache hit,8
+2026-11-05T14:19:13Z,INFO,auth,Cache hit,48
+2026-11-05T14:19:17Z,ERROR,cache,Auth failed,16
+2026-11-05T14:19:20Z,INFO,api,Token validated,24
+2026-11-05T14:19:24Z,INFO,auth,Response sent,24
+2026-11-05T14:19:28Z,INFO,cache,Job completed,24
+2026-11-05T14:19:29Z,INFO,db,Response sent,16
+2026-11-05T14:19:31Z,WARN,worker,Slow query,16
+2026-11-05T14:19:32Z,INFO,worker,Token validated,12
+2026-11-05T14:19:35Z,INFO,gateway,Request received,16
+2026-11-05T14:19:36Z,DEBUG,db,Query plan chosen,20
+2026-11-05T14:19:39Z,INFO,auth,Connection established,8
+2026-11-05T14:19:43Z,INFO,cache,Job completed,12
+2026-11-05T14:19:45Z,WARN,api,Cache miss storm,96
+2026-11-05T14:19:46Z,INFO,api,Request received,16
+2026-11-05T14:19:50Z,INFO,db,Response sent,8
+2026-11-05T14:19:52Z,DEBUG,worker,Entering handler,12
+2026-11-05T14:19:56Z,INFO,cache,Cache hit,64
+2026-11-05T14:19:57Z,DEBUG,worker,Entering handler,20
+2026-11-05T14:20:00Z,INFO,db,Connection established,4
+2026-11-05T14:20:04Z,DEBUG,auth,Entering handler,96
+2026-11-05T14:20:05Z,WARN,worker,Retry scheduled,8
+2026-11-05T14:20:07Z,INFO,auth,Job completed,4
+2026-11-05T14:20:09Z,WARN,auth,Cache miss storm,192
+2026-11-05T14:20:11Z,ERROR,auth,Connection reset,768
+2026-11-05T14:20:13Z,ERROR,gateway,Upstream timeout,256
+2026-11-05T14:20:16Z,INFO,cache,Request received,48
+2026-11-05T14:20:17Z,ERROR,auth,Constraint violation,64
+2026-11-05T14:20:20Z,INFO,cache,Cache hit,12
+2026-11-05T14:20:24Z,INFO,db,Request received,20
+2026-11-05T14:20:26Z,DEBUG,auth,Entering handler,64
+2026-11-05T14:20:28Z,INFO,worker,Connection established,24
+2026-11-05T14:20:29Z,INFO,worker,Cache hit,96
+2026-11-05T14:20:32Z,INFO,api,Token validated,96
+2026-11-05T14:20:34Z,INFO,auth,Request received,16
+2026-11-05T14:20:38Z,INFO,auth,Response sent,64
+2026-11-05T14:20:39Z,ERROR,db,Constraint violation,96
+2026-11-05T14:20:40Z,INFO,api,Response sent,16
+2026-11-05T14:20:44Z,INFO,auth,Connection established,20
+2026-11-05T14:20:47Z,DEBUG,cache,Entering handler,8
+2026-11-05T14:20:50Z,INFO,api,Cache hit,8
+2026-11-05T14:20:53Z,INFO,worker,Token validated,48
+2026-11-05T14:20:57Z,ERROR,db,Upstream timeout,512
+2026-11-05T14:20:58Z,WARN,api,Retry scheduled,64
+2026-11-05T14:20:59Z,DEBUG,auth,Pool stats sampled,8
+2026-11-05T14:21:01Z,DEBUG,db,Entering handler,16
+2026-11-05T14:21:03Z,INFO,worker,Connection established,24
+2026-11-05T14:21:06Z,INFO,cache,Response sent,24
+2026-11-05T14:21:08Z,INFO,auth,Request received,20
+2026-11-05T14:21:10Z,ERROR,cache,Auth failed,384
+2026-11-05T14:21:14Z,DEBUG,gateway,Entering handler,24
+2026-11-05T14:21:17Z,DEBUG,auth,Pool stats sampled,48
+2026-11-05T14:21:19Z,INFO,gateway,Request received,32
+2026-11-05T14:21:20Z,DEBUG,gateway,Entering handler,8
+2026-11-05T14:21:23Z,INFO,gateway,Job completed,8
+2026-11-05T14:21:25Z,WARN,auth,Queue depth high,16
+2026-11-05T14:21:26Z,INFO,worker,Cache hit,16
+2026-11-05T14:21:28Z,ERROR,db,Auth failed,192
+2026-11-05T14:21:29Z,WARN,gateway,Slow query,32
+2026-11-05T14:21:33Z,WARN,api,Queue depth high,24
+2026-11-05T14:21:34Z,INFO,db,Request received,32
+2026-11-05T14:21:36Z,ERROR,auth,Connection reset,48
+2026-11-05T14:21:37Z,INFO,gateway,Cache hit,32
+2026-11-05T14:21:41Z,INFO,worker,Cache hit,8
+2026-11-05T14:21:43Z,DEBUG,auth,Query plan chosen,4
+2026-11-05T14:21:46Z,INFO,worker,Request received,48
+2026-11-05T14:21:47Z,INFO,cache,Response sent,96
+2026-11-05T14:21:50Z,WARN,gateway,Queue depth high,32
+2026-11-05T14:21:52Z,INFO,db,Response sent,12
+2026-11-05T14:21:54Z,INFO,auth,Connection established,8
+2026-11-05T14:21:58Z,ERROR,db,Upstream timeout,80
+2026-11-05T14:21:59Z,WARN,db,Cache miss storm,16
+2026-11-05T14:22:00Z,ERROR,api,Upstream timeout,128
+2026-11-05T14:22:04Z,WARN,auth,Slow query,8
+2026-11-05T14:22:05Z,INFO,cache,Token validated,24
+2026-11-05T14:22:07Z,WARN,api,Queue depth high,40
+2026-11-05T14:22:10Z,WARN,gateway,Slow query,192
+2026-11-05T14:22:11Z,WARN,auth,Slow query,128
+2026-11-05T14:22:12Z,INFO,gateway,Token validated,12
+2026-11-05T14:22:14Z,INFO,db,Token validated,24
+2026-11-05T14:22:18Z,INFO,worker,Request received,8
+2026-11-05T14:22:21Z,INFO,cache,Cache hit,32
+2026-11-05T14:22:24Z,INFO,auth,Cache hit,12
+2026-11-05T14:22:25Z,INFO,cache,Connection established,16
+2026-11-05T14:22:26Z,INFO,api,Connection established,12
+2026-11-05T14:22:27Z,ERROR,cache,Constraint violation,256
+2026-11-05T14:22:31Z,INFO,api,Response sent,12
+2026-11-05T14:22:32Z,INFO,gateway,Job completed,32
+2026-11-05T14:22:33Z,ERROR,db,Auth failed,64
+2026-11-05T14:22:37Z,INFO,worker,Request received,4
+2026-11-05T14:22:41Z,ERROR,api,Auth failed,96
+2026-11-05T14:22:42Z,DEBUG,api,Query plan chosen,20
+2026-11-05T14:22:43Z,WARN,cache,Cache miss storm,32
+2026-11-05T14:22:44Z,INFO,api,Job completed,20
+2026-11-05T14:22:48Z,INFO,cache,Response sent,24
+2026-11-05T14:22:49Z,INFO,auth,Token validated,32
+2026-11-05T14:22:50Z,INFO,db,Request received,64
+2026-11-05T14:22:53Z,WARN,db,Retry scheduled,40
+2026-11-05T14:22:54Z,INFO,worker,Token validated,20
+2026-11-05T14:22:56Z,INFO,cache,Token validated,32
+2026-11-05T14:22:57Z,ERROR,cache,Constraint violation,128
+2026-11-05T14:23:01Z,INFO,api,Token validated,12
+2026-11-05T14:23:02Z,WARN,cache,Cache miss storm,8
+2026-11-05T14:23:04Z,WARN,cache,Slow query,16
+2026-11-05T14:23:06Z,ERROR,gateway,Auth failed,48
+2026-11-05T14:23:09Z,DEBUG,api,Pool stats sampled,64
+2026-11-05T14:23:10Z,INFO,worker,Request received,32
+2026-11-05T14:23:12Z,WARN,cache,Retry scheduled,40
+2026-11-05T14:23:15Z,DEBUG,cache,Query plan chosen,64
+2026-11-05T14:23:17Z,INFO,worker,Response sent,48
+2026-11-05T14:23:20Z,INFO,auth,Connection established,64
+2026-11-05T14:23:23Z,INFO,db,Response sent,64
+2026-11-05T14:23:27Z,DEBUG,worker,Query plan chosen,12
+2026-11-05T14:23:29Z,INFO,auth,Job completed,12
+2026-11-05T14:23:32Z,ERROR,api,Auth failed,512
+2026-11-05T14:23:33Z,DEBUG,gateway,Entering handler,24
+2026-11-05T14:23:34Z,WARN,cache,Slow query,16
+2026-11-05T14:23:38Z,INFO,gateway,Connection established,8
+2026-11-05T14:23:39Z,DEBUG,api,Query plan chosen,32
+2026-11-05T14:23:42Z,INFO,auth,Token validated,32
+2026-11-05T14:23:44Z,ERROR,gateway,Constraint violation,512
+2026-11-05T14:23:47Z,INFO,worker,Request received,8
+2026-11-05T14:23:50Z,ERROR,gateway,Upstream timeout,384
+2026-11-05T14:23:53Z,INFO,api,Connection established,32
+2026-11-05T14:23:54Z,ERROR,gateway,Upstream timeout,160
+2026-11-05T14:23:58Z,INFO,auth,Cache hit,20
+2026-11-05T14:24:02Z,INFO,db,Request received,4
+2026-11-05T14:24:04Z,INFO,db,Job completed,32
+2026-11-05T14:24:05Z,WARN,cache,Cache miss storm,16
+2026-11-05T14:24:07Z,WARN,gateway,Retry scheduled,64
+2026-11-05T14:24:10Z,DEBUG,api,Pool stats sampled,24
+2026-11-05T14:24:12Z,DEBUG,auth,Entering handler,64
+2026-11-05T14:24:14Z,INFO,gateway,Connection established,96

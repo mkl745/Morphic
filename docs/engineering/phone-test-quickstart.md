@@ -62,7 +62,8 @@ of concept, and the release gate now requires them.
 
 ## 5. What is implemented vs. not — please don't report these as bugs
 
-**Reachable now:** Home engine status → *Run proof of concept* → Rust profile →
+**Reachable now:** Home engine status → *Run proof of concept* → Rust profile of the
+600-row sample →
 *Generate workspace* → live workspace with a real metric card and a paged, searchable table
 → saved → reopen from Home.
 
@@ -78,18 +79,18 @@ of concept, and the release gate now requires them.
 - **No column sorting.** That is **M1.3**. Search and paging do work.
 - **Reopen re-reads the source file.** Deliberate M1.1 trade-off; a columnar snapshot is
   **1.1.6**. On a large file, reopen will be slower than it eventually should be.
-- **The sample CSV is tiny (12 rows).** It fits on one page, so `tablePaging` may report
-  *"a single-page dataset cannot verify paging"*. That is an honest limitation of the
-  fixture, not a paging defect — see below.
-
 ## 6. The one measurement I still need
 
-The 10 MB → workspace **≤ 3 s** budget cannot be measured with the bundled 12-row sample.
-Until a larger fixture is bundled or the file picker lands, that number is **unmeasured** —
-please don't let a fast sample stand in for it.
+The bundled sample is **600 rows / ~30 KB**, deliberately sized to span three pages so
+`tablePaging` is genuinely exercised (regenerate it with `tools/gen_sample_logs.py`).
 
-If you want to measure it manually now, note the wall-clock time from tapping
-*Generate workspace* to the table appearing, and tell me the file size and device model.
+That is still three orders of magnitude short of the **10 MB → workspace ≤ 3 s** budget,
+which therefore remains **unmeasured**. A fast 30 KB sample must not stand in for it. Until
+the file picker lands (1.1.7) there is no way to load a 10 MB file through the UI at all.
+
+What *would* still help: the wall-clock time from tapping *Generate workspace* to the table
+appearing, plus your device model. Even one data point on real hardware is worth more than
+the emulator number.
 
 ## 7. What to send back
 
