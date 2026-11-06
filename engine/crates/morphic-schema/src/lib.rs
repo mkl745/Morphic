@@ -970,15 +970,28 @@ mod tests {
     #[test]
     fn every_issue_pointer_resolves_in_the_serialized_document() {
         let cases = vec![
-            with_binding(Binding::MetricCard { aggregation: agg("avg", Some("ghost")) }),
-            with_binding(Binding::MetricCard { aggregation: agg("sum", None) }),
-            with_binding(Binding::MetricCard { aggregation: agg("avg", Some("when")) }),
-            with_binding(Binding::DataTable { columns: vec!["ghost".into()], page_size: 0 }),
+            with_binding(Binding::MetricCard {
+                aggregation: agg("avg", Some("ghost")),
+            }),
+            with_binding(Binding::MetricCard {
+                aggregation: agg("sum", None),
+            }),
+            with_binding(Binding::MetricCard {
+                aggregation: agg("avg", Some("when")),
+            }),
+            with_binding(Binding::DataTable {
+                columns: vec!["ghost".into()],
+                page_size: 0,
+            }),
             with_binding(Binding::BarChart {
-                dimension: "ghost".into(), measure: agg("median", None), limit: 0,
+                dimension: "ghost".into(),
+                measure: agg("median", None),
+                limit: 0,
             }),
             with_binding(Binding::LineChart {
-                x: "note".into(), y: vec![agg("avg", Some("ghost"))], group_by: Some("ghost".into()),
+                x: "note".into(),
+                y: vec![agg("avg", Some("ghost"))],
+                group_by: Some("ghost".into()),
             }),
             with_binding(Binding::Timeline {
                 time_field: "region".into(),
@@ -1002,6 +1015,9 @@ mod tests {
                 checked += 1;
             }
         }
-        assert!(checked > 10, "expected a meaningful number of pointers, got {checked}");
+        assert!(
+            checked > 10,
+            "expected a meaningful number of pointers, got {checked}"
+        );
     }
 }
