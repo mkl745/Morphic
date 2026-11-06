@@ -722,8 +722,7 @@ mod tests {
         // (profile, dataset_id, workspace_id, ...), and passing the workspace id for both had
         // hidden the argument order until the two values stopped being equal.
         assert_eq!(
-            out.doc.workspace.id,
-            "w1",
+            out.doc.workspace.id, "w1",
             "the workspace must keep the id the caller asked for"
         );
         assert_eq!(
@@ -732,8 +731,7 @@ mod tests {
             "a workspace must reference its dataset by content, not by workspace id"
         );
         assert_ne!(
-            out.doc.workspace.id,
-            out.doc.workspace.data_sources[0].dataset_id,
+            out.doc.workspace.id, out.doc.workspace.data_sources[0].dataset_id,
             "workspace identity and dataset identity are different things"
         );
         std::fs::remove_dir_all(&root).ok();
