@@ -1,0 +1,176 @@
+# Phase 1 standing report — 2026-11-06
+
+Written after task **1.2.5** went CI-green (run **42256267974**, commit **`fccec5c`**, all six
+jobs success). Every number below was read from the plan, the source tree, or a CI report —
+not from memory.
+
+---
+
+## 1. The short answer
+
+| Question | Answer |
+|---|---|
+| Tasks finished | **12 of 41** (29%) |
+| Tasks not finished | **29** — 27 core + 2 stretch (◇) |
+| Milestones code-complete | **2 of 7** (M1.1, M1.2) |
+| Milestones not started | **5** (M1.3 → M1.7) |
+| Milestone exits formally met | **0 of 7** |
+| Acceptance tests fully green | **2 of 19** (AT-03, AT-10) |
+| Acceptance tests partially evidenced | **9** |
+| Acceptance tests not yet started | **8** |
+| Evidence gaps no task row covers | **7** (see §6) |
+| Remaining core effort, by the plan's own S/M/L legend | **40–69 focused days** |
+
+**The most important finding is the last row.** The plan estimates *all of Phase 1* at 30–40
+focused days. The 27 unfinished **core** tasks alone sum to 40–69 days using the plan's own
+legend (S ≈ ½ day, M ≈ 1–2, L ≈ 3–5). The estimate was optimistic before any work started; it
+is now provably short. §7 proposes a re-baseline.
+
+---
+
+## 2. Milestone by milestone
+
+| Milestone | Tasks | Done | Code status | Exit status |
+|---|---|---|---|---|
+| M1.1 Vertical slice | 7 | 7 | **complete** | **unmet** — needs a mid-class device; AT-02 unscored; 10 MB ≤ 3 s unmeasured |
+| M1.2 Format breadth | 5 | 5 | **complete** | **unmet** — fuzz smoke never run; AT-04's timeline clause depends on M1.4 |
+| M1.3 Interactivity | 5 | 0 | not started | — |
+| M1.4 Visualization + planner | 7 | 0 | not started | — |
+| M1.5 Lifecycle & layout | 6 | 0 | not started | — |
+| M1.6 Experience pass | 6 | 0 | not started | — |
+| M1.7 Hardening & release | 5 | 0 | not started | — |
+
+Phase 0 (architecture, contracts, CI, release pipeline) is complete and was verified by run
+42066050532.
+
+**"Code-complete" is not "done".** Both finished milestones have working, tested code and
+neither has met its exit criteria, because both exits demand evidence this sandbox cannot
+produce: a physical mid-range phone, and an overnight fuzz run. That distinction is the
+difference between a demo and a milestone.
+
+---
+
+## 3. What actually works today
+
+Exercised on a real device (realme C51, Android, airplane mode) and on the CI emulator:
+
+- **Import five formats** — CSV, JSON, JSONL, TXT, logs — from the file picker **or the
+  clipboard**, with automatic format detection that reports its confidence and its evidence,
+  and an explicit override when the guess is wrong.
+- **Nested JSON flattens** to `a.b` columns; **logs extract** time / level / service / message
+  with five patterns and keep every unmatched line.
+- **Malformed input is survivable**: ragged rows and bad values are quarantined with an
+  accurate report; oversized or absurd input fails with a typed, actionable message; nothing
+  is written unless the whole import validates.
+- **Cancel mid-import** leaves no dataset behind.
+- **A workspace appears** with metric cards and a paged data table (256 rows/page), with
+  **search** debounced at 250 ms and executed in Rust.
+- **Save and reopen** from home restores the same revision.
+- **No INTERNET permission** in the shipped manifest, verified on the built APK every run.
+
+Not yet user-visible: sorting, filtering, all three chart types, undo/redo, layout editing,
+templates, and sharing into Morphic.
+
+---
+
+## 4. Evidence
+
+| Task | Commit | CI run | Result |
+|---|---|---|---|
+| 1.2.1 JSON | `96a049d` | 42206085112 | 6/6 ✅ |
+| 1.2.2 TXT / logs / JSONL | `f6008d3` | 42223638706 | 6/6 ✅ |
+| 1.2.3 Detection | `ac08894` | 42234638594 | 6/6 ✅ |
+| 1.2.4 Import UX + cancel | `a6dd398` | 42248008908 | 6/6 ✅ |
+| **1.2.5 Clipboard + share evaluation** | **`fccec5c`** | **42256267974** | **6/6 ✅** |
+
+Current totals: **491 Rust tests** across 8 engine crates + the bridge, **188 Dart tests**.
+Gates on the latest run: `PERMISSIONS_OK`, `ENGINE_FFI_OK`, `POC_OK`,
+`RUNTIME_OK: range 1-256 of 600`, `PAGING_OK`.
+
+Toolchain: rustc 1.99.1, Flutter 3.47.9 / Dart 3.13.7, AGP 9.1, SDK 36 / min 24, 16 KB pages,
+three ABIs.
+
+---
+
+## 5. The 19 acceptance tests, honestly
+
+| Test | Subject | State | What is missing |
+|---|---|---|---|
+| AT-01 | Vertical slice | partial | 10 MB → ≤ 3 s never measured; no mid-class device |
+| AT-02 | Detection accuracy | **not met** | 19 valid fixtures (spec wants ≥ 20), **no labels, no scorer** |
+| AT-03 | JSON breadth | **green** | the 256 MiB refusal is proven with a lowered ceiling, not a real 256 MB file |
+| AT-04 | Logs & TXT | partial | extraction ✓; the **timeline** it requires is task 1.4.4 |
+| AT-05 | Malformed safety | partial | corpus + cancel ✓; **fuzz never run** |
+| AT-06 | Filtering | not started | M1.3 |
+| AT-07 | Sorting | not started | M1.3 |
+| AT-08 | Search | partial | works end-to-end; combining with filter/sort untestable until M1.3 |
+| AT-09 | Save & reopen | partial | restore ✓; ≤ 500 ms unmeasured; filters/sort/overrides don't exist yet |
+| AT-10 | UI schema validity | **green** | gate-enforced on every run |
+| AT-11 | Component states | partial | **2 of 5** components paintable; **0 golden files** |
+| AT-12 | Selection quality | not started | M1.4; needs `fixtures/expected/` |
+| AT-13 | Undo/redo | not started | M1.5 |
+| AT-14 | Layout adjustment | not started | M1.5 |
+| AT-15 | Library lifecycle | partial | list/open ✓; rename/duplicate/delete are 1.5.3 |
+| AT-16 | Missing-source resilience | partial | degraded mode ✓; re-link flow and recovery UI are 1.5.3/1.5.4 |
+| AT-17 | User corrections | not started | M1.5 |
+| AT-18 | Responsive & a11y | not started | M1.6 |
+| AT-19 | Release artifact | partial | dry-run APK only; unsigned; ~48 MB fat vs ≤ 40 MB per-ABI target |
+
+**A plan defect worth fixing:** M1.2's exit says "AT-04 passes", but AT-04 requires that "a
+timeline appears for temporal logs", and the timeline painter is task **1.4.4**. As written,
+M1.2's exit cannot be reached during M1.2. Split AT-04 into *extraction* (M1.2, satisfied) and
+*rendering* (M1.4) rather than either claiming a pass or blocking M1.2 on M1.4.
+
+---
+
+## 6. Seven gaps that no task row covers
+
+These will not be closed by working through the task list, because no task owns them:
+
+1. **Mid-class device evidence.** The matrix requires a Pixel 6a/7a-class phone for *every*
+   milestone exit. Both available devices (C51, A15) are low class. Nothing downstream can be
+   signed off until this is solved.
+2. **AT-02's labeled corpus and scorer.** 19 valid fixtures, no labels, no scoring harness.
+   The accuracy claim (≥ 95% types, ≥ 85% roles) is currently unmeasurable.
+3. **No fuzz target, and the nightly workflow has never executed.** M1.2's exit and all of
+   M1.7's reliability week depend on it.
+4. **The 10 MB → ≤ 3 s hypothesis is unmeasured.** It is the product's central claim.
+5. **Zero golden images.** Task 1.1.5 promised them; M1.4 and M1.6 both assume they exist.
+6. **The report sheet shows caveat counts, not the quarantined rows themselves.** Users can
+   see *that* 12 rows were set aside but not *which* — the honest-reporting promise is half kept.
+7. **Release size and signing.** ~48 MB fat APK against a ≤ 40 MB per-ABI target; signing
+   secrets unconfigured; only a dry-run prerelease has been produced.
+
+---
+
+## 7. Recommended next moves
+
+**Next in dependency order is M1.3** (1.3.1 full plan execution → 1.3.5 cross-component
+consistency). It is the right next build: it turns a viewer into a tool, and M1.4's charts are
+meaningless without filters.
+
+But three cheap items should be slotted in **before** M1.3 gets deep, because each gets more
+expensive later:
+
+1. **Get one mid-class device run** (or formally re-plan the matrix with evidence). This is the
+   single blocker on the most exits.
+2. **Build the AT-02 scorer** and add labels to the corpus (19 → 20+ files). Detection quality
+   is already implemented; measuring it now means M1.4's planner accuracy work inherits a
+   working harness instead of inventing one.
+3. **Add a fuzz target and run the nightly once.** Cheap now with five parsers; expensive after
+   M1.7 finds the crashes for us.
+
+**Re-baseline the estimate.** State plainly that the remaining 27 core tasks are 40–69 focused
+days, not the 18–28 the original 30–40-day total implied. If the calendar cannot absorb that,
+the honest lever is scope: the two remaining ◇ stretch items (`.morphic` bundles, templates)
+are already optional, and M1.6's design sweep can be narrowed without touching correctness.
+
+---
+
+## 8. Where the detail lives
+
+- Task list and exits: [phase-1-mvp-plan.md](phase-1-mvp-plan.md)
+- Acceptance definitions: [mvp-acceptance-tests.md](mvp-acceptance-tests.md)
+- M1.2 task-by-task notes and CI post-mortems: [m1.2-status.md](m1.2-status.md)
+- Device procedure and class matrix: [real-device-testing.md](../engineering/real-device-testing.md)
+- Share-to-Morphic evaluation: [ADR-0015](../decisions/ADR-0015-share-to-morphic.md)
