@@ -752,17 +752,31 @@ mod tests {
         assert_eq!(table.columns[0].dtype, morphic_model::DataType::Utf8);
         assert!(report.warnings.iter().any(|w| w.contains("ambiguous")));
         let profile = morphic_semantic::profile(&table);
-        assert_ne!(
+        // The dtype is the fact and it stays text. The role is an interpretation, and this
+        // field IS a time axis — AT-02's scorer showed that calling it a dimension was the
+        // wrong answer. Refusing to guess the instant must not mean refusing to know what the
+        // column means.
+        assert_eq!(table.columns[0].dtype, morphic_model::DataType::Utf8);
+        assert_eq!(
             profile.fields[0].inference.role,
             morphic_model::FieldRole::Temporal
         );
+        assert!(
+            profile.fields[0]
+                .inference
+                .evidence
+                .iter()
+                .any(|e| e.contains("stayed text")),
+            "the evidence must disclose that it was not typed: {:?}",
+            profile.fields[0].inference.evidence
+        );
     }
 
-    /// Documents a real heuristic limit rather than hiding it: morphic-semantic labels an
-    /// integer column that is at least 99% unique an Identifier, so an all-distinct numeric
-    /// column earns no measure metric. Scored role selection is M1.4 work.
+    /// `amount` is a measure even when every row differs. This used to assert the opposite and
+    /// documented it as a known limit; AT-02's scorecard showed the limit was costing real
+    /// workspaces their metrics, so a measure vocabulary now outranks uniqueness.
     #[test]
-    fn all_distinct_integers_are_treated_as_identifiers_not_measures() {
+    fn a_measure_named_column_earns_a_metric_even_when_every_value_is_distinct() {
         let root = temp_root("idlike");
         let engine = Engine::new(&root).unwrap();
         let csv = b"region,amount\neu,10\nus,20\neu,30\nus,40\neu,50\n";
@@ -778,13 +792,40 @@ mod tests {
             .collect();
         assert!(ids.contains(&"total_records"));
         assert!(
-            !ids.contains(&"metric_amount"),
-            "a perfectly unique integer is an identifier under the current heuristic"
+            ids.contains(&"metric_amount"),
+            "a column named amount is a measure; uniqueness in five rows is a sample artefact"
         );
         // The count metric still works, so the workspace remains useful.
         assert_eq!(
             engine.metric_data("w1", "total_records").unwrap().value,
             serde_json::json!(5)
+        );
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    /// The limit that remains, stated rather than hidden: an all-distinct integer with a name
+    /// that says nothing is still read as an identifier, so it earns no measure metric. Telling
+    /// a key from a quantity with no name evidence is genuinely ambiguous; M1.4's scored
+    /// planner is where that gets better.
+    #[test]
+    fn an_unnamed_all_distinct_integer_is_still_read_as_an_identifier() {
+        let root = temp_root("idlike2");
+        let engine = Engine::new(&root).unwrap();
+        let csv = b"region,n\neu,10\nus,20\neu,30\nus,40\neu,50\n";
+        let out = engine
+            .import_csv(csv, "Sales", "w1", "2026-11-05T00:00:00Z", &mut |_| {})
+            .unwrap();
+        let ids: Vec<&str> = out
+            .doc
+            .workspace
+            .components
+            .iter()
+            .map(|c| c.id.as_str())
+            .collect();
+        assert!(ids.contains(&"total_records"));
+        assert!(
+            !ids.contains(&"metric_n"),
+            "with no name evidence, a perfectly unique integer is still treated as a key"
         );
         std::fs::remove_dir_all(&root).ok();
     }

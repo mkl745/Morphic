@@ -368,8 +368,12 @@ fn looks_temporal(s: &str) -> bool {
     // Slash dates: 01/02/2024, and CLF's 10/Oct/2000:13:55:36 -0700. Ingestion may refuse to
     // type these (the day/month order is unresolved, or the month is a name), but the field
     // is still a time axis, which is what a role describes.
-    if digits(0..2) && at(2, b'/') && at(5, b'/') && digits(6..10) && (digits(3..5) || month(3..6))
-    {
+    if digits(0..2) && at(2, b'/') && digits(3..5) && at(5, b'/') && digits(6..10) {
+        return true;
+    }
+    // CLF: 10/Oct/2000:13:55:36 -0700. A three-letter month shifts the year one place right,
+    // which is why this cannot share the numeric branch's offsets.
+    if digits(0..2) && at(2, b'/') && month(3..6) && at(6, b'/') && digits(7..11) {
         return true;
     }
     // RFC3164: `Nov  5 14:00:01`, with two spaces before a single-digit day.

@@ -89,6 +89,11 @@ jobs:
             echo '```'
             tail -n 80 /tmp/test.log
             echo '```'
+            echo "### test failures (extracted)"
+            echo '```'
+            grep -E "^test .* FAILED" /tmp/test.log | head -n 40 || true
+            grep -A 6 "panicked at" /tmp/test.log | head -n 120 || true
+            echo '```'
             echo "### AT-02 schema accuracy"
             echo '```'
             cat target/schema-accuracy.md 2>/dev/null || echo "scorecard not produced"
