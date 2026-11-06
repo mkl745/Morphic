@@ -41,9 +41,19 @@ Run on the mid-class device (all classes before release):
 2. **Cold start** to an interactive home.
 3. **Engine FFI**: home shows the live Rust engine version.
 4. **Vertical slice / PoC**: import or generate → Rust-computed result renders.
-5. **Airplane mode**: repeat the slice with radios off — proves the offline guarantee.
-6. **Process death & relaunch**: force-stop, relaunch, confirm state restored.
-7. **No crash**: `AndroidRuntime` fatal log is empty for the session.
+5. **Generate workspace** *(added with M1.1 task 1.1.5)*: a real import reaches the live
+   runtime and shows a **paged** table, not just a document outline.
+6. **Table paging**: Next page advances the row range — proves paging executes in Rust.
+   A dataset that fits on one page cannot satisfy this, and the harness says so rather than
+   passing vacuously.
+7. **Save + reopen identical**: force-stop, reopen the saved workspace from Home, and confirm
+   the same first-page row range.
+8. **Airplane mode**: repeat the slice with radios off — proves the offline guarantee.
+9. **Process death & relaunch**: force-stop, relaunch, confirm state restored.
+10. **No crash**: `AndroidRuntime` fatal log is empty for the session.
+
+All ten are enforced by `tools/check_device_evidence.py`; a release cannot be cut with any
+of them missing or failing. Practical walkthrough: [phone-test-quickstart.md](phone-test-quickstart.md).
 
 From M1.3 add filter/sort/search; from M1.4 chart interaction; from M1.5 layout editing and
 kill-mid-save recovery; from M1.6 TalkBack and text-scale 1.3.
@@ -73,7 +83,9 @@ the milestone. It exits non-zero if any check fails, so it is usable as a local 
   "tester": "…",
   "timestampUtc": "…",
   "checks": { "install": "pass", "coldStart": "pass", "engineFfi": "pass",
-              "poc": "pass", "airplaneMode": "pass", "processDeath": "pass", "noCrash": "pass" },
+              "poc": "pass", "generateWorkspace": "pass", "tablePaging": "pass",
+              "reopenIdentical": "pass", "airplaneMode": "pass",
+              "processDeath": "pass", "noCrash": "pass" },
   "result": "pass",
   "notes": "anything anomalous, honestly"
 }
