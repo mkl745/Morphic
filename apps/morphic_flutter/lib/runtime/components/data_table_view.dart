@@ -292,7 +292,12 @@ class _DataTableViewState extends State<DataTableView> {
     }
     if (cols.isEmpty) {
       return Center(
-        child: Text('No columns to display.', style: theme.textTheme.bodySmall),
+        child: Text(
+          // A workspace can reopen without its source (docs/architecture/06 §3). Say why,
+          // using the engine's wording, instead of implying the import was malformed.
+          widget.ctx.engine.notice ?? 'No columns to display.',
+          style: theme.textTheme.bodySmall,
+        ),
       );
     }
     if (page.rows.isEmpty) {

@@ -80,6 +80,12 @@ class WorkspaceView extends StatelessWidget {
         final blocks = <Widget>[];
         var metrics = <Map<String, dynamic>>[];
 
+        // Degraded mode: the layout is real, the data is gone. Lead with that so an empty
+        // table is not mistaken for a broken import (docs/architecture/06 §3).
+        if (controller.degraded) {
+          blocks.add(DegradedNotice(message: controller.notice));
+        }
+
         void flushMetrics() {
           if (metrics.isEmpty) return;
           blocks.add(
@@ -119,6 +125,43 @@ class WorkspaceView extends StatelessWidget {
           itemBuilder: (_, i) => blocks[i],
         );
       },
+    );
+  }
+}
+
+/// Shown when a workspace reopened without its source data. The engine's wording is used
+/// verbatim so the UI never guesses at a cause.
+class DegradedNotice extends StatelessWidget {
+  const DegradedNotice({super.key, this.message});
+
+  final String? message;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(MorphicSpace.md),
+      decoration: BoxDecoration(
+        color: scheme.errorContainer,
+        borderRadius: BorderRadius.circular(MorphicRadius.md),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.warning_amber_rounded, color: scheme.onErrorContainer),
+          const SizedBox(width: MorphicSpace.sm),
+          Expanded(
+            child: Text(
+              message ?? 'This workspace opened without its source data.',
+              style: Theme.of(context)
+                  .textTheme
+                  .bodyMedium
+                  ?.copyWith(color: scheme.onErrorContainer),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

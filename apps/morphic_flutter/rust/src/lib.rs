@@ -612,4 +612,43 @@ mod tests {
         assert_eq!(v["workspace"]["id"], "w_legacy");
         std::fs::remove_dir_all(&p).ok();
     }
+
+    // --- task 1.1.6: degraded mode is part of the JSON contract --------------------------
+
+    #[test]
+    fn snapshot_reports_degraded_when_the_dataset_is_gone() {
+        let (p, rp) = root("degraded");
+        let id = c("w1");
+        unsafe { import(&rp, &id, None) };
+        unsafe { morphic_close_workspace(rp.as_ptr(), id.as_ptr()) };
+        std::fs::remove_dir_all(p.join("datasets")).unwrap();
+
+        let v = json(unsafe { morphic_snapshot(rp.as_ptr(), id.as_ptr()) });
+        assert_eq!(v["degraded"], true, "the UI must be told, not left guessing");
+        assert!(v["notice"].as_str().unwrap().contains("no longer available"));
+        assert!(v["profile"].is_null());
+        assert!(
+            v["doc"]["workspace"]["components"]
+                .as_array()
+                .unwrap()
+                .len()
+                > 0,
+            "the layout survives a missing source"
+        );
+        // Data operations are a typed error string, never a panic or a silent empty page.
+        let q = json(unsafe { morphic_query_page(rp.as_ptr(), id.as_ptr(), std::ptr::null()) });
+        assert!(q["error"].as_str().unwrap().contains("unavailable"));
+        std::fs::remove_dir_all(&p).ok();
+    }
+
+    #[test]
+    fn a_healthy_snapshot_is_explicitly_not_degraded() {
+        let (p, rp) = root("notdegraded");
+        let id = c("w1");
+        unsafe { import(&rp, &id, None) };
+        let v = json(unsafe { morphic_snapshot(rp.as_ptr(), id.as_ptr()) });
+        assert_eq!(v["degraded"], false);
+        assert!(v["notice"].is_null());
+        std::fs::remove_dir_all(&p).ok();
+    }
 }

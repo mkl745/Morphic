@@ -56,6 +56,17 @@ class EngineController extends ChangeNotifier {
   int _revision = 0;
   int get revision => _revision;
 
+  bool _degraded = false;
+
+  /// True when the workspace document loaded but its source data did not. The layout is
+  /// still shown; data operations would fail with a typed engine error.
+  bool get degraded => _degraded;
+
+  String? _notice;
+
+  /// The engine's explanation for [degraded], shown verbatim — never invented here.
+  String? get notice => _notice;
+
   bool _busy = false;
   bool get busy => _busy;
 
@@ -85,6 +96,8 @@ class EngineController extends ChangeNotifier {
     _doc = snap['doc'] as Map<String, dynamic>?;
     _profile = snap['profile'] as Map<String, dynamic>?;
     _revision = (snap['revision'] as num?)?.toInt() ?? 0;
+    _degraded = snap['degraded'] == true;
+    _notice = snap['notice'] as String?;
   }
 
   /// Adopt a snapshot the importer already produced, avoiding a redundant round trip.
@@ -186,6 +199,8 @@ class EngineController extends ChangeNotifier {
     _doc = null;
     _profile = null;
     _revision = 0;
+    _degraded = false;
+    _notice = null;
     notifyListeners();
   }
 

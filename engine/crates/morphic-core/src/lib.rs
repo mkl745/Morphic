@@ -6,7 +6,11 @@
 //! **M1.1 (task 1.1.4):** real sessions. An import retains the typed `Table` + profile +
 //! generated document in memory, so `queryPage` and `metricData` execute against canonical
 //! Rust state instead of re-parsing. Reopening a workspace rehydrates the session from the
-//! persisted source bytes. Typed commands, undo/redo, and layout mutation arrive in M1.5.
+//! content-addressed source. Typed commands, undo/redo, and layout mutation arrive in M1.5.
+//!
+//! **M1.1 (task 1.1.6):** datasets are content-addressed, opens replay the write-ahead
+//! journal (so a crash mid-save restores the pre-crash revision), pre-1.1.6 workspaces are
+//! migrated transparently, and a missing source opens in degraded mode instead of failing.
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -40,6 +44,8 @@ pub enum CoreError {
     NotAMetric(String, String),
     #[error("session state was poisoned by an earlier panic")]
     SessionPoisoned,
+    #[error("source data for workspace '{0}' is unavailable")]
+    SourceUnavailable(String),
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -88,8 +94,13 @@ pub struct ImportOutcome {
 #[serde(rename_all = "camelCase")]
 pub struct Snapshot {
     pub doc: WorkspaceDoc,
-    pub profile: DatasetProfile,
+    /// `None` in degraded mode: the layout is available but the data is not.
+    pub profile: Option<DatasetProfile>,
     pub revision: u64,
+    /// True when the source is missing or unparseable. The document still renders so the
+    /// user can see what the workspace was, instead of getting a hard failure.
+    pub degraded: bool,
+    pub notice: Option<String>,
 }
 
 /// The computed value behind one `metric_card`.
@@ -104,8 +115,9 @@ pub struct MetricResult {
 /// An open workspace: canonical Rust state that Flutter only renders.
 struct Session {
     doc: WorkspaceDoc,
-    table: Table,
-    profile: DatasetProfile,
+    table: Option<Table>,
+    profile: Option<DatasetProfile>,
+    notice: Option<String>,
 }
 
 /// The engine handle. Owns the workspace store and the open sessions.
@@ -146,7 +158,10 @@ impl Engine {
             });
         })?;
         let profile = morphic_semantic::profile(&table);
-        let doc = morphic_compiler::compile(&profile, workspace_id, workspace_id, title, now_iso);
+        // Content-addressed: the dataset's identity is its hash, so importing the same file
+        // twice stores one copy and two workspaces can share it.
+        let dataset_id = self.store.put_dataset(bytes)?;
+        let doc = morphic_compiler::compile(&profile, workspace_id, &dataset_id, title, now_iso);
         // All five passes, including bindings checked against the real profile.
         let issues = morphic_schema::validate_with_profile(&doc, &profile);
         if !issues.is_empty() {
@@ -158,8 +173,6 @@ impl Engine {
             return Err(CoreError::Validation(msg));
         }
         self.store.save_workspace(&doc)?;
-        // Persist the source so a reopened workspace can be queried, not just described.
-        self.store.save_source(workspace_id, bytes)?;
 
         self.sessions
             .lock()
@@ -168,8 +181,9 @@ impl Engine {
                 workspace_id.to_string(),
                 Session {
                     doc: doc.clone(),
-                    table,
-                    profile: profile.clone(),
+                    table: Some(table),
+                    profile: Some(profile.clone()),
+                    notice: None,
                 },
             );
 
@@ -193,20 +207,52 @@ impl Engine {
             .doc)
     }
 
-    /// Reopen a persisted workspace and rehydrate its session from the stored source.
+    /// Reopen a persisted workspace and rehydrate its session from the content-addressed
+    /// source. `load_workspace` replays the journal, so a crash before the last rename
+    /// restores the pre-crash revision rather than losing the save.
     ///
-    /// Re-ingesting on open is a deliberate M1.1 trade-off: it keeps a single source of
-    /// truth (the original file) at the cost of a parse on open. A persisted columnar
-    /// snapshot arrives with the storage hardening in 1.1.6.
+    /// Re-ingesting on open remains a deliberate trade-off: one source of truth at the cost
+    /// of a parse. A columnar `snapshot.bin` is deferred until the reopen cost is measured on
+    /// real hardware (see the crate docs).
+    ///
+    /// A missing or unparseable source opens in **degraded mode**: the document and layout
+    /// are returned with `degraded = true` and a notice, and data operations return a typed
+    /// [`CoreError::SourceUnavailable`] instead of crashing.
     pub fn open_session(&self, workspace_id: &str) -> Result<Snapshot, CoreError> {
+        // Workspaces saved before 1.1.6 kept the source in the workspace folder.
+        self.store.migrate_legacy_source(workspace_id)?;
         let doc = self.store.load_workspace(workspace_id)?;
-        let bytes = self.store.load_source(workspace_id)?;
-        let (table, _report) = morphic_ingest::parse_csv(&bytes)?;
-        let profile = morphic_semantic::profile(&table);
+
+        let (table, profile, notice) = match self.store.load_source(workspace_id) {
+            Ok(bytes) => match morphic_ingest::parse_csv(&bytes) {
+                Ok((table, _report)) => {
+                    let profile = morphic_semantic::profile(&table);
+                    (Some(table), Some(profile), None)
+                }
+                Err(e) => (
+                    None,
+                    None,
+                    Some(format!("the stored source could not be parsed: {e}")),
+                ),
+            },
+            Err(StoreError::SourceUnavailable(_)) => (
+                None,
+                None,
+                Some(
+                    "the imported source file is no longer available; re-import the same \
+                     file to restore the data"
+                        .to_string(),
+                ),
+            ),
+            Err(e) => return Err(e.into()),
+        };
+
         let snapshot = Snapshot {
             revision: doc.workspace.revision,
             doc: doc.clone(),
             profile: profile.clone(),
+            degraded: table.is_none(),
+            notice: notice.clone(),
         };
         self.sessions
             .lock()
@@ -217,6 +263,7 @@ impl Engine {
                     doc,
                     table,
                     profile,
+                    notice,
                 },
             );
         Ok(snapshot)
@@ -253,6 +300,8 @@ impl Engine {
             revision: s.doc.workspace.revision,
             doc: s.doc.clone(),
             profile: s.profile.clone(),
+            degraded: s.table.is_none(),
+            notice: s.notice.clone(),
         })
     }
 
@@ -272,7 +321,11 @@ impl Engine {
         let s = sessions
             .get(workspace_id)
             .ok_or_else(|| CoreError::SessionNotFound(workspace_id.into()))?;
-        Ok(morphic_query::query_page(&s.table, plan))
+        let table = s
+            .table
+            .as_ref()
+            .ok_or_else(|| CoreError::SourceUnavailable(workspace_id.into()))?;
+        Ok(morphic_query::query_page(table, plan))
     }
 
     /// Compute the value behind a `metric_card`. Rust resolves the binding from the
@@ -308,8 +361,12 @@ impl Engine {
                 ))
             }
         };
+        let table = s
+            .table
+            .as_ref()
+            .ok_or_else(|| CoreError::SourceUnavailable(workspace_id.into()))?;
         let value = morphic_query::aggregate(
-            &s.table,
+            table,
             &morphic_query::Aggregate {
                 op: &aggregation.op,
                 field: aggregation.field.as_deref(),
@@ -324,6 +381,14 @@ impl Engine {
 
     pub fn list_workspaces(&self) -> Result<Vec<morphic_workspace::WorkspaceMeta>, CoreError> {
         Ok(self.store.list_workspaces()?)
+    }
+
+    /// Delete a workspace and drop its session. The content-addressed dataset is kept:
+    /// another workspace may reference the same bytes (docs/architecture/06 §1).
+    pub fn delete_workspace(&self, id: &str) -> Result<(), CoreError> {
+        self.close_session(id)?;
+        self.store.delete_workspace(id)?;
+        Ok(())
     }
 
     pub fn load_workspace(&self, id: &str) -> Result<WorkspaceDoc, CoreError> {
@@ -443,7 +508,7 @@ mod tests {
         let (engine, root) = imported("snapshot");
         let snap = engine.snapshot("w1").unwrap();
         assert_eq!(snap.revision, 1);
-        assert_eq!(snap.profile.row_count, 5);
+        assert_eq!(snap.profile.as_ref().unwrap().row_count, 5);
         assert_eq!(snap.doc.workspace.id, "w1");
         std::fs::remove_dir_all(&root).ok();
     }
@@ -548,7 +613,10 @@ mod tests {
         engine.close_session("w1").unwrap();
         assert!(!engine.has_session("w1"));
         // Still reopenable, because the document and source are on disk.
-        assert_eq!(engine.snapshot("w1").unwrap().profile.row_count, 5);
+        assert_eq!(
+            engine.snapshot("w1").unwrap().profile.as_ref().unwrap().row_count,
+            5
+        );
         std::fs::remove_dir_all(&root).ok();
     }
 
@@ -632,6 +700,197 @@ mod tests {
             engine.metric_data("w1", "total_records").unwrap().value,
             serde_json::json!(5)
         );
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    // --- task 1.1.6: content addressing, journal recovery, degraded mode ------------------
+
+    #[test]
+    fn the_dataset_id_is_the_content_hash_of_the_source() {
+        let root = temp_root("hashid");
+        let engine = Engine::new(&root).unwrap();
+        let out = engine
+            .import_csv(SALES, "Sales", "w1", "2026-11-05T00:00:00Z", &mut |_| {})
+            .unwrap();
+        assert_eq!(
+            out.doc.workspace.data_sources[0].dataset_id,
+            morphic_workspace::content_hash(SALES),
+            "a workspace must reference its dataset by content, not by workspace id"
+        );
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn two_workspaces_over_one_file_share_a_single_dataset() {
+        let root = temp_root("dedupe");
+        let engine = Engine::new(&root).unwrap();
+        for id in ["w1", "w2"] {
+            engine
+                .import_csv(SALES, "Sales", id, "2026-11-05T00:00:00Z", &mut |_| {})
+                .unwrap();
+        }
+        let datasets: Vec<_> = std::fs::read_dir(root.join("datasets")).unwrap().collect();
+        assert_eq!(datasets.len(), 1, "identical content must be stored once");
+        // Both are independently queryable.
+        for id in ["w1", "w2"] {
+            engine.close_session(id).unwrap();
+            let snap = engine.open_session(id).unwrap();
+            assert!(!snap.degraded);
+            assert_eq!(snap.profile.as_ref().unwrap().row_count, 5);
+        }
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn deleting_one_workspace_does_not_break_the_other() {
+        let root = temp_root("shared-delete");
+        let engine = Engine::new(&root).unwrap();
+        for id in ["w1", "w2"] {
+            engine
+                .import_csv(SALES, "Sales", id, "2026-11-05T00:00:00Z", &mut |_| {})
+                .unwrap();
+        }
+        engine.delete_workspace("w1").unwrap();
+        engine.close_session("w2").unwrap();
+        let snap = engine.open_session("w2").unwrap();
+        assert!(!snap.degraded, "w2 still has its data");
+        assert_eq!(
+            engine.metric_data("w2", "total_records").unwrap().value,
+            serde_json::json!(5)
+        );
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn reopen_restores_the_pre_crash_revision_from_the_journal() {
+        let root = temp_root("crash-rev");
+        let engine = Engine::new(&root).unwrap();
+        let out = engine
+            .import_csv(SALES, "Sales", "w1", "2026-11-05T00:00:00Z", &mut |_| {})
+            .unwrap();
+        assert_eq!(out.doc.workspace.revision, 1);
+        drop(engine);
+
+        // Simulate a crash: revision 2 reached the journal but the workspace.json rename
+        // never happened. A second store handle on the same root writes only the journal.
+        let store = FileStore::new(&root).unwrap();
+        let mut newer = out.doc.clone();
+        newer.workspace.revision = 2;
+        newer.workspace.modified_at = "2026-11-05T01:00:00Z".into();
+        store.journal_revision(&newer).unwrap();
+
+        let reopened = Engine::new(&root).unwrap();
+        let snap = reopened.open_session("w1").unwrap();
+        assert_eq!(snap.revision, 2, "the save was not lost");
+        assert_eq!(snap.doc.workspace.revision, 2);
+        assert!(!snap.degraded);
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn a_missing_source_opens_degraded_instead_of_failing() {
+        let root = temp_root("degraded");
+        let engine = Engine::new(&root).unwrap();
+        engine
+            .import_csv(SALES, "Sales", "w1", "2026-11-05T00:00:00Z", &mut |_| {})
+            .unwrap();
+        engine.close_session("w1").unwrap();
+        // The dataset disappears (user cleared app data, partial restore, etc.).
+        std::fs::remove_dir_all(root.join("datasets")).unwrap();
+
+        let snap = engine.open_session("w1").unwrap();
+        assert!(snap.degraded);
+        assert!(snap.profile.is_none());
+        assert!(snap.notice.is_some());
+        assert!(!snap.doc.workspace.components.is_empty(), "layout survives");
+
+        // Data operations are a typed error, not a panic and not an empty result.
+        assert!(matches!(
+            engine.query_page("w1", &morphic_query::Plan::default()),
+            Err(CoreError::SourceUnavailable(_))
+        ));
+        assert!(matches!(
+            engine.metric_data("w1", "total_records"),
+            Err(CoreError::SourceUnavailable(_))
+        ));
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn reimporting_the_same_content_restores_a_degraded_workspace() {
+        let root = temp_root("relink");
+        let engine = Engine::new(&root).unwrap();
+        engine
+            .import_csv(SALES, "Sales", "w1", "2026-11-05T00:00:00Z", &mut |_| {})
+            .unwrap();
+        engine.close_session("w1").unwrap();
+        std::fs::remove_dir_all(root.join("datasets")).unwrap();
+        assert!(engine.open_session("w1").unwrap().degraded);
+        engine.close_session("w1").unwrap();
+
+        // Re-importing the same bytes restores the dataset by hash, so the old workspace
+        // resolves again without any manual relinking.
+        let store = FileStore::new(&root).unwrap();
+        store.put_dataset(SALES).unwrap();
+        let snap = engine.open_session("w1").unwrap();
+        assert!(!snap.degraded);
+        assert_eq!(snap.profile.as_ref().unwrap().row_count, 5);
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn a_pre_116_workspace_opens_and_is_migrated_transparently() {
+        let root = temp_root("legacy-open");
+        let engine = Engine::new(&root).unwrap();
+        let out = engine
+            .import_csv(SALES, "Sales", "w_old", "2026-11-05T00:00:00Z", &mut |_| {})
+            .unwrap();
+        engine.close_session("w_old").unwrap();
+        drop(engine);
+
+        // Rewind to the pre-1.1.6 layout: source inside the workspace folder, datasetId set
+        // to the workspace id, and no content-addressed copy.
+        let store = FileStore::new(&root).unwrap();
+        let mut old = out.doc.clone();
+        old.workspace.data_sources[0].dataset_id = "w_old".into();
+        let dir = root.join("workspaces").join("w_old");
+        std::fs::write(dir.join("workspace.json"), serde_json::to_vec_pretty(&old).unwrap())
+            .unwrap();
+        std::fs::write(dir.join("source.csv"), SALES).unwrap();
+        std::fs::remove_dir_all(root.join("datasets")).unwrap();
+        drop(store);
+
+        let reopened = Engine::new(&root).unwrap();
+        let snap = reopened.open_session("w_old").unwrap();
+        assert!(!snap.degraded, "a legacy workspace must still open with its data");
+        assert_eq!(snap.profile.as_ref().unwrap().row_count, 5);
+        assert_eq!(
+            snap.doc.workspace.data_sources[0].dataset_id,
+            morphic_workspace::content_hash(SALES),
+            "and be repointed at the content-addressed dataset"
+        );
+        assert!(!dir.join("source.csv").exists(), "legacy copy removed");
+        assert_eq!(snap.revision, 1, "migration does not bump the revision");
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn recents_are_newest_first_through_the_engine() {
+        let root = temp_root("recents");
+        let engine = Engine::new(&root).unwrap();
+        engine
+            .import_csv(SALES, "Older", "w_old", "2026-11-01T00:00:00Z", &mut |_| {})
+            .unwrap();
+        engine
+            .import_csv(SALES, "Newer", "w_new", "2026-11-05T00:00:00Z", &mut |_| {})
+            .unwrap();
+        let ids: Vec<String> = engine
+            .list_workspaces()
+            .unwrap()
+            .into_iter()
+            .map(|w| w.id)
+            .collect();
+        assert_eq!(ids, vec!["w_new", "w_old"]);
         std::fs::remove_dir_all(&root).ok();
     }
 }

@@ -17,6 +17,9 @@ class ScriptedBridge implements MorphicBridge {
     List<String>? fields,
     List<Map<String, dynamic>>? components,
     List<String>? order,
+    this.degraded = false,
+    this.notice,
+    this.sourceUnavailable = false,
   })  : metrics = metrics ?? {'total_records': 1234},
         rows = rows ??
             [
@@ -61,6 +64,12 @@ class ScriptedBridge implements MorphicBridge {
   bool failMetric = false;
   bool failQuery = false;
   bool failSnapshot = false;
+
+  /// Mirrors the engine's degraded snapshot (task 1.1.6): the document loads, the data
+  /// does not. Data calls then fail with the typed engine error.
+  bool degraded;
+  String? notice;
+  bool sourceUnavailable;
   List<String> importWarnings = [];
 
   /// Every plan the table sent, in order.
@@ -144,7 +153,13 @@ class ScriptedBridge implements MorphicBridge {
     required String workspaceId,
   }) {
     if (failSnapshot) throw const MorphicBridgeException('store: not found');
-    return {'doc': doc(), 'profile': profileJson(), 'revision': 1};
+    return {
+      'doc': doc(),
+      'profile': degraded ? null : profileJson(),
+      'revision': 1,
+      'degraded': degraded,
+      'notice': notice,
+    };
   }
 
   @override
@@ -156,6 +171,9 @@ class ScriptedBridge implements MorphicBridge {
     final p = plan ?? const {};
     plans.add(Map<String, dynamic>.from(p));
     if (failQuery) throw const MorphicBridgeException('query: unknown field');
+    if (sourceUnavailable) {
+      throw const MorphicBridgeException("core: source data for workspace 'w1' is unavailable");
+    }
     final matched = _matching(p['search'] as String?);
     final offset = (p['offset'] as num?)?.toInt() ?? 0;
     final limit = (p['limit'] as num?)?.toInt() ?? 256;
@@ -179,6 +197,9 @@ class ScriptedBridge implements MorphicBridge {
   }) {
     metricCalls.add(componentId);
     if (failMetric) throw const MorphicBridgeException('core: not a metric');
+    if (sourceUnavailable) {
+      throw const MorphicBridgeException("core: source data for workspace 'w1' is unavailable");
+    }
     return {'componentId': componentId, 'value': metrics[componentId], 'revision': 1};
   }
 

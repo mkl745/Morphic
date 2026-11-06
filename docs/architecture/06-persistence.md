@@ -87,3 +87,27 @@ All storage is app-private (Android sandbox). No raw data in logs or crash metad
 Encryption-at-rest beyond OS sandboxing is a documented future option (spec §12 "optional
 encrypted workspace storage") — the store trait leaves room for an encrypting decorator;
 not built in MVP.
+
+## 7. Implementation status (M1.1, task 1.1.6)
+
+This document is the target contract. What the file backend actually implements today:
+
+| Element | Status | Note |
+| --- | --- | --- |
+| Folder-per-workspace, `library.json` index | **Built** | Index carries `revision` + `datasetId`; missing fields default so pre-1.1.6 indexes still read |
+| Atomic write: tmp → fsync → rename → **fsync dir** | **Built** | `atomic_write`; orphaned `*.tmp` swept on startup |
+| Content-addressed `datasets/<sha256>/source.csv` | **Built** | §1 shows the source inside the dataset folder; a workspace references it by hash |
+| Write-ahead journal + replay + compaction | **Built** | Entry is `{revision, commands, doc}`. `commands` is empty in M1.1; the full document is the payload |
+| Torn trailing JSONL line tolerated | **Built** | Counted in `RecoveryReport`, dropped, never fatal |
+| Corrupt JSON → rebuild, else quarantine | **Built** | Quarantine file is `workspace.corrupt.json`; typed `Corrupt` error |
+| Missing source → degraded mode | **Built** | Typed `SourceUnavailable`; snapshot carries `degraded` + `notice`, data calls error |
+| Recents newest-first | **Built** | `modifiedAt` desc, id tiebreak |
+| Legacy in-workspace `source.csv` | **Built** | Loads via fallback, migrated on first open without a revision bump |
+| `snapshot.bin` columnar cache | **Deferred** | Reopen re-ingests the source. The cache is a perf optimization for a 10 MB budget that is still unmeasured on hardware; a versioned binary format before that data exists is speculative risk |
+| `.lock` session files | **Deferred** | Single-process app, sessions already mutex-serialized; a stale-lock protocol would add failure modes with no concurrent writer to guard |
+| `inverseSummary` / undo journal (§3) | **M1.5** | No edit surface exists yet, so there is nothing to undo |
+| Dataset garbage collection | **Not built** | Deleting a workspace deliberately keeps its dataset: another workspace may share the hash |
+
+`RecoveryReport` (`sweptTmp`, `tornJournalLines`, `restoredFromJournal`, `quarantined`,
+`migratedLegacySource`) exists so recovery can be *reported* to the user rather than performed
+silently. Surfacing it in the UI is 1.1.7+ work; today it is returned and tested.
