@@ -191,7 +191,10 @@ fn numbers(col: &Column) -> Vec<f64> {
 }
 
 fn is_numeric(col: &Column) -> bool {
-    matches!(col.values, ColumnValues::Int64(_) | ColumnValues::Float64(_))
+    matches!(
+        col.values,
+        ColumnValues::Int64(_) | ColumnValues::Float64(_)
+    )
 }
 
 /// Execute one aggregation. Returns JSON `null` when there is nothing to aggregate, so an
@@ -344,7 +347,10 @@ mod tests {
 
     #[test]
     fn limit_is_clamped_to_the_hard_ceiling() {
-        let p = Plan { limit: 100_000, ..Default::default() };
+        let p = Plan {
+            limit: 100_000,
+            ..Default::default()
+        };
         assert_eq!(p.effective_limit(), MAX_PAGE_SIZE);
         let page = query_page(&table(), &p);
         assert_eq!(page.limit, MAX_PAGE_SIZE);
@@ -353,7 +359,10 @@ mod tests {
 
     #[test]
     fn zero_limit_becomes_one_row_not_an_empty_page() {
-        let p = Plan { limit: 0, ..Default::default() };
+        let p = Plan {
+            limit: 0,
+            ..Default::default()
+        };
         let page = query_page(&table(), &p);
         assert_eq!(page.limit, 1);
         assert_eq!(page.rows.len(), 1);
@@ -362,9 +371,30 @@ mod tests {
     #[test]
     fn paging_walks_the_table_without_gaps_or_repeats() {
         let t = table();
-        let p1 = query_page(&t, &Plan { limit: 2, offset: 0, ..Default::default() });
-        let p2 = query_page(&t, &Plan { limit: 2, offset: 2, ..Default::default() });
-        let p3 = query_page(&t, &Plan { limit: 2, offset: 4, ..Default::default() });
+        let p1 = query_page(
+            &t,
+            &Plan {
+                limit: 2,
+                offset: 0,
+                ..Default::default()
+            },
+        );
+        let p2 = query_page(
+            &t,
+            &Plan {
+                limit: 2,
+                offset: 2,
+                ..Default::default()
+            },
+        );
+        let p3 = query_page(
+            &t,
+            &Plan {
+                limit: 2,
+                offset: 4,
+                ..Default::default()
+            },
+        );
         assert_eq!(p1.rows[0][0], serde_json::json!(1));
         assert_eq!(p2.rows[0][0], serde_json::json!(3));
         assert_eq!(p3.rows[0][0], serde_json::json!(5));
@@ -376,7 +406,13 @@ mod tests {
 
     #[test]
     fn offset_past_the_end_is_empty_not_an_error() {
-        let page = query_page(&table(), &Plan { offset: 999, ..Default::default() });
+        let page = query_page(
+            &table(),
+            &Plan {
+                offset: 999,
+                ..Default::default()
+            },
+        );
         assert!(page.rows.is_empty());
         assert_eq!(page.offset, 5);
         assert!(!page.has_more);
@@ -384,14 +420,24 @@ mod tests {
 
     #[test]
     fn nulls_are_json_null_not_the_buffer_placeholder() {
-        let page = query_page(&table(), &Plan { offset: 2, limit: 1, ..Default::default() });
+        let page = query_page(
+            &table(),
+            &Plan {
+                offset: 2,
+                limit: 1,
+                ..Default::default()
+            },
+        );
         assert_eq!(page.rows[0][1], serde_json::Value::Null);
         assert_eq!(page.rows[0][2], serde_json::Value::Null);
     }
 
     #[test]
     fn search_is_case_insensitive_across_columns() {
-        let p = Plan { search: Some("ALPHA".into()), ..Default::default() };
+        let p = Plan {
+            search: Some("ALPHA".into()),
+            ..Default::default()
+        };
         let page = query_page(&table(), &p);
         assert_eq!(page.total_rows, 1);
         assert_eq!(page.rows[0][0], serde_json::json!(1));
@@ -399,13 +445,19 @@ mod tests {
 
     #[test]
     fn blank_search_matches_everything() {
-        let p = Plan { search: Some("   ".into()), ..Default::default() };
+        let p = Plan {
+            search: Some("   ".into()),
+            ..Default::default()
+        };
         assert_eq!(query_page(&table(), &p).total_rows, 5);
     }
 
     #[test]
     fn search_with_no_matches_is_empty() {
-        let p = Plan { search: Some("zzzz".into()), ..Default::default() };
+        let p = Plan {
+            search: Some("zzzz".into()),
+            ..Default::default()
+        };
         let page = query_page(&table(), &p);
         assert_eq!(page.total_rows, 0);
         assert!(page.rows.is_empty());
@@ -424,29 +476,50 @@ mod tests {
             row_count: 1,
         };
         let page = query_page(&t, &Plan::default());
-        assert_eq!(page.rows[0][0], serde_json::json!("1970-01-01T00:00:00.000Z"));
+        assert_eq!(
+            page.rows[0][0],
+            serde_json::json!("1970-01-01T00:00:00.000Z")
+        );
     }
 
     #[test]
     fn count_without_field_counts_rows() {
-        assert_eq!(aggregate(&table(), &agg("count", None)).unwrap(), serde_json::json!(5));
+        assert_eq!(
+            aggregate(&table(), &agg("count", None)).unwrap(),
+            serde_json::json!(5)
+        );
     }
 
     #[test]
     fn count_with_field_skips_nulls() {
-        assert_eq!(aggregate(&table(), &agg("count", Some("amount"))).unwrap(), serde_json::json!(4));
+        assert_eq!(
+            aggregate(&table(), &agg("count", Some("amount"))).unwrap(),
+            serde_json::json!(4)
+        );
     }
 
     #[test]
     fn sum_and_avg_skip_nulls() {
-        assert_eq!(aggregate(&table(), &agg("sum", Some("amount"))).unwrap(), serde_json::json!(120.0));
-        assert_eq!(aggregate(&table(), &agg("avg", Some("amount"))).unwrap(), serde_json::json!(30.0));
+        assert_eq!(
+            aggregate(&table(), &agg("sum", Some("amount"))).unwrap(),
+            serde_json::json!(120.0)
+        );
+        assert_eq!(
+            aggregate(&table(), &agg("avg", Some("amount"))).unwrap(),
+            serde_json::json!(30.0)
+        );
     }
 
     #[test]
     fn min_and_max_on_numbers() {
-        assert_eq!(aggregate(&table(), &agg("min", Some("amount"))).unwrap(), serde_json::json!(10.0));
-        assert_eq!(aggregate(&table(), &agg("max", Some("amount"))).unwrap(), serde_json::json!(50.0));
+        assert_eq!(
+            aggregate(&table(), &agg("min", Some("amount"))).unwrap(),
+            serde_json::json!(10.0)
+        );
+        assert_eq!(
+            aggregate(&table(), &agg("max", Some("amount"))).unwrap(),
+            serde_json::json!(50.0)
+        );
     }
 
     #[test]
@@ -459,13 +532,19 @@ mod tests {
 
     #[test]
     fn empty_aggregation_is_null_not_zero() {
-        let t = Table { columns: vec![Column {
-            name: "x".into(),
-            dtype: DataType::Float64,
-            values: ColumnValues::Float64(vec![0.0]),
-            nulls: vec![true],
-        }], row_count: 1 };
-        assert_eq!(aggregate(&t, &agg("avg", Some("x"))).unwrap(), serde_json::Value::Null);
+        let t = Table {
+            columns: vec![Column {
+                name: "x".into(),
+                dtype: DataType::Float64,
+                values: ColumnValues::Float64(vec![0.0]),
+                nulls: vec![true],
+            }],
+            row_count: 1,
+        };
+        assert_eq!(
+            aggregate(&t, &agg("avg", Some("x"))).unwrap(),
+            serde_json::Value::Null
+        );
     }
 
     #[test]
@@ -493,7 +572,10 @@ mod tests {
     fn averaging_text_is_an_error_not_a_silent_zero() {
         assert_eq!(
             aggregate(&table(), &agg("avg", Some("name"))),
-            Err(QueryError::NotNumeric { field: "name".into(), dtype: "utf8".into() })
+            Err(QueryError::NotNumeric {
+                field: "name".into(),
+                dtype: "utf8".into()
+            })
         );
     }
 
@@ -512,7 +594,10 @@ mod tests {
     #[test]
     fn aggregations_needing_a_field_reject_none() {
         for op in ["sum", "avg", "min", "max", "distinct_count"] {
-            assert_eq!(aggregate(&table(), &agg(op, None)), Err(QueryError::FieldRequired(op.into())));
+            assert_eq!(
+                aggregate(&table(), &agg(op, None)),
+                Err(QueryError::FieldRequired(op.into()))
+            );
         }
     }
 }

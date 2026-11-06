@@ -138,22 +138,15 @@ impl Engine {
         on_progress: &mut dyn FnMut(ImportProgress),
     ) -> Result<ImportOutcome, CoreError> {
         let opts = morphic_ingest::IngestOptions::default();
-        let (table, report) =
-            morphic_ingest::parse_csv_with(bytes, &opts, None, &mut |p| {
-                on_progress(ImportProgress {
-                    phase: format!("{:?}", p.phase).to_lowercase(),
-                    rows_read: p.rows_read,
-                    bytes_read: p.bytes_read,
-                });
-            })?;
+        let (table, report) = morphic_ingest::parse_csv_with(bytes, &opts, None, &mut |p| {
+            on_progress(ImportProgress {
+                phase: format!("{:?}", p.phase).to_lowercase(),
+                rows_read: p.rows_read,
+                bytes_read: p.bytes_read,
+            });
+        })?;
         let profile = morphic_semantic::profile(&table);
-        let doc = morphic_compiler::compile(
-            &profile,
-            workspace_id,
-            workspace_id,
-            title,
-            now_iso,
-        );
+        let doc = morphic_compiler::compile(&profile, workspace_id, workspace_id, title, now_iso);
         // All five passes, including bindings checked against the real profile.
         let issues = morphic_schema::validate_with_profile(&doc, &profile);
         if !issues.is_empty() {
@@ -249,7 +242,10 @@ impl Engine {
         if !self.has_session(workspace_id) {
             return self.open_session(workspace_id);
         }
-        let sessions = self.sessions.lock().map_err(|_| CoreError::SessionPoisoned)?;
+        let sessions = self
+            .sessions
+            .lock()
+            .map_err(|_| CoreError::SessionPoisoned)?;
         let s = sessions
             .get(workspace_id)
             .ok_or_else(|| CoreError::SessionNotFound(workspace_id.into()))?;
@@ -269,7 +265,10 @@ impl Engine {
         if !self.has_session(workspace_id) {
             self.open_session(workspace_id)?;
         }
-        let sessions = self.sessions.lock().map_err(|_| CoreError::SessionPoisoned)?;
+        let sessions = self
+            .sessions
+            .lock()
+            .map_err(|_| CoreError::SessionPoisoned)?;
         let s = sessions
             .get(workspace_id)
             .ok_or_else(|| CoreError::SessionNotFound(workspace_id.into()))?;
@@ -286,7 +285,10 @@ impl Engine {
         if !self.has_session(workspace_id) {
             self.open_session(workspace_id)?;
         }
-        let sessions = self.sessions.lock().map_err(|_| CoreError::SessionPoisoned)?;
+        let sessions = self
+            .sessions
+            .lock()
+            .map_err(|_| CoreError::SessionPoisoned)?;
         let s = sessions
             .get(workspace_id)
             .ok_or_else(|| CoreError::SessionNotFound(workspace_id.into()))?;
@@ -566,7 +568,10 @@ mod tests {
         assert_eq!(table.row_count, 3);
         assert_eq!(table.columns[0].dtype, morphic_model::DataType::Timestamp);
         assert_eq!(table.columns[2].dtype, morphic_model::DataType::Int64);
-        assert!(report.warnings.iter().any(|w| w.contains("UTC milliseconds")));
+        assert!(report
+            .warnings
+            .iter()
+            .any(|w| w.contains("UTC milliseconds")));
 
         let profile = morphic_semantic::profile(&table);
         let when = &profile.fields[0];

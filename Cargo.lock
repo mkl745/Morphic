@@ -363,6 +363,7 @@ name = "morphic-bridge"
 version = "0.1.0"
 dependencies = [
  "morphic-core",
+ "morphic-query",
  "serde_json",
 ]
 
@@ -421,6 +422,7 @@ dependencies = [
  "morphic-model",
  "serde",
  "serde_json",
+ "thiserror",
 ]
 
 [[package]]

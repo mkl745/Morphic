@@ -284,7 +284,11 @@ pub unsafe extern "C" fn morphic_metric_data(
             None => return err("invalid component_id"),
         };
         with_engine(&root, |engine| {
-            to_json(&engine.metric_data(&id, &component).map_err(|e| e.to_string())?)
+            to_json(
+                &engine
+                    .metric_data(&id, &component)
+                    .map_err(|e| e.to_string())?,
+            )
         })
     })
 }
@@ -399,7 +403,11 @@ mod tests {
 
     const CSV: &[u8] = b"region,amount\neu,10\nus,20\neu,30\n";
 
-    unsafe fn import(rp: &CString, id: &CString, cb: Option<MorphicProgressFn>) -> serde_json::Value {
+    unsafe fn import(
+        rp: &CString,
+        id: &CString,
+        cb: Option<MorphicProgressFn>,
+    ) -> serde_json::Value {
         json(morphic_import_csv(
             CSV.as_ptr(),
             CSV.len(),
@@ -440,7 +448,9 @@ mod tests {
     #[test]
     fn invalid_utf8_pointer_is_an_error_not_a_crash() {
         let bad = [0xff, 0xfe, 0x00];
-        let v = json(unsafe { morphic_snapshot(bad.as_ptr() as *const c_char, bad.as_ptr() as *const c_char) });
+        let v = json(unsafe {
+            morphic_snapshot(bad.as_ptr() as *const c_char, bad.as_ptr() as *const c_char)
+        });
         assert!(v.get("error").is_some());
     }
 
@@ -472,7 +482,10 @@ mod tests {
         CALLS.store(0, Ordering::SeqCst);
         let v = unsafe { import(&rp, &c("w1"), Some(count_progress)) };
         assert!(v.get("error").is_none(), "{v}");
-        assert!(CALLS.load(Ordering::SeqCst) >= 3, "expected sniffing/parsing/typing/done");
+        assert!(
+            CALLS.load(Ordering::SeqCst) >= 3,
+            "expected sniffing/parsing/typing/done"
+        );
         std::fs::remove_dir_all(&p).ok();
     }
 
@@ -515,9 +528,8 @@ mod tests {
         let (p, rp) = root("badplan");
         let id = c("w1");
         unsafe { import(&rp, &id, None) };
-        let v = json(unsafe {
-            morphic_query_page(rp.as_ptr(), id.as_ptr(), c("{not json").as_ptr())
-        });
+        let v =
+            json(unsafe { morphic_query_page(rp.as_ptr(), id.as_ptr(), c("{not json").as_ptr()) });
         assert!(v["error"].as_str().unwrap().contains("invalid plan"));
         std::fs::remove_dir_all(&p).ok();
     }
@@ -545,9 +557,7 @@ mod tests {
         let (p, rp) = root("ghostcomponent");
         let id = c("w1");
         unsafe { import(&rp, &id, None) };
-        let v = json(unsafe {
-            morphic_metric_data(rp.as_ptr(), id.as_ptr(), c("nope").as_ptr())
-        });
+        let v = json(unsafe { morphic_metric_data(rp.as_ptr(), id.as_ptr(), c("nope").as_ptr()) });
         assert!(v["error"].as_str().unwrap().contains("unknown component"));
         std::fs::remove_dir_all(&p).ok();
     }
