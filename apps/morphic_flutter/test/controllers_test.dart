@@ -77,8 +77,10 @@ class RecordingBridge implements MorphicBridge {
     required String title,
     required String workspaceId,
     required String nowIso,
+    void Function(Map<String, dynamic> progress)? onProgress,
   }) {
     calls.add('import:$workspaceId');
+    onProgress?.call({'phase': 'parsing', 'rowsRead': 3, 'bytesRead': 32});
     if (failImport) throw const MorphicBridgeException('ingest: empty file');
     return {
       'doc': _doc(),

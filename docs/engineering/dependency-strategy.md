@@ -24,7 +24,7 @@ ADR update.
 | `flutter_riverpod` | ^3.3 | presentation state (ADR-0004) | mature; exit = controllers isolate it |
 | `riverpod_annotation` + dev `riverpod_generator`, `build_runner` | ^3.x / current | provider codegen where useful | optional; can hand-write providers |
 | `go_router` | ^18.1 | navigation/deep links | flutter.dev verified, feature-complete |
-| `file_picker` | ^11.0 | SAF import (M1.2) | community but standard; exit = `file_selector` or platform channel behind `PlatformFileSource` |
+| `file_picker` | ^11.0 | SAF import — **adopted in M1.1 task 1.1.7** | community but standard; sits behind `PlatformFileSource`, so the exit (`file_selector` or a platform channel) touches one file. APK permissions are audited in CI (`tools/check_apk_permissions.py`) |
 | `path_provider` | ^2.1 | storage root for EngineConfig | flutter.dev verified |
 | `intl` | current | number/date formatting, l10n seam | flutter.dev ecosystem |
 | `share_handler` *(stretch)* | current | Share-to-Morphic (M1.6 stretch) | evaluate at task start; drop without architecture impact |

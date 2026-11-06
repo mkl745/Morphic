@@ -54,6 +54,7 @@ class FakeBridge implements MorphicBridge {
     required String title,
     required String workspaceId,
     required String nowIso,
+    void Function(Map<String, dynamic> progress)? onProgress,
   }) =>
       {
         'doc': _sampleDoc(),

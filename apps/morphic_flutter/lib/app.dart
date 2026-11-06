@@ -4,6 +4,7 @@ import 'design_system/tokens.dart';
 import 'engine/bridge.dart';
 import 'engine/bridge_scope.dart';
 import 'features/home/home_screen.dart';
+import 'features/import/import_screen.dart';
 import 'features/poc/poc_screen.dart';
 import 'features/settings/settings_screen.dart';
 import 'features/workspace/workspace_screen.dart';
@@ -29,6 +30,7 @@ class MorphicApp extends StatelessWidget {
         routes: {
           '/': (_) => const HomeScreen(),
           '/poc': (_) => const PocScreen(),
+          '/import': (_) => const ImportScreen(),
           '/workspace': (_) => const WorkspaceScreen(),
           '/settings': (_) => const SettingsScreen(),
         },

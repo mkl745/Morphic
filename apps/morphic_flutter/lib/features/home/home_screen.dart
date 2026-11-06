@@ -66,6 +66,15 @@ class _HomeScreenState extends State<HomeScreen> {
           const SizedBox(height: MorphicSpace.lg),
           FilledButton.icon(
             onPressed: () async {
+              await Navigator.of(context).pushNamed('/import');
+              _reloadWorkspaces();
+            },
+            icon: const Icon(Icons.file_open_outlined),
+            label: const Text('Import a file'),
+          ),
+          const SizedBox(height: MorphicSpace.sm),
+          OutlinedButton.icon(
+            onPressed: () async {
               await Navigator.of(context).pushNamed('/poc');
               _reloadWorkspaces();
             },

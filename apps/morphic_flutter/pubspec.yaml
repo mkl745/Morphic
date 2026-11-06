@@ -6,13 +6,16 @@ version: 0.1.0+1
 environment:
   sdk: ">=3.5.0 <4.0.0"
 
-# Phase 0 PoC keeps dependencies minimal (see ADR-0002 addendum). M1.1 adds
-# flutter_rust_bridge + cargokit, go_router, Riverpod 3, and file_picker.
+# Dependencies are governed by docs/engineering/dependency-strategy.md §2.
+# flutter_rust_bridge + cargokit are deferred to M1.7 (ADR-0014); go_router and Riverpod
+# are not needed while navigation is four named routes and state is two controllers.
 dependencies:
   flutter:
     sdk: flutter
   ffi: ^2.1.0
   path_provider: ^2.1.3
+  # SAF import (task 1.1.7). Behind PlatformFileSource so it can be replaced or faked.
+  file_picker: ^11.0.0
 
 dev_dependencies:
   flutter_test:

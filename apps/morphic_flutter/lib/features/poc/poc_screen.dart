@@ -7,6 +7,7 @@ import '../../design_system/tokens.dart';
 import '../../engine/bridge_scope.dart';
 import '../../engine/engine_controller.dart';
 import '../../engine/import_controller.dart';
+import '../../engine/import_runner.dart';
 import '../workspace/workspace_args.dart';
 
 /// The Phase 0 vertical-slice demo: load a sample CSV, have **Rust** profile it, then
@@ -59,8 +60,11 @@ class _PocScreenState extends State<PocScreen> {
     setState(() => _generating = true);
     // Real import: Rust analyzes, compiles, validates, persists, and keeps a live session
     // so the workspace can page and aggregate without re-reading the file.
-    final importer =
-        ImportController(bridge: scope.bridge, storageRoot: scope.storageRoot);
+    final importer = ImportController(
+      bridge: scope.bridge,
+      storageRoot: scope.storageRoot,
+      runner: const IsolateImportRunner(),
+    );
     final id = await importer.importBytes(bytes, title: 'Sample Logs');
     if (!mounted) return;
     final outcome = importer.result;

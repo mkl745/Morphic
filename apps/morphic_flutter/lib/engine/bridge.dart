@@ -49,12 +49,17 @@ abstract interface class MorphicBridge {
   List<dynamic> listWorkspaces(String storageRoot);
 
   /// Import a file and open a session. Returns `{doc, profile, report}`.
+  ///
+  /// [onProgress] receives the engine's raw progress JSON (`phase`, `rowsRead`,
+  /// `bytesRead`) as the import proceeds. It is called on the same thread as the import,
+  /// so an implementation must not block in it.
   Map<String, dynamic> importCsv({
     required Uint8List bytes,
     required String storageRoot,
     required String title,
     required String workspaceId,
     required String nowIso,
+    void Function(Map<String, dynamic> progress)? onProgress,
   });
 
   /// A revisioned snapshot of canonical Rust state.
@@ -117,6 +122,9 @@ typedef _ThreeStringDart = Pointer<Utf8> Function(
 
 typedef _FreeStringNative = Void Function(Pointer<Utf8>);
 typedef _FreeStringDart = void Function(Pointer<Utf8>);
+
+/// `MorphicProgressFn` on the Rust side: a borrowed JSON C string, valid only for the call.
+typedef _ProgressNative = Void Function(Pointer<Utf8>);
 
 /// Real FFI implementation backed by `libmorphic_bridge`.
 class FfiBridge implements MorphicBridge {
@@ -259,19 +267,40 @@ class FfiBridge implements MorphicBridge {
     required String title,
     required String workspaceId,
     required String nowIso,
+    void Function(Map<String, dynamic> progress)? onProgress,
   }) {
     final buf = calloc<Uint8>(bytes.length);
     final root = storageRoot.toNativeUtf8();
     final t = title.toNativeUtf8();
     final id = workspaceId.toNativeUtf8();
     final now = nowIso.toNativeUtf8();
+    NativeCallable<_ProgressNative>? progress;
     try {
       buf.asTypedList(bytes.length).setAll(0, bytes);
-      // The native progress slot is left null: cross-isolate callback delivery is wired
-      // with the import UI in task 1.1.7. The capability is contract-tested on the Rust side.
+      if (onProgress != null) {
+        // `isolateLocal` runs the callback synchronously on this isolate's own thread,
+        // which is exactly where Rust invokes it. `listener` would post to this isolate's
+        // event loop — and that loop is blocked inside the FFI call, so every event would
+        // arrive only after the import finished. Live progress requires isolateLocal.
+        progress = NativeCallable<_ProgressNative>.isolateLocal(
+          (Pointer<Utf8> json) {
+            try {
+              final decoded = jsonDecode(json.toDartString());
+              if (decoded is Map<String, dynamic>) onProgress(decoded);
+            } catch (_) {
+              // A progress event is diagnostic. It must never abort an import, and it
+              // must never throw across the C boundary.
+            }
+          },
+        );
+      }
       return _withResponse(
-          () => _importCsv(buf, bytes.length, root, t, id, now, nullptr), _decodeMap);
+          () => _importCsv(buf, bytes.length, root, t, id, now,
+              progress?.nativeFunction.cast<Void>() ?? nullptr),
+          _decodeMap);
     } finally {
+      // Close before freeing: the callable must not outlive the buffers it could touch.
+      progress?.close();
       calloc.free(buf);
       calloc.free(root);
       calloc.free(t);
