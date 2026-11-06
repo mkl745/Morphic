@@ -27,6 +27,8 @@ Stretch items are marked ◇ and never block a milestone exit.
 
 ## M1.1 — Vertical slice (the first proof of MORPHIC)
 
+Execution status: [m1.1-status.md](m1.1-status.md).
+
 **Goal:** one file, end to end, no breadth: `Import CSV → analyze → generate UI schema →
 render interactive Flutter workspace → save → reopen` (spec §20's exact slice).
 
@@ -49,6 +51,8 @@ demo video/script.
 table; kill app; reopen from home — identical state.
 
 ## M1.2 — Format breadth & ingestion robustness
+
+Execution status: [m1.2-status.md](m1.2-status.md).
 
 | # | Task | Size | Notes |
 |---|---|---|---|

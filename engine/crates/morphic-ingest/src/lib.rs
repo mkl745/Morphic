@@ -3,7 +3,11 @@
 //! Format detection and streaming parsers. **M1.1 implements production CSV**: delimiter
 //! and header sniffing, explicit encoding decisions, a 95%-tolerant type ladder, ragged-row
 //! repair, quarantine accounting, cancellation, progress events, and bounded memory.
-//! JSON / JSONL / TXT / log parsers land in M1.2 (docs/architecture/05).
+//!
+//! **M1.2 adds JSON** (task 1.2.1, [`json`]): array-of-objects, single object and scalar
+//! arrays, dotted flattening to depth 4 with no data dropped, and a bounded-memory array
+//! scanner. JSONL / TXT / log parsers follow in 1.2.2, and format auto-detection in 1.2.3 —
+//! until then callers choose the parser explicitly.
 //!
 //! Boundary: produces a `Table` + `ImportReport`. It does not infer semantics or compile UI.
 //!
@@ -12,6 +16,7 @@
 
 pub mod column;
 pub mod decode;
+pub mod json;
 pub mod sniff;
 pub mod temporal;
 
@@ -36,6 +41,10 @@ pub enum IngestError {
     TooManyColumns { limit: usize, found: usize },
     #[error("the file exceeds the row limit of {limit}")]
     TooManyRows { limit: usize },
+    #[error("JSON parse error: {0}")]
+    Json(String),
+    #[error("resource limit exceeded: {0}")]
+    ResourceLimit(String),
 }
 
 /// Which stage the importer is in, for real progress UI (no fake spinners).
@@ -86,6 +95,13 @@ pub struct IngestOptions {
     pub max_rows: usize,
     /// Hard column cap.
     pub max_columns: usize,
+    /// Hard gate on the input size, checked before any parsing (docs/architecture/05 §1.3).
+    /// Not a truncation: an over-limit file is refused with an actionable message.
+    pub max_import_bytes: usize,
+    /// Budget for the columnar text retained, estimated as the sum of cell bytes. Larger
+    /// than `max_import_bytes` because per-string overhead and the flattened union of keys
+    /// can exceed the source size. Aborts before OOM rather than during it.
+    pub max_memory_bytes: usize,
 }
 
 impl Default for IngestOptions {
@@ -100,6 +116,8 @@ impl Default for IngestOptions {
                 .collect(),
             max_rows: 2_000_000,
             max_columns: 2_048,
+            max_import_bytes: 256 * 1024 * 1024,
+            max_memory_bytes: 512 * 1024 * 1024,
         }
     }
 }

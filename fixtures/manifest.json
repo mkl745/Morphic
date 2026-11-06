@@ -13,9 +13,12 @@
     {"path": "valid/ambiguous_dates.csv", "format": "csv", "expect": "booked_on stays utf8 (day/month unresolved) + ambiguity warning; never silently guessed"},
     {"path": "valid/day_first_dates.csv", "format": "csv", "expect": "shipped_on -> timestamp as DD/MM/YYYY because 25/12 disambiguates; layout reported"},
     {"path": "valid/server_logs.log", "format": "log", "expect": "ISO-prefixed levels; time/level/service/message extraction (M1.2)"},
-    {"path": "valid/records.json", "format": "json", "expect": "array of 4 objects; id int64, metric utf8, value float64, host utf8 (M1.2)"},
+    {"path": "valid/records.json", "format": "json", "expect": "array of 4 objects -> 4 rows; id int64, metric utf8, value float64, host utf8"},
     {"path": "malformed/ragged.csv", "format": "csv", "expect": "ragged rows padded/truncated to header width with a warning; never crashes"},
-    {"path": "malformed/truncated.json", "format": "json", "expect": "typed parse error, never a crash (M1.2)"},
-    {"path": "malformed/empty.csv", "format": "csv", "expect": "zero bytes -> IngestError::Empty"}
+    {"path": "malformed/truncated.json", "format": "json", "expect": "unclosed array -> IngestError::Json, never a crash"},
+    {"path": "malformed/empty.csv", "format": "csv", "expect": "zero bytes -> IngestError::Empty"},
+    {"path": "valid/nested.json", "format": "json", "expect": "3 rows; dotted paths to depth 4 (user.city, a.b.c.d); arrays and depth-5 subtrees kept as JSON text with one warning per column"},
+    {"path": "valid/single_object.json", "format": "json", "expect": "1 row; limits.rpm / limits.burst flattened; healthy bool"},
+    {"path": "malformed/bad_element.json", "format": "json", "expect": "2 rows imported, 1 element quarantined with a warning; the good rows survive"}
   ]
 }

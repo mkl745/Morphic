@@ -453,6 +453,7 @@ dependencies = [
  "csv",
  "morphic-model",
  "serde",
+ "serde_json",
  "thiserror",
 ]
 

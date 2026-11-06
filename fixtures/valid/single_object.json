@@ -1,0 +1,1 @@
+{"service": "api", "version": "2.1.0", "limits": {"rpm": 600, "burst": 50}, "healthy": true}

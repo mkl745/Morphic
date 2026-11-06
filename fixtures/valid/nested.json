@@ -1,0 +1,5 @@
+[
+  {"id": 1, "user": {"city": "Oslo", "geo": {"lat": 59.91, "lon": 10.75}}, "tags": ["ops", "eu"], "a": {"b": {"c": {"d": {"e": "too deep"}}}}},
+  {"id": 2, "user": {"city": "Lima", "geo": {"lat": -12.05, "lon": -77.04}}, "tags": [], "a": {"b": {"c": {"d": 4}}}},
+  {"id": 3, "user": {"city": "Osaka"}, "tags": ["apac"], "a": {"b": {"c": {"d": {"e": "also deep", "f": 2}}}}}
+]
