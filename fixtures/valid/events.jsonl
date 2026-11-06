@@ -1,0 +1,5 @@
+{"ts":"2026-11-05T14:00:01Z","event":"login","latency_ms":12,"user":{"city":"Oslo"}}
+{"ts":"2026-11-05T14:00:02Z","event":"view","latency_ms":8,"user":{"city":"Lima"}}
+{"ts":"2026-11-05T14:00:03Z","event":"login","latency_ms":420,"user":{"city":"Oslo"}}
+{"ts":"2026-11-05T14:00:04Z","event":"buy","latency_ms":5000,"user":{"city":"Osaka"}}
+{"ts":"2026-11-05T14:00:05Z","event":"view","latency_ms":15,"user":{"city":"Lima"}}

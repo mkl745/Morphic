@@ -12,13 +12,19 @@
     {"path": "valid/naive_timestamps.csv", "format": "csv", "expect": "when -> timestamp; no offsets present, so the assumed-UTC warning must be reported"},
     {"path": "valid/ambiguous_dates.csv", "format": "csv", "expect": "booked_on stays utf8 (day/month unresolved) + ambiguity warning; never silently guessed"},
     {"path": "valid/day_first_dates.csv", "format": "csv", "expect": "shipped_on -> timestamp as DD/MM/YYYY because 25/12 disambiguates; layout reported"},
-    {"path": "valid/server_logs.log", "format": "log", "expect": "ISO-prefixed levels; time/level/service/message extraction (M1.2)"},
+    {"path": "valid/server_logs.log", "format": "log", "expect": "iso-level pattern; time timestamp, level/service/message extracted, latency promoted from the logfmt tail"},
     {"path": "valid/records.json", "format": "json", "expect": "array of 4 objects -> 4 rows; id int64, metric utf8, value float64, host utf8"},
     {"path": "malformed/ragged.csv", "format": "csv", "expect": "ragged rows padded/truncated to header width with a warning; never crashes"},
     {"path": "malformed/truncated.json", "format": "json", "expect": "unclosed array -> IngestError::Json, never a crash"},
     {"path": "malformed/empty.csv", "format": "csv", "expect": "zero bytes -> IngestError::Empty"},
     {"path": "valid/nested.json", "format": "json", "expect": "3 rows; dotted paths to depth 4 (user.city, a.b.c.d); arrays and depth-5 subtrees kept as JSON text with one warning per column"},
     {"path": "valid/single_object.json", "format": "json", "expect": "1 row; limits.rpm / limits.burst flattened; healthy bool"},
-    {"path": "malformed/bad_element.json", "format": "json", "expect": "2 rows imported, 1 element quarantined with a warning; the good rows survive"}
+    {"path": "malformed/bad_element.json", "format": "json", "expect": "2 rows imported, 1 element quarantined with a warning; the good rows survive"},
+    {"path": "valid/events.jsonl", "format": "jsonl", "expect": "5 rows; user.city flattened; latency_ms int64; ts timestamp"},
+    {"path": "valid/notes.txt", "format": "txt", "expect": "5 rows; line_number 1..5 + verbatim line column"},
+    {"path": "valid/syslog.log", "format": "log", "expect": "syslog pattern; host/service/pid extracted; PRI 34 -> FATAL; time stays text (no year) with a warning"},
+    {"path": "valid/access.log", "format": "log", "expect": "common-log combined; status/bytes int64; '-' becomes null; time stays text (month names) with a warning"},
+    {"path": "valid/logfmt.log", "format": "log", "expect": "logfmt pattern; time/level/service/message from aliases; latency_ms int64; retry bool with nulls"},
+    {"path": "malformed/mixed.log", "format": "log", "expect": "iso-level below the 70% confidence bar; 2 unmatched lines kept verbatim in message; never crashes"}
   ]
 }

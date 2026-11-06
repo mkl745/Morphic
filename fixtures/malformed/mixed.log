@@ -1,0 +1,6 @@
+2026-11-05T14:00:01Z INFO api ok
+this line is not a log entry at all
+2026-11-05T14:00:02Z ERROR api boom
+???
+
+2026-11-05T14:00:03Z WARN api careful

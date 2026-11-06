@@ -6,8 +6,13 @@
 //!
 //! **M1.2 adds JSON** (task 1.2.1, [`json`]): array-of-objects, single object and scalar
 //! arrays, dotted flattening to depth 4 with no data dropped, and a bounded-memory array
-//! scanner. JSONL / TXT / log parsers follow in 1.2.2, and format auto-detection in 1.2.3 —
-//! until then callers choose the parser explicitly.
+//! scanner.
+//!
+//! **Task 1.2.2 adds** [`jsonl`] (one record per line), [`text`] (numbered lines) and [`log`]
+//! (a scored, curated pattern library). The JSON-shaped formats share [`records`] so their
+//! flattening, null and typing policy cannot drift apart.
+//!
+//! Format auto-detection is 1.2.3 — until then callers choose the parser explicitly.
 //!
 //! Boundary: produces a `Table` + `ImportReport`. It does not infer semantics or compile UI.
 //!
@@ -17,7 +22,11 @@
 pub mod column;
 pub mod decode;
 pub mod json;
+pub mod jsonl;
+pub mod log;
+pub(crate) mod records;
 pub mod sniff;
+pub mod text;
 pub mod temporal;
 
 use std::collections::HashSet;

@@ -9,9 +9,13 @@ out. No semantics, no UI, no workspace I/O (see
 | Format | State |
 |---|---|
 | CSV | **M1.1 production** — sniffing, encoding, tolerant typing, timestamps, quarantine, cancel/progress |
-| JSON | **M1.2 1.2.1 implemented** — array/object/scalar shapes, depth-4 flattening, bounded-memory scan, gates, cancel/progress. Not yet reachable from the UI (auto-detection is 1.2.3). |
-| JSONL | M1.2 1.2.2 |
-| TXT / logs | M1.2 1.2.2 |
+| JSON | **M1.2 1.2.1** — array/object/scalar shapes, depth-4 flattening, bounded-memory scan, gates, cancel/progress |
+| JSONL | **M1.2 1.2.2** — one record per line, streaming, bad-line quarantine with line numbers |
+| TXT | **M1.2 1.2.2** — `line_number` + verbatim `line`, blank lines preserved |
+| LOG | **M1.2 1.2.2** — scored pattern library v1: iso-level, syslog, common-log, logfmt, fallback |
+
+None of the M1.2 formats is reachable from the UI yet: `morphic-core` and the bridge still
+call CSV only. Format auto-detection is 1.2.3 and the import UX is 1.2.4.
 
 ## API
 
@@ -26,15 +30,17 @@ let (table, report) = morphic_ingest::parse_csv_with(bytes, &opts, Some(&cancel)
     // p.phase: Sniffing → Parsing → Typing → Done; p.rows_read / p.bytes_read
 })?;
 
-// JSON (M1.2 1.2.1) — same report type, same options, same progress/cancel contract.
+// Every M1.2 format has the same shape: same options, report, progress and cancel contract.
 let (table, report) = morphic_ingest::json::parse_json(bytes)?;
+let (table, report) = morphic_ingest::jsonl::parse_jsonl(bytes)?;
+let (table, report) = morphic_ingest::text::parse_txt(bytes)?;
+let (table, report) = morphic_ingest::log::parse_log(bytes)?;
 let (table, report) =
     morphic_ingest::json::parse_json_with(bytes, &opts, Some(&cancel), &mut |p| {})?;
 ```
 
-Until 1.2.3 lands there is **no auto-detection**: the caller picks `parse_csv` or
-`json::parse_json`. `morphic-core` and the bridge still call CSV only, so 1.2.1 changes
-nothing a user can see.
+Until 1.2.3 lands there is **no auto-detection**: the caller picks the parser. `morphic-core`
+and the bridge still call CSV only, so nothing a user can see has changed yet.
 
 ## M1.1 policy (all of it reported, none of it silent)
 
@@ -100,7 +106,65 @@ nothing a user can see.
 - **Cancellation / progress**: identical contract to CSV — `Sniffing → Parsing → Typing →
   Done`, cancellation checked before work and every 4096 elements.
 
+## M1.2 line formats (task 1.2.2)
+
+`records.rs` holds the record-to-columns machinery shared by JSON and JSONL — flattening,
+nulls, naming, typing, quarantine policy and warning text. Two copies of that policy is how
+formats drift apart, so there is one, and a test asserts JSON and JSONL produce identical
+columns for identical records.
+
+### JSONL
+
+- One JSON value per line; a line is parsed, folded into the builders and dropped, so peak
+  parse memory is one line.
+- **Blank lines are skipped** (they carry no record); a trailing newline is not a row.
+- A bad line is quarantined without ending the parse, and the **first 20 line numbers** are
+  reported so they can be found.
+- Array-valued lines are quarantined; scalar lines become a `value` column.
+
+### TXT
+
+- `line_number` (1-based) + `line`, both still typed by the shared ladder — a file of one
+  number per line arrives as `int64`, which is the ladder working, not a special case.
+- **Blank lines are kept** as empty rows and reported, because dropping them would misalign
+  every line number against the source file. Text is never trimmed; indentation is data.
+
+### LOG — pattern library v1
+
+The pattern is chosen **once** from up to 256 sampled lines and then applied to every line,
+so a file cannot end up half-parsed one way and half another. The chosen pattern, its match
+count and rate are always reported; below 70% a low-confidence warning is added.
+
+| Pattern | Core columns |
+|---|---|
+| `iso-level` | `time`, `level`, `service`, `message` |
+| `syslog` | `time`, `level`, `host`, `service`, `pid`, `message` |
+| `common-log` | `time`, `host`, `ident`, `authuser`, `message`, `status`, `bytes`, `referer`, `user_agent` |
+| `logfmt` | `time`, `level`, `service`, `message` (from aliases) |
+| `fallback` | `time`, `level`, `message` |
+
+- Core columns are always emitted, null when absent, so column order never depends on which
+  line happened to carry a field first.
+- `key=value` pairs are promoted to columns — from the whole line for logfmt, from the
+  message tail otherwise — capped at **64 distinct keys**, and hitting the cap is reported.
+  A tail key can never overwrite a field the structured prefix already extracted.
+- Levels canonicalise to `TRACE/DEBUG/INFO/NOTICE/WARN/ERROR/FATAL` so grouping works.
+  Syslog `PRI` is decoded to a severity. CLF `-` becomes null, not the string `"-"`.
+- **Unmatched lines keep their entire raw text in `message`** and are counted. A log import
+  never fails and never drops a line because it looked odd.
+
 ## Known debt (tracked, not hidden)
+
+- **Log service detection is a heuristic.** `[svc]` is unambiguous; a bare token is only
+  taken as a service when it starts lowercase, so `INFO Request received` keeps the whole
+  phrase as the message but `INFO request received` reads `request` as a service. The
+  ambiguity is reported on every iso-level import.
+- **syslog and CLF timestamps stay text.** RFC3164 carries no year and CLF uses month names;
+  the temporal ladder refuses both rather than guessing. A warning says so. Promoting them
+  needs the locale/year inference work that M1.1 deliberately deferred.
+- The log pattern library is **v1**: no multiline/stack-trace folding, no JSON-in-log
+  detection, no Apache error-log or k8s/klog pattern. Unmatched lines survive as text, so
+  these are gaps in extraction, not data loss.
 
 - **JSON column order within a record is sorted, not file order.** `serde_json`'s default
   `Map` is a `BTreeMap`, so `{"date":…,"open":…,"close":…}` yields `close, date, open`. It is

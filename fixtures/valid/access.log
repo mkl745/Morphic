@@ -1,0 +1,4 @@
+127.0.0.1 - frank [10/Oct/2000:13:55:36 -0700] "GET /apache_pb.gif HTTP/1.0" 200 2326 "http://example.com/start.html" "Mozilla/4.08"
+10.0.0.2 - - [10/Oct/2000:13:55:37 -0700] "POST /api/login HTTP/1.1" 401 721 "-" "curl/8.4.0"
+10.0.0.3 - alice [10/Oct/2000:13:55:38 -0700] "GET /dashboard HTTP/1.1" 200 5120 "-" "Mozilla/5.0"
+10.0.0.2 - - [10/Oct/2000:13:55:39 -0700] "GET /missing HTTP/1.1" 404 - "-" "curl/8.4.0"

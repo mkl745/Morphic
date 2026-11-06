@@ -452,6 +452,7 @@ dependencies = [
  "criterion",
  "csv",
  "morphic-model",
+ "regex",
  "serde",
  "serde_json",
  "thiserror",

@@ -1,0 +1,5 @@
+Remember to check the ingest quarantine counts.
+The parser keeps unmatched lines verbatim.
+Blank lines are preserved so numbering stays aligned.
+This file is deliberately unstructured prose.
+It should still produce a workspace.

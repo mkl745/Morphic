@@ -1,0 +1,4 @@
+time=2026-11-05T14:00:01Z level=info msg="request received" service=api latency_ms=12
+time=2026-11-05T14:00:02Z level=warn msg="slow upstream" service=api latency_ms=420
+time=2026-11-05T14:00:03Z level=error msg="charge failed" service=payments latency_ms=5000 retry=true
+time=2026-11-05T14:00:04Z level=debug msg="cache hit" service=api latency_ms=1
