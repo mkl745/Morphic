@@ -165,6 +165,13 @@ void main() {
 
   testWidgets('quarantined rows keep the user on the report instead of navigating',
       (tester) async {
+    // A tall surface so every card is genuinely on screen. A finder can match a widget
+    // sitting in the ListView's cache extent — built, but not hit-testable — so scrolling
+    // until "found" is not the same as scrolling until visible.
+    tester.view.physicalSize = const Size(800, 2400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
     var opened = false;
     await tester.pumpWidget(host(
       source: FakeFileSource(file: csv()),
@@ -193,10 +200,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(opened, isFalse, reason: 'review comes before the workspace');
-    // The body is a lazy ListView, so anything below the fold is not built yet.
-    await tester.scrollUntilVisible(find.text('Worth a look first'), 150);
     expect(find.text('Worth a look first'), findsOneWidget);
-    await tester.scrollUntilVisible(find.text('View report'), 150);
+    expect(find.text('What Morphic read'), findsOneWidget);
+    expect(find.text('Set aside'), findsOneWidget);
+
     await tester.tap(find.text('View report'));
     await tester.pumpAndSettle();
     expect(find.text('Import report'), findsOneWidget);
