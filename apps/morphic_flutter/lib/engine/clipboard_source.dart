@@ -29,11 +29,16 @@ class ClipboardContent {
 
   /// The first non-empty line, trimmed and shortened, for the file card. Never the whole
   /// payload: a clipboard can hold megabytes and the card is one line tall.
+  /// The longest preview line, **ellipsis included**, so the card never has to guess.
+  static const int previewLimit = 60;
+
   String get preview {
     for (final line in const LineSplitter().convert(text)) {
       final trimmed = line.trim();
       if (trimmed.isEmpty) continue;
-      return trimmed.length <= 60 ? trimmed : '${trimmed.substring(0, 57)}…';
+      return trimmed.length <= previewLimit
+          ? trimmed
+          : '${trimmed.substring(0, previewLimit - 1)}…';
     }
     return '';
   }
