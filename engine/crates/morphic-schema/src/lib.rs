@@ -349,19 +349,22 @@ pub fn validate(doc: &WorkspaceDoc) -> Vec<ValidationIssue> {
     issues
 }
 
-/// Pass 5 helpers: aggregation vocabulary and resource ceilings. Profile-independent.
+/// Closed-vocabulary check for one aggregation. A free function rather than a closure so
+/// callers can keep pushing to the same `issues` vector without a unique-borrow conflict.
+fn check_agg_op(agg: &Aggregation, location: &str, issues: &mut Vec<ValidationIssue>) {
+    if !AGGREGATION_OPS.contains(&agg.op.as_str()) {
+        issues.push(ValidationIssue {
+            pointer: location.into(),
+            rule: format!("unknown aggregation op '{}'", agg.op),
+        });
+    }
+}
+
+/// Pass 5: aggregation vocabulary and resource ceilings. Profile-independent.
 fn validate_binding_resources(c: &ComponentSpec, ptr: &str, issues: &mut Vec<ValidationIssue>) {
-    let mut check_agg = |agg: &Aggregation, location: String| {
-        if !AGGREGATION_OPS.contains(&agg.op.as_str()) {
-            issues.push(ValidationIssue {
-                pointer: location,
-                rule: format!("unknown aggregation op '{}'", agg.op),
-            });
-        }
-    };
     match &c.binding {
         Binding::MetricCard { aggregation } => {
-            check_agg(aggregation, format!("{ptr}/binding/aggregation"));
+            check_agg_op(aggregation, &format!("{ptr}/binding/aggregation"), issues);
         }
         Binding::DataTable { page_size, .. } => {
             if *page_size == 0 || *page_size > MAX_PAGE_SIZE {
@@ -378,7 +381,7 @@ fn validate_binding_resources(c: &ComponentSpec, ptr: &str, issues: &mut Vec<Val
                     rule: format!("limit {} out of range 1..={}", limit, MAX_BAR_LIMIT),
                 });
             }
-            check_agg(measure, format!("{ptr}/binding/measure"));
+            check_agg_op(measure, &format!("{ptr}/binding/measure"), issues);
         }
         Binding::LineChart { y, .. } => {
             if y.is_empty() {
@@ -394,7 +397,7 @@ fn validate_binding_resources(c: &ComponentSpec, ptr: &str, issues: &mut Vec<Val
                 });
             }
             for (i, agg) in y.iter().enumerate() {
-                check_agg(agg, format!("{ptr}/binding/y/{i}"));
+                check_agg_op(agg, &format!("{ptr}/binding/y/{i}"), issues);
             }
         }
         Binding::Timeline { .. } => {}
