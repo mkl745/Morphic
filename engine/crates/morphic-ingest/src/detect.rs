@@ -149,10 +149,11 @@ pub fn detect(bytes: &[u8], hint: Option<Format>, extension: Option<&str>) -> De
                         ext.trim_start_matches('.'),
                         suggested.as_str()
                     ),
-                    warnings: vec![format!(
+                    warnings: vec![
                         "The format came from the file extension, not the contents. If the \
                          table looks wrong, re-import with an explicit format."
-                    )],
+                            .to_string(),
+                    ],
                 };
             } else if suggested != detection.format {
                 detection.warnings.push(format!(

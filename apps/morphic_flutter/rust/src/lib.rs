@@ -477,7 +477,7 @@ mod tests {
     fn engine_info_returns_json() {
         let v = json(morphic_engine_info());
         assert_eq!(v["engine"], "morphic");
-        assert_eq!(v["apiVersion"], 2);
+        assert_eq!(v["apiVersion"], 3);
     }
 
     #[test]

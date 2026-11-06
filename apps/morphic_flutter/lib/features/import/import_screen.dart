@@ -194,7 +194,7 @@ class _ImportScreenState extends State<ImportScreen> {
           ],
           const SizedBox(height: MorphicSpace.xl),
           Text(
-            'Morphic reports how it read the file, including any rows it could not '
+            'Morphic reports how it read the file, plus any rows it was unable to '
             'parse. If it guessed wrong, choose the format above and import again.',
             style: theme.textTheme.bodySmall
                 ?.copyWith(color: theme.colorScheme.onSurface.withValues(alpha: 0.6)),
