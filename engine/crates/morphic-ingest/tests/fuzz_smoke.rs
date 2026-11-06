@@ -29,6 +29,7 @@ use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::time::{Duration, Instant};
 
+use morphic_ingest::detect::Format;
 use morphic_ingest::{ingest_with, CancelToken, IngestError, IngestOptions};
 use morphic_model::{ColumnValues, ImportReport, Table};
 
@@ -470,7 +471,7 @@ fn structural_attacks_are_refused_with_typed_errors() {
         vec!["1"; 3000].join(",")
     );
     let opts = IngestOptions {
-        format_hint: Some("csv".into()),
+        format_hint: Some(Format::Csv),
         ..Default::default()
     };
     let err = ingest_with(wide.as_bytes(), &opts, None, &mut |_| {}).unwrap_err();
@@ -479,7 +480,7 @@ fn structural_attacks_are_refused_with_typed_errors() {
     // Long: more rows than a lowered cap, so the test stays fast.
     let long = "a\n".to_string() + &"1\n".repeat(50);
     let opts = IngestOptions {
-        format_hint: Some("csv".into()),
+        format_hint: Some(Format::Csv),
         max_rows: 10,
         ..Default::default()
     };
@@ -498,7 +499,7 @@ fn structural_attacks_are_refused_with_typed_errors() {
     // Deep: nesting far past the cap must be retained or refused, never overflow the stack.
     let deep = format!("{}1{}", "{\"a\":".repeat(400), "}".repeat(400));
     let opts = IngestOptions {
-        format_hint: Some("json".into()),
+        format_hint: Some(Format::Json),
         ..Default::default()
     };
     // Either outcome is acceptable here; what is not acceptable is a stack overflow, which
@@ -510,7 +511,7 @@ fn structural_attacks_are_refused_with_typed_errors() {
     // A single enormous line must not be treated as an unbounded allocation.
     let one_line = "a,b\n".to_string() + &"x".repeat(512 * 1024) + "\n";
     let opts = IngestOptions {
-        format_hint: Some("csv".into()),
+        format_hint: Some(Format::Csv),
         ..Default::default()
     };
     if let Ok((table, report)) = ingest_with(one_line.as_bytes(), &opts, None, &mut |_| {}) {
