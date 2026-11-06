@@ -5,6 +5,9 @@ import 'package:flutter/services.dart' show rootBundle;
 
 import '../../design_system/tokens.dart';
 import '../../engine/bridge_scope.dart';
+import '../../engine/engine_controller.dart';
+import '../../engine/import_controller.dart';
+import '../workspace/workspace_args.dart';
 
 /// The Phase 0 vertical-slice demo: load a sample CSV, have **Rust** profile it, then
 /// generate + persist a workspace and open it. This is the "demonstrable data-processing
@@ -54,25 +57,27 @@ class _PocScreenState extends State<PocScreen> {
     final bytes = _bytes;
     if (bytes == null) return;
     setState(() => _generating = true);
-    try {
-      final now = DateTime.now().toUtc();
-      final id = 'w_${now.millisecondsSinceEpoch}';
-      final doc = scope.bridge.createWorkspace(
-        bytes: bytes,
-        storageRoot: scope.storageRoot,
-        title: 'Sample Logs',
-        workspaceId: id,
-        nowIso: now.toIso8601String(),
-      );
-      if (!mounted) return;
-      Navigator.of(context).pushReplacementNamed('/workspace', arguments: doc);
-    } catch (e) {
-      if (!mounted) return;
+    // Real import: Rust analyzes, compiles, validates, persists, and keeps a live session
+    // so the workspace can page and aggregate without re-reading the file.
+    final importer =
+        ImportController(bridge: scope.bridge, storageRoot: scope.storageRoot);
+    final id = await importer.importBytes(bytes, title: 'Sample Logs');
+    if (!mounted) return;
+    final outcome = importer.result;
+    if (id == null || outcome == null) {
       setState(() {
         _generating = false;
-        _error = e.toString();
+        _error = importer.error ?? 'the engine did not return a workspace';
       });
+      return;
     }
+    final engine =
+        EngineController(bridge: scope.bridge, storageRoot: scope.storageRoot);
+    engine.adoptImport(outcome, id);
+    Navigator.of(context).pushReplacementNamed(
+      '/workspace',
+      arguments: WorkspaceArgs(controller: engine, warnings: importer.warnings),
+    );
   }
 
   @override

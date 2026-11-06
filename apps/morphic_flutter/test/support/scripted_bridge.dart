@@ -61,6 +61,7 @@ class ScriptedBridge implements MorphicBridge {
   bool failMetric = false;
   bool failQuery = false;
   bool failSnapshot = false;
+  List<String> importWarnings = [];
 
   /// Every plan the table sent, in order.
   final List<Map<String, dynamic>> plans = [];
@@ -119,7 +120,9 @@ class ScriptedBridge implements MorphicBridge {
       doc();
 
   @override
-  List<dynamic> listWorkspaces(String storageRoot) => [];
+  List<dynamic> listWorkspaces(String storageRoot) => [
+        {'id': 'w1', 'title': 'Saved workspace'},
+      ];
 
   @override
   Map<String, dynamic> importCsv({
@@ -132,7 +135,7 @@ class ScriptedBridge implements MorphicBridge {
       {
         'doc': doc(),
         'profile': profileJson(),
-        'report': {'rowsImported': rows.length, 'warnings': <String>[]},
+        'report': {'rowsImported': rows.length, 'warnings': importWarnings},
       };
 
   @override

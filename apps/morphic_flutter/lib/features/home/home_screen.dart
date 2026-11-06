@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../../design_system/tokens.dart';
 import '../../engine/bridge.dart';
 import '../../engine/bridge_scope.dart';
+import '../../engine/engine_controller.dart';
+import '../workspace/workspace_args.dart';
 
 /// Home is a lightweight gateway (spec §10.1): engine status, the import/PoC action,
 /// and recent workspaces. The workspace itself is the product, not this screen.
@@ -194,13 +196,21 @@ class _WorkspaceList extends StatelessWidget {
                   title: Text((item as Map)['title'] as String? ?? 'Workspace'),
                   subtitle: Text(item['id'] as String? ?? ''),
                   trailing: const Icon(Icons.chevron_right),
-                  onTap: () {
-                    final doc = scope.bridge.loadWorkspace(
+                  onTap: () async {
+                    // Reopen as a live session: Rust rehydrates from the persisted source
+                    // so the table and metrics work, not just the document structure.
+                    final engine = EngineController(
+                      bridge: scope.bridge,
                       storageRoot: scope.storageRoot,
-                      workspaceId: item['id'] as String,
                     );
-                    Navigator.of(context)
-                        .pushNamed('/workspace', arguments: doc);
+                    await engine.open(item['id'] as String);
+                    if (!mounted) return;
+                    // A failed open is intentionally still navigated: WorkspaceView renders
+                    // the engine's error with a retry instead of a silent no-op tap.
+                    Navigator.of(context).pushNamed(
+                      '/workspace',
+                      arguments: WorkspaceArgs(controller: engine),
+                    );
                   },
                 ),
               ),

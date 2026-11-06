@@ -4,6 +4,7 @@ import '../../design_system/tokens.dart';
 import '../../engine/engine_controller.dart';
 import '../../runtime/component_registry.dart';
 import '../../runtime/workspace_view.dart';
+import 'workspace_args.dart';
 
 /// Workspace host.
 ///
@@ -17,6 +18,7 @@ class WorkspaceScreen extends StatelessWidget {
     this.document,
     this.controller,
     this.registry,
+    this.warnings = const [],
   });
 
   /// Optional injected document (structural view / tests); otherwise read from route args.
@@ -26,25 +28,43 @@ class WorkspaceScreen extends StatelessWidget {
   final EngineController? controller;
   final ComponentRegistry? registry;
 
+  /// Ingest warnings carried over from the import, surfaced rather than discarded.
+  final List<String> warnings;
+
   @override
   Widget build(BuildContext context) {
-    final ctl = controller;
+    final args = ModalRoute.of(context)?.settings.arguments;
+    final argsObj = args is WorkspaceArgs ? args : null;
+    final ctl = controller ?? argsObj?.controller;
+    final notices = warnings.isNotEmpty ? warnings : (argsObj?.warnings ?? const []);
+
     if (ctl != null) {
       final ws = ctl.doc?['workspace'] as Map<String, dynamic>?;
       return Scaffold(
         appBar: AppBar(title: Text(ws?['title'] as String? ?? 'Workspace')),
-        body: WorkspaceView(
-          controller: ctl,
-          registry: registry ?? ComponentRegistry(),
-          onRetry: ctl.workspaceId == null
-              ? null
-              : () => ctl.open(ctl.workspaceId!),
+        body: Column(
+          children: [
+            if (notices.isNotEmpty) _WarningBanner(warnings: notices),
+            Expanded(
+              child: AnimatedBuilder(
+                animation: ctl,
+                builder: (context, _) => WorkspaceView(
+                  controller: ctl,
+                  registry: registry ?? ComponentRegistry(),
+                  onRetry: ctl.workspaceId == null
+                      ? null
+                      : () => ctl.open(ctl.workspaceId!),
+                ),
+              ),
+            ),
+          ],
         ),
       );
     }
 
-    final doc =
-        document ?? ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+    final doc = document ??
+        argsObj?.document ??
+        (args is Map<String, dynamic> ? args : null);
     final ws = doc?['workspace'] as Map<String, dynamic>?;
     final components = (ws?['components'] as List? ?? []).cast<Map<String, dynamic>>();
 
@@ -137,6 +157,47 @@ class _ComponentCard extends StatelessWidget {
             ],
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Ingest warnings are part of the result, not noise: an encoding fallback or an ambiguous
+/// date column changes what the numbers mean, so the user is told.
+class _WarningBanner extends StatelessWidget {
+  const _WarningBanner({required this.warnings});
+
+  final List<String> warnings;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      width: double.infinity,
+      color: MorphicColors.warning.withValues(alpha: 0.14),
+      padding: const EdgeInsets.all(MorphicSpace.md),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.info_outline, size: 18, color: MorphicColors.warning),
+          const SizedBox(width: MorphicSpace.sm),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Import notes (${warnings.length})',
+                  style: theme.textTheme.labelMedium,
+                ),
+                for (final w in warnings.take(5))
+                  Text('• $w', style: theme.textTheme.bodySmall),
+                if (warnings.length > 5)
+                  Text('and ${warnings.length - 5} more…',
+                      style: theme.textTheme.bodySmall),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
