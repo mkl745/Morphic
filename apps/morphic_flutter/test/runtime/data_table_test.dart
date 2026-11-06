@@ -285,4 +285,91 @@ void main() {
     // Both header and rows share one horizontal viewport, so they move together.
     expect(find.byType(SingleChildScrollView), findsOneWidget);
   });
+
+  group('column sizing (defect found on a real phone)', () {
+    // On the realme C51 every timestamp rendered as `2026-11-05T1…`: the column was sized
+    // from the 4-character header, so a 24-character ISO value could never be read — not
+    // even by scrolling, because the ellipsis lives inside the fixed-width column.
+    const iso = '2026-11-05T14:00:02.000Z';
+
+    Future<void> pump(WidgetTester tester, ScriptedBridge bridge,
+        {int pageSize = 2}) async {
+      final engine = await _open(bridge);
+      await tester.pumpWidget(_host(DataTableView(
+        ctx: ComponentContext(spec: _spec(pageSize: pageSize), engine: engine),
+        height: 400,
+      )));
+      await tester.pumpAndSettle();
+    }
+
+    double headerWidth(WidgetTester tester, String column) {
+      final box = tester.widget<SizedBox>(
+        find.ancestor(of: find.text(column), matching: find.byType(SizedBox)).first,
+      );
+      return box.width!;
+    }
+
+    testWidgets('a timestamp column is wide enough for the whole value', (tester) async {
+      await pump(tester, ScriptedBridge(rows: [
+        [iso, 'ERROR', 'note'],
+      ]));
+      // 24 characters at ~7.2 dp plus padding; the old header-only rule gave 96 dp.
+      expect(headerWidth(tester, 'time'), greaterThan(180));
+    });
+
+    testWidgets('a long text column grows to its content, not its header', (tester) async {
+      await pump(tester, ScriptedBridge(rows: [
+        ['eu', 1, 'Connection established'],
+      ]));
+      expect(headerWidth(tester, 'note'), greaterThan(150));
+    });
+
+    testWidgets('widths are frozen so paging does not make columns jump', (tester) async {
+      final bridge = ScriptedBridge(rows: [
+        [iso, 'ERROR', 'short'],
+        ['us', 2, 'x'],
+        ['apac', 3, 'a much longer message than the first page had'],
+        ['latam', 4, 'y'],
+      ]);
+      await pump(tester, bridge);
+      final before = headerWidth(tester, 'note');
+
+      await tester.tap(find.byTooltip('Next page'));
+      await tester.pumpAndSettle();
+      expect(headerWidth(tester, 'note'), before,
+          reason: 'column widths must not jitter between pages');
+    });
+
+    testWidgets('an enormous value is capped rather than dominating the viewport',
+        (tester) async {
+      await pump(tester, ScriptedBridge(rows: [
+        ['eu', 1, 'x' * 5000],
+      ]));
+      expect(headerWidth(tester, 'note'), lessThanOrEqualTo(300));
+    });
+
+    testWidgets('tapping a cell reveals the full value', (tester) async {
+      const long = 'a value far too long to ever fit inside a table column whatsoever';
+      await pump(tester, ScriptedBridge(rows: [
+        ['eu', 1, long],
+      ]));
+      await tester.tap(find.text(long).hitTestable());
+      await tester.pumpAndSettle();
+      expect(find.byType(AlertDialog), findsOneWidget);
+      expect(find.text('note'), findsWidgets);
+      expect(find.text(long), findsWidgets);
+      await tester.tap(find.text('Close'));
+      await tester.pumpAndSettle();
+      expect(find.byType(AlertDialog), findsNothing);
+    });
+
+    testWidgets('a null cell is described as null, not as an empty string', (tester) async {
+      await pump(tester, ScriptedBridge(rows: [
+        ['eu', 1, null],
+      ]));
+      await tester.tap(find.text('—').hitTestable());
+      await tester.pumpAndSettle();
+      expect(find.text('No value (null)'), findsOneWidget);
+    });
+  });
 }

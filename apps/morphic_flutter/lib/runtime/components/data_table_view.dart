@@ -54,6 +54,13 @@ class _DataTableViewState extends State<DataTableView> {
   String _search = '';
   int _attempt = 0;
 
+  /// Column widths measured from real cell content, then **frozen** for the session so they
+  /// do not jitter as you page. Sizing from the header alone made a 24-character ISO
+  /// timestamp render as `2026-11-05T1…` in a 96 dp column — permanently unreadable, because
+  /// the ellipsis is inside the column and horizontal scrolling cannot reveal it.
+  Map<String, double>? _widths;
+  List<String>? _widthsFor;
+
   int get _pageSize {
     final raw = (widget.ctx.binding['page_size'] as num?)?.toInt() ?? defaultPageSize;
     if (raw < 1) return 1;
@@ -117,8 +124,40 @@ class _DataTableViewState extends State<DataTableView> {
       } else {
         _page = res;
         _state = _Load.ready;
+        _measureColumns(res);
       }
     });
+  }
+
+  /// Size each column to the wider of its header and its longest visible value. Measured
+  /// once per column set, from the first page that has rows, then kept stable.
+  void _measureColumns(PageResult page) {
+    final cols = _columns;
+    if (cols.isEmpty || page.rows.isEmpty) return;
+    if (_widths != null && _widthsFor != null && _listEquals(_widthsFor!, cols)) return;
+    final measured = <String, double>{};
+    for (var c = 0; c < cols.length; c++) {
+      var longest = cols[c].length;
+      for (final row in page.rows) {
+        if (c >= row.length) continue;
+        final s = formatCell(row[c]);
+        if (s.length > longest) longest = s.length;
+      }
+      // ~7.2 dp per character at bodySmall, plus cell padding. Capped so one enormous text
+      // blob cannot dominate the viewport; the full value is still reachable by tapping.
+      final w = longest * 7.2 + 24;
+      measured[cols[c]] = w < 96 ? 96 : (w > 300 ? 300 : w);
+    }
+    _widths = measured;
+    _widthsFor = cols;
+  }
+
+  bool _listEquals(List<String> a, List<String> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
   }
 
   void _onSearchChanged(String value) {
@@ -145,10 +184,29 @@ class _DataTableViewState extends State<DataTableView> {
   }
 
   double _columnWidth(String name) {
+    final measured = _widths?[name];
+    if (measured != null) return measured;
     final w = name.length * 9.0 + 32;
     if (w < 96) return 96;
-    if (w > 240) return 240;
+    if (w > 300) return 300;
     return w;
+  }
+
+  /// A capped or long value must still be readable in full.
+  void _inspect(String column, Object? value) {
+    showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(column),
+        content: SelectableText(value == null ? 'No value (null)' : value.toString()),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -266,6 +324,7 @@ class _DataTableViewState extends State<DataTableView> {
                     widthOf: _columnWidth,
                     striped: i.isOdd,
                     rowNumber: page.offset + i + 1,
+                    onInspect: _inspect,
                   );
                 },
               ),
@@ -351,6 +410,7 @@ class _DataRow extends StatelessWidget {
     required this.widthOf,
     required this.striped,
     required this.rowNumber,
+    required this.onInspect,
   });
 
   final List<String> columns;
@@ -360,6 +420,8 @@ class _DataRow extends StatelessWidget {
 
   /// Absolute row number in the dataset, not the index within this page.
   final int rowNumber;
+
+  final void Function(String column, Object? value) onInspect;
 
   @override
   Widget build(BuildContext context) {
@@ -386,15 +448,18 @@ class _DataRow extends StatelessWidget {
             for (var i = 0; i < columns.length; i++)
               SizedBox(
                 width: widthOf(columns[i]),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: MorphicSpace.sm),
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      formatCell(values[i]),
-                      overflow: TextOverflow.ellipsis,
-                      maxLines: 1,
-                      style: values[i] == null ? isNullStyle : theme.textTheme.bodySmall,
+                child: InkWell(
+                  onTap: () => onInspect(columns[i], values[i]),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: MorphicSpace.sm),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        formatCell(values[i]),
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
+                        style: values[i] == null ? isNullStyle : theme.textTheme.bodySmall,
+                      ),
                     ),
                   ),
                 ),
