@@ -1097,5 +1097,4 @@ mod tests {
         assert!(dataset_written(&root, SALES));
         std::fs::remove_dir_all(&root).ok();
     }
-
 }

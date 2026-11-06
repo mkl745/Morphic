@@ -891,7 +891,10 @@ mod tests {
     #[test]
     fn cancelling_with_a_null_id_is_a_typed_error() {
         let v = unsafe { json(morphic_cancel_import(std::ptr::null())) };
-        assert!(v["error"].as_str().unwrap_or("").contains("required"), "{v}");
+        assert!(
+            v["error"].as_str().unwrap_or("").contains("required"),
+            "{v}"
+        );
     }
 
     #[test]
@@ -953,5 +956,4 @@ mod tests {
         assert_eq!(stored, 0, "a cancelled import left a dataset behind");
         std::fs::remove_dir_all(&p).ok();
     }
-
 }
