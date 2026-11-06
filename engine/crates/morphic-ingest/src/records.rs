@@ -56,8 +56,7 @@ impl Notes {
         }
         if self.empty_containers {
             warnings.push(
-                "Empty objects and arrays were kept as JSON text so the field is not lost."
-                    .into(),
+                "Empty objects and arrays were kept as JSON text so the field is not lost.".into(),
             );
         }
         let mut array_cols: Vec<&String> = self.arrays.iter().collect();
@@ -275,7 +274,8 @@ impl Grid {
     pub fn build_columns(&self, opts: &IngestOptions, warnings: &mut Vec<String>) -> Vec<Column> {
         let mut columns = Vec::with_capacity(self.order.len());
         for (i, name) in self.order.iter().enumerate() {
-            let built = column::build_column(name, &self.raw[i], &self.nulls[i], opts.type_tolerance);
+            let built =
+                column::build_column(name, &self.raw[i], &self.nulls[i], opts.type_tolerance);
             if built.coerced > 0 {
                 warnings.push(format!(
                     "Column '{}': {} value(s) did not parse as {} and were set to null \

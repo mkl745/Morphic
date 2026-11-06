@@ -26,8 +26,8 @@ pub mod jsonl;
 pub mod log;
 pub(crate) mod records;
 pub mod sniff;
-pub mod text;
 pub mod temporal;
+pub mod text;
 
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, Ordering};

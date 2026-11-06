@@ -235,7 +235,11 @@ mod tests {
         let (t, r) = parse("{\"a\":1}\nnot json\n{\"a\":3}\n");
         assert_eq!(t.row_count, 2);
         assert_eq!(r.rows_quarantined, 1);
-        assert!(warned(&r, "Unreadable line number(s): 2."), "{:?}", r.warnings);
+        assert!(
+            warned(&r, "Unreadable line number(s): 2."),
+            "{:?}",
+            r.warnings
+        );
     }
 
     #[test]
@@ -304,7 +308,8 @@ mod tests {
 
     #[test]
     fn iso_strings_become_timestamps() {
-        let (t, _) = parse("{\"at\":\"2024-01-01T05:00:00Z\"}\n{\"at\":\"2024-01-02T06:00:00Z\"}\n");
+        let (t, _) =
+            parse("{\"at\":\"2024-01-01T05:00:00Z\"}\n{\"at\":\"2024-01-02T06:00:00Z\"}\n");
         assert_eq!(col(&t, "at").dtype, DataType::Timestamp);
     }
 
@@ -339,7 +344,8 @@ mod tests {
             max_import_bytes: 8,
             ..Default::default()
         };
-        let err = parse_jsonl_with(b"{\"a\":1}\n{\"a\":2}\n", &opts, None, &mut |_| {}).unwrap_err();
+        let err =
+            parse_jsonl_with(b"{\"a\":1}\n{\"a\":2}\n", &opts, None, &mut |_| {}).unwrap_err();
         assert!(matches!(err, IngestError::ResourceLimit(_)), "{err}");
     }
 
@@ -361,7 +367,10 @@ mod tests {
             ..Default::default()
         };
         let err = parse_jsonl_with(b"1\n2\n3\n", &opts, None, &mut |_| {}).unwrap_err();
-        assert!(matches!(err, IngestError::TooManyRows { limit: 2 }), "{err}");
+        assert!(
+            matches!(err, IngestError::TooManyRows { limit: 2 }),
+            "{err}"
+        );
     }
 
     #[test]
@@ -370,8 +379,13 @@ mod tests {
             max_columns: 2,
             ..Default::default()
         };
-        let err = parse_jsonl_with(b"{\"a\":1}\n{\"b\":2}\n{\"c\":3}\n", &opts, None, &mut |_| {})
-            .unwrap_err();
+        let err = parse_jsonl_with(
+            b"{\"a\":1}\n{\"b\":2}\n{\"c\":3}\n",
+            &opts,
+            None,
+            &mut |_| {},
+        )
+        .unwrap_err();
         assert!(
             matches!(err, IngestError::TooManyColumns { limit: 2, .. }),
             "{err}"
@@ -382,9 +396,8 @@ mod tests {
     fn cancellation_is_honoured_before_work_starts() {
         let token = CancelToken::new();
         token.cancel();
-        let err =
-            parse_jsonl_with(b"1\n", &IngestOptions::default(), Some(&token), &mut |_| {})
-                .unwrap_err();
+        let err = parse_jsonl_with(b"1\n", &IngestOptions::default(), Some(&token), &mut |_| {})
+            .unwrap_err();
         assert!(matches!(err, IngestError::Cancelled), "{err}");
     }
 

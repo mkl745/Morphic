@@ -234,7 +234,9 @@ pub fn select_pattern(sample: &[&str]) -> (LogPattern, usize) {
         LogPattern::CommonLog,
         LogPattern::Logfmt,
     ] {
-        let re = pattern.matcher().expect("non-fallback patterns have a matcher");
+        let re = pattern
+            .matcher()
+            .expect("non-fallback patterns have a matcher");
         let hits = sample.iter().filter(|line| re.is_match(line)).count();
         if hits > best.1 {
             best = (pattern, hits);
@@ -677,7 +679,10 @@ mod tests {
 
     #[test]
     fn prose_falls_back() {
-        assert_eq!(chosen("just some prose\nanother line\n"), LogPattern::Fallback);
+        assert_eq!(
+            chosen("just some prose\nanother line\n"),
+            LogPattern::Fallback
+        );
     }
 
     #[test]
@@ -697,7 +702,11 @@ mod tests {
         assert_eq!(p, LogPattern::IsoLevel);
         assert_eq!(hits, 1);
         let (_, r) = parse(&s);
-        assert!(warned(&r, "below the 70% confidence bar"), "{:?}", r.warnings);
+        assert!(
+            warned(&r, "below the 70% confidence bar"),
+            "{:?}",
+            r.warnings
+        );
     }
 
     // -------------------------------------------------------------- iso-level
@@ -848,14 +857,16 @@ mod tests {
 
     #[test]
     fn basic_clf_without_referer_or_agent_still_parses() {
-        let (t, _) = parse("127.0.0.1 - - [10/Oct/2000:13:55:36 -0700] \"GET / HTTP/1.0\" 200 23\n");
+        let (t, _) =
+            parse("127.0.0.1 - - [10/Oct/2000:13:55:36 -0700] \"GET / HTTP/1.0\" 200 23\n");
         assert_eq!(col(&t, "status").dtype, DataType::Int64);
         assert!(col(&t, "referer").nulls[0]);
     }
 
     #[test]
     fn clf_time_stays_text_and_says_why() {
-        let (t, r) = parse("127.0.0.1 - - [10/Oct/2000:13:55:36 -0700] \"GET / HTTP/1.0\" 200 23\n");
+        let (t, r) =
+            parse("127.0.0.1 - - [10/Oct/2000:13:55:36 -0700] \"GET / HTTP/1.0\" 200 23\n");
         assert_eq!(col(&t, "time").dtype, DataType::Utf8);
         assert!(warned(&r, "month names"), "{:?}", r.warnings);
     }
@@ -924,7 +935,10 @@ mod tests {
     fn prose_becomes_a_message_column() {
         let (t, r) = parse("just some prose\nanother line\n");
         assert_eq!(t.field_names(), vec!["time", "level", "message"]);
-        assert_eq!(texts(&t, "message"), vec!["just some prose", "another line"]);
+        assert_eq!(
+            texts(&t, "message"),
+            vec!["just some prose", "another line"]
+        );
         assert!(warned(&r, "Detected 'fallback'"));
     }
 
@@ -998,7 +1012,10 @@ mod tests {
             ..Default::default()
         };
         let err = parse_log_with(b"a\nb\nc\n", &opts, None, &mut |_| {}).unwrap_err();
-        assert!(matches!(err, IngestError::TooManyRows { limit: 2 }), "{err}");
+        assert!(
+            matches!(err, IngestError::TooManyRows { limit: 2 }),
+            "{err}"
+        );
     }
 
     #[test]
@@ -1120,7 +1137,10 @@ mod tests {
         assert_eq!(t.row_count, 5);
         assert!(warned(&r, "below the 70% confidence bar"));
         assert!(warned(&r, "2 line(s) did not match"));
-        assert_eq!(texts(&t, "message")[1], "this line is not a log entry at all");
+        assert_eq!(
+            texts(&t, "message")[1],
+            "this line is not a log entry at all"
+        );
         assert_eq!(texts(&t, "message")[3], "???");
     }
 }

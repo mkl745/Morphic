@@ -269,7 +269,10 @@ mod tests {
             ..Default::default()
         };
         let err = parse_txt_with(b"a\nb\nc\n", &opts, None, &mut |_| {}).unwrap_err();
-        assert!(matches!(err, IngestError::TooManyRows { limit: 2 }), "{err}");
+        assert!(
+            matches!(err, IngestError::TooManyRows { limit: 2 }),
+            "{err}"
+        );
     }
 
     #[test]

@@ -58,7 +58,6 @@ use crate::{decode, CancelToken, IngestError, IngestOptions, Phase, Progress};
 
 pub use crate::records::MAX_DEPTH;
 
-
 /// Parse JSON bytes with default options and no progress/cancellation.
 pub fn parse_json(bytes: &[u8]) -> Result<(Table, ImportReport), IngestError> {
     parse_json_with(bytes, &IngestOptions::default(), None, &mut |_| {})
@@ -228,7 +227,6 @@ pub fn parse_json_with(
         report,
     ))
 }
-
 
 /// A forward-only scanner over a top-level JSON array.
 ///
