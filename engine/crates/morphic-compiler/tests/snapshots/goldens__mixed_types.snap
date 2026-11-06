@@ -1,0 +1,155 @@
+---
+source: engine/crates/morphic-compiler/tests/goldens.rs
+expression: doc
+---
+{
+  "schemaVersion": "1.0",
+  "workspace": {
+    "id": "workspace_golden",
+    "title": "Golden",
+    "createdAt": "2026-11-05T00:00:00Z",
+    "modifiedAt": "2026-11-05T00:00:00Z",
+    "revision": 1,
+    "generator": {
+      "kind": "deterministic",
+      "version": "0.2.0"
+    },
+    "dataSources": [
+      {
+        "alias": "data",
+        "datasetId": "dataset_golden"
+      }
+    ],
+    "layout": {
+      "mode": "adaptive",
+      "order": [
+        "total_records",
+        "metric_amount",
+        "trend_over_time",
+        "data_table"
+      ],
+      "hints": []
+    },
+    "globalFilters": [],
+    "components": [
+      {
+        "id": "total_records",
+        "type": "metric_card",
+        "typeVersion": "1.0",
+        "title": "Records",
+        "dataSource": "data",
+        "binding": {
+          "kind": "metric_card",
+          "aggregation": {
+            "op": "count",
+            "field": null,
+            "filter": null
+          }
+        },
+        "interactions": {
+          "filter": false,
+          "search": false,
+          "sort": false,
+          "select": false
+        },
+        "explanation": {
+          "reason": "R1_records",
+          "detail": "A record count is the fastest orientation signal for any dataset.",
+          "evidence": [
+            "5 rows detected"
+          ],
+          "confidence": 1.0
+        }
+      },
+      {
+        "id": "metric_amount",
+        "type": "metric_card",
+        "typeVersion": "1.0",
+        "title": "Avg amount",
+        "dataSource": "data",
+        "binding": {
+          "kind": "metric_card",
+          "aggregation": {
+            "op": "avg",
+            "field": "amount",
+            "filter": null
+          }
+        },
+        "interactions": {
+          "filter": false,
+          "search": false,
+          "sort": false,
+          "select": false
+        },
+        "explanation": {
+          "reason": "R2_primary_measure",
+          "detail": "'amount' is the strongest numeric measure, so its average is surfaced. An average is used rather than a sum because it stays meaningful for rates as well as totals.",
+          "evidence": [
+            "'amount' is numeric (float64)"
+          ],
+          "confidence": 0.85
+        }
+      },
+      {
+        "id": "trend_over_time",
+        "type": "line_chart",
+        "typeVersion": "1.0",
+        "title": "amount over time",
+        "dataSource": "data",
+        "binding": {
+          "kind": "line_chart",
+          "x": "ts",
+          "y": [
+            {
+              "op": "avg",
+              "field": "amount",
+              "filter": null
+            }
+          ],
+          "group_by": null
+        },
+        "interactions": {
+          "filter": true,
+          "search": false,
+          "sort": false,
+          "select": true
+        },
+        "explanation": {
+          "reason": "R3_time_series",
+          "detail": "'ts' is temporal and 'amount' is a measure, so the measure is plotted over time.",
+          "evidence": [
+            "'ts' was parsed and normalized to UTC timestamps at import",
+            "'amount' is numeric (float64)"
+          ],
+          "confidence": 0.85
+        }
+      },
+      {
+        "id": "data_table",
+        "type": "data_table",
+        "typeVersion": "1.0",
+        "title": "Data",
+        "dataSource": "data",
+        "binding": {
+          "kind": "data_table",
+          "columns": [],
+          "page_size": 256
+        },
+        "interactions": {
+          "filter": true,
+          "search": true,
+          "sort": true,
+          "select": true
+        },
+        "explanation": {
+          "reason": "R6_raw_table",
+          "detail": "A searchable, sortable table keeps every record reachable.",
+          "evidence": [
+            "5 fields"
+          ],
+          "confidence": 1.0
+        }
+      }
+    ]
+  }
+}

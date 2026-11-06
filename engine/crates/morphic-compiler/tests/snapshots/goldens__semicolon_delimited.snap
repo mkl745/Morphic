@@ -1,0 +1,152 @@
+---
+source: engine/crates/morphic-compiler/tests/goldens.rs
+expression: doc
+---
+{
+  "schemaVersion": "1.0",
+  "workspace": {
+    "id": "workspace_golden",
+    "title": "Golden",
+    "createdAt": "2026-11-05T00:00:00Z",
+    "modifiedAt": "2026-11-05T00:00:00Z",
+    "revision": 1,
+    "generator": {
+      "kind": "deterministic",
+      "version": "0.2.0"
+    },
+    "dataSources": [
+      {
+        "alias": "data",
+        "datasetId": "dataset_golden"
+      }
+    ],
+    "layout": {
+      "mode": "adaptive",
+      "order": [
+        "total_records",
+        "metric_revenue",
+        "breakdown_by_region",
+        "data_table"
+      ],
+      "hints": []
+    },
+    "globalFilters": [],
+    "components": [
+      {
+        "id": "total_records",
+        "type": "metric_card",
+        "typeVersion": "1.0",
+        "title": "Records",
+        "dataSource": "data",
+        "binding": {
+          "kind": "metric_card",
+          "aggregation": {
+            "op": "count",
+            "field": null,
+            "filter": null
+          }
+        },
+        "interactions": {
+          "filter": false,
+          "search": false,
+          "sort": false,
+          "select": false
+        },
+        "explanation": {
+          "reason": "R1_records",
+          "detail": "A record count is the fastest orientation signal for any dataset.",
+          "evidence": [
+            "4 rows detected"
+          ],
+          "confidence": 1.0
+        }
+      },
+      {
+        "id": "metric_revenue",
+        "type": "metric_card",
+        "typeVersion": "1.0",
+        "title": "Avg revenue",
+        "dataSource": "data",
+        "binding": {
+          "kind": "metric_card",
+          "aggregation": {
+            "op": "avg",
+            "field": "revenue",
+            "filter": null
+          }
+        },
+        "interactions": {
+          "filter": false,
+          "search": false,
+          "sort": false,
+          "select": false
+        },
+        "explanation": {
+          "reason": "R2_primary_measure",
+          "detail": "'revenue' is the strongest numeric measure, so its average is surfaced. An average is used rather than a sum because it stays meaningful for rates as well as totals.",
+          "evidence": [
+            "'revenue' is numeric (float64)"
+          ],
+          "confidence": 0.85
+        }
+      },
+      {
+        "id": "breakdown_by_region",
+        "type": "bar_chart",
+        "typeVersion": "1.0",
+        "title": "average revenue by region",
+        "dataSource": "data",
+        "binding": {
+          "kind": "bar_chart",
+          "dimension": "region",
+          "measure": {
+            "op": "avg",
+            "field": "revenue",
+            "filter": null
+          },
+          "limit": 4
+        },
+        "interactions": {
+          "filter": true,
+          "search": false,
+          "sort": false,
+          "select": true
+        },
+        "explanation": {
+          "reason": "R5_category_breakdown",
+          "detail": "'region' has 4 distinct values, few enough to compare as categories.",
+          "evidence": [
+            "'region' has 4 distinct values"
+          ],
+          "confidence": 0.8
+        }
+      },
+      {
+        "id": "data_table",
+        "type": "data_table",
+        "typeVersion": "1.0",
+        "title": "Data",
+        "dataSource": "data",
+        "binding": {
+          "kind": "data_table",
+          "columns": [],
+          "page_size": 256
+        },
+        "interactions": {
+          "filter": true,
+          "search": true,
+          "sort": true,
+          "select": true
+        },
+        "explanation": {
+          "reason": "R6_raw_table",
+          "detail": "A searchable, sortable table keeps every record reachable.",
+          "evidence": [
+            "3 fields"
+          ],
+          "confidence": 1.0
+        }
+      }
+    ]
+  }
+}

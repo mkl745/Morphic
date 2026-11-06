@@ -1,0 +1,122 @@
+---
+source: engine/crates/morphic-compiler/tests/goldens.rs
+expression: doc
+---
+{
+  "schemaVersion": "1.0",
+  "workspace": {
+    "id": "workspace_golden",
+    "title": "Golden",
+    "createdAt": "2026-11-05T00:00:00Z",
+    "modifiedAt": "2026-11-05T00:00:00Z",
+    "revision": 1,
+    "generator": {
+      "kind": "deterministic",
+      "version": "0.2.0"
+    },
+    "dataSources": [
+      {
+        "alias": "data",
+        "datasetId": "dataset_golden"
+      }
+    ],
+    "layout": {
+      "mode": "adaptive",
+      "order": [
+        "total_records",
+        "breakdown_by_note",
+        "data_table"
+      ],
+      "hints": []
+    },
+    "globalFilters": [],
+    "components": [
+      {
+        "id": "total_records",
+        "type": "metric_card",
+        "typeVersion": "1.0",
+        "title": "Records",
+        "dataSource": "data",
+        "binding": {
+          "kind": "metric_card",
+          "aggregation": {
+            "op": "count",
+            "field": null,
+            "filter": null
+          }
+        },
+        "interactions": {
+          "filter": false,
+          "search": false,
+          "sort": false,
+          "select": false
+        },
+        "explanation": {
+          "reason": "R1_records",
+          "detail": "A record count is the fastest orientation signal for any dataset.",
+          "evidence": [
+            "3 rows detected"
+          ],
+          "confidence": 1.0
+        }
+      },
+      {
+        "id": "breakdown_by_note",
+        "type": "bar_chart",
+        "typeVersion": "1.0",
+        "title": "record count by note",
+        "dataSource": "data",
+        "binding": {
+          "kind": "bar_chart",
+          "dimension": "note",
+          "measure": {
+            "op": "count",
+            "field": null,
+            "filter": null
+          },
+          "limit": 3
+        },
+        "interactions": {
+          "filter": true,
+          "search": false,
+          "sort": false,
+          "select": true
+        },
+        "explanation": {
+          "reason": "R5_category_breakdown",
+          "detail": "'note' has 3 distinct values, few enough to compare as categories.",
+          "evidence": [
+            "'note' has 3 distinct values"
+          ],
+          "confidence": 0.8
+        }
+      },
+      {
+        "id": "data_table",
+        "type": "data_table",
+        "typeVersion": "1.0",
+        "title": "Data",
+        "dataSource": "data",
+        "binding": {
+          "kind": "data_table",
+          "columns": [],
+          "page_size": 256
+        },
+        "interactions": {
+          "filter": true,
+          "search": true,
+          "sort": true,
+          "select": true
+        },
+        "explanation": {
+          "reason": "R6_raw_table",
+          "detail": "A searchable, sortable table keeps every record reachable.",
+          "evidence": [
+            "1 fields"
+          ],
+          "confidence": 1.0
+        }
+      }
+    ]
+  }
+}
