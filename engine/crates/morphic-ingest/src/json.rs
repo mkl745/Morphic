@@ -117,7 +117,8 @@ pub fn parse_json_with(
     if lead.starts_with('[') {
         let mut scan = ArrayElements::new(&text, open_at);
         let mut seen = 0usize;
-        for item in scan.by_ref() {
+        loop {
+            let Some(item) = scan.next() else { break };
             let src = item?;
             seen += 1;
             match serde_json::from_str::<Value>(src) {
@@ -612,7 +613,7 @@ mod tests {
             .unwrap_or_else(|| panic!("no column '{name}' in {:?}", t.field_names()))
     }
 
-    fn texts(t: &Table, name: &str) -> Vec<&str> {
+    fn texts<'a>(t: &'a Table, name: &str) -> Vec<&'a str> {
         match &col(t, name).values {
             ColumnValues::Utf8(v) => v.iter().map(|s| s.as_str()).collect(),
             other => panic!("'{name}' is not Utf8: {other:?}"),
@@ -749,14 +750,14 @@ mod tests {
     fn array_values_are_kept_as_json_text() {
         let (t, r) = parse(r#"[{"tags":["x","y"]},{"tags":["z"]}]"#);
         assert_eq!(col(&t, "tags").dtype, DataType::Utf8);
-        assert_eq!(texts(&t, "tags"), [r#"["x","y"]"#, r#"["z"]"#]);
+        assert_eq!(texts(&t, "tags"), vec![r#"["x","y"]"#, r#"["z"]"#]);
         assert!(warned(&r, "holds JSON arrays"));
     }
 
     #[test]
     fn an_array_of_objects_inside_a_field_is_not_silently_dropped() {
         let (t, _) = parse(r#"{"items":[{"sku":"a","qty":2}]}"#);
-        assert_eq!(texts(&t, "items"), [r#"[{"qty":2,"sku":"a"}]"#]);
+        assert_eq!(texts(&t, "items"), vec![r#"[{"qty":2,"sku":"a"}]"#]);
     }
 
     #[test]
@@ -796,7 +797,7 @@ mod tests {
         assert_eq!(col(&t, "b").nulls, vec![true, false, false]);
         assert_eq!(col(&t, "b").dtype, DataType::Int64);
         match &col(&t, "a").values {
-            ColumnValues::Int64(v) => assert_eq!(v, vec![1, 0, 3]),
+            ColumnValues::Int64(v) => assert_eq!(*v, [1, 0, 3]),
             other => panic!("{other:?}"),
         }
     }
@@ -903,21 +904,21 @@ mod tests {
     fn delimiters_inside_strings_are_not_structure() {
         let (t, _) = parse(r#"[{"a":"x,y[z]{q}"},{"a":"plain"}]"#);
         assert_eq!(t.row_count, 2);
-        assert_eq!(texts(&t, "a"), ["x,y[z]{q}", "plain"]);
+        assert_eq!(texts(&t, "a"), vec!["x,y[z]{q}", "plain"]);
     }
 
     #[test]
     fn escaped_quotes_and_backslashes_survive_the_scan() {
         let (t, _) = parse(r#"[{"a":"he said \"hi, there\" [ok]"},{"a":"trail\\"}]"#);
         assert_eq!(t.row_count, 2);
-        assert_eq!(texts(&t, "a"), ["he said \"hi, there\" [ok]", "trail\\"]);
+        assert_eq!(texts(&t, "a"), vec!["he said \"hi, there\" [ok]", "trail\\"]);
     }
 
     #[test]
     fn nested_arrays_inside_objects_do_not_split_elements() {
         let (t, _) = parse(r#"[{"m":[[1,2],[3,4]],"n":{"deep":[5,6]}},{"m":[[7]]}]"#);
         assert_eq!(t.row_count, 2);
-        assert_eq!(texts(&t, "m"), ["[[1,2],[3,4]]", "[[7]]"]);
+        assert_eq!(texts(&t, "m"), vec!["[[1,2],[3,4]]", "[[7]]"]);
     }
 
     #[test]
@@ -1199,7 +1200,7 @@ mod tests {
         assert_eq!(r.rows_quarantined, 1);
         assert_eq!(col(&t, "id").dtype, DataType::Int64);
         match &col(&t, "id").values {
-            ColumnValues::Int64(v) => assert_eq!(v, vec![1, 3]),
+            ColumnValues::Int64(v) => assert_eq!(*v, [1, 3]),
             other => panic!("{other:?}"),
         }
     }
