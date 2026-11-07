@@ -14,8 +14,8 @@ them; `docs/roadmap/m1.3-status.md` records the decisions and the measured evide
 
 | Question | Answer |
 |---|---|
-| Tasks finished | **15 of 41** (37%) |
-| Tasks not finished | **26** — 24 core + 2 stretch (◇) |
+| Tasks finished | **16 of 41** (39%) |
+| Tasks not finished | **25** — 23 core + 2 stretch (◇) |
 | Milestones code-complete | **2 of 7** (M1.1, M1.2) |
 | Milestones not started | **4** (M1.4 → M1.7); M1.3 in progress |
 | Milestone exits formally met | **0 of 7** |
@@ -23,11 +23,12 @@ them; `docs/roadmap/m1.3-status.md` records the decisions and the measured evide
 | Acceptance tests partially evidenced | **9** |
 | Acceptance tests not yet started | **6** |
 | Evidence gaps no task row covers | **6** (see §6) |
-| Remaining core effort, by the plan's own S/M/L legend | **33–57 focused days** |
+| Remaining core effort, by the plan's own S/M/L legend | **32–55 focused days** |
 
 **The most important finding is the last row.** The plan estimates *all of Phase 1* at 30–40
-focused days. The 24 unfinished **core** tasks alone sum to 33–57 days using the plan's own
-legend (S ≈ ½ day, M ≈ 1–2, L ≈ 3–5), less 3–5 days for 1.3.1, 1–2 for 1.3.2 and 3–5 for 1.3.3.
+focused days. The 23 unfinished **core** tasks alone sum to 32–55 days using the plan's own
+legend (S ≈ ½ day, M ≈ 1–2, L ≈ 3–5), less 3–5 days for 1.3.1, 1–2 each for 1.3.2 and 1.3.4, and
+3–5 for 1.3.3.
 It was optimistic before any work started; it is now provably short. §7 proposes a re-baseline.
 
 ---
@@ -38,7 +39,7 @@ It was optimistic before any work started; it is now provably short. §7 propose
 |---|---|---|---|---|
 | M1.1 Vertical slice | 7 | 7 | **complete** | **unmet** — needs a mid-class device; AT-02 unscored; 10 MB ≤ 3 s unmeasured |
 | M1.2 Format breadth | 5 | 5 | **complete** | **unmet** — AT-04's timeline clause depends on M1.4; device evidence pending (fuzz smoke now clean) |
-| M1.3 Interactivity | 5 | 3 | in progress — engine, commands, table UI done | **unmet** — AT-06 needs the global bar (1.3.4) and consistency (1.3.5); device latency unmeasured |
+| M1.3 Interactivity | 5 | 4 | in progress — only cross-component consistency left | **unmet** — AT-06 needs 1.3.5's one-revision proof; device latency unmeasured |
 | M1.4 Visualization + planner | 7 | 0 | not started | — |
 | M1.5 Lifecycle & layout | 6 | 0 | not started | — |
 | M1.6 Experience pass | 6 | 0 | not started | — |
@@ -90,11 +91,12 @@ templates, and sharing into Morphic.
 | Parser fuzz smoke | `b9269be` | 42273176017 | 6/6 ✅ |
 | 1.3.1 Full plan execution | `976578a` | 42335467607 | 6/6 ✅ |
 | 1.3.2 Interaction commands | `57581a0` | 42369916529 | 6/6 ✅ |
-| **1.3.3 Table interactions** | **`97d20cb`** | **42380094459** | **6/6 ✅** |
+| 1.3.3 Table interactions | `97d20cb` | 42380094459 | 6/6 ✅ |
+| **1.3.4 Global filters + tap-to-filter** | **`44221b1`** | **42388218245** | **6/6 ✅** |
 
-Current totals: **583 Rust tests** across 8 engine crates + the bridge, **267 Dart tests**.
-M1.3 added 67 Rust tests: `morphic-query` 21 → 56, `morphic-core` 35 → 52, `morphic-schema`
-24 → 33, bridge 32 → 43; and 79 Dart tests, the first substantial UI test suite.
+Current totals: **586 Rust tests** across 8 engine crates + the bridge, **301 Dart tests**.
+M1.3 added 70 Rust tests: `morphic-query` 21 → 56, `morphic-core` 35 → 52, `morphic-schema`
+24 → 33, bridge 32 → 46; and 113 Dart tests, the first substantial UI test suite.
 Gates on the latest run: `PERMISSIONS_OK`, `ENGINE_FFI_OK`, `POC_OK`,
 `RUNTIME_OK: range 1-256 of 600`, `PAGING_OK`.
 
@@ -112,7 +114,7 @@ three ABIs.
 | AT-03 | JSON breadth | **green** | the 256 MiB refusal is proven with a lowered ceiling, not a real 256 MB file |
 | AT-04 | Logs & TXT | partial | extraction ✓; the **timeline** it requires is task 1.4.4 |
 | AT-05 | Malformed safety | **green** | 3,000-case mutation smoke clean; coverage-guided fuzzing still deferred to M1.7 |
-| AT-06 | Filtering | partial | engine semantics ✓, composition ✓, atomic batches ✓, type-aware per-column menu and removable chips ✓; the **global** bar and tap-to-filter are 1.3.4, one-revision consistency 1.3.5 |
+| AT-06 | Filtering | partial | semantics ✓, composition ✓, atomic batches ✓, per-column menu ✓, global bar and chips ✓, tap-to-filter ✓, exact restoration on clear ✓; only the whole-layout one-revision proof (1.3.5) is left |
 | AT-07 | Sorting | partial | correct, stable, nulls-last ✓; tap-to-cycle indicator read from persisted state ✓; scroll reset ✓; 36–70 ms on CI x86 for 100k×10, **not** the ≤150 ms mid-ARM figure |
 | AT-08 | Search | partial | semantics proven by a commutation property ✓; debounced as-you-type field shipping as a per-component command ✓; device verification outstanding |
 | AT-09 | Save & reopen | partial | restore ✓; filters/sort/search now persist and survive reopen (tested); ≤ 500 ms unmeasured; field overrides are M1.5 |
@@ -156,10 +158,10 @@ These will not be closed by working through the task list, because no task owns 
 
 ## 7. Recommended next moves
 
-**Next in dependency order is 1.3.4** — the global filter bar (chips across the workspace) and
-metric-card tap-to-filter. A user can now sort, filter and search a table, but only that table:
-there is no workspace-wide filter yet, and a card is still a display, not a control. 1.3.5 then
-has to prove the whole layout moves on one revision without a torn intermediate frame.
+**Next in dependency order is 1.3.5** — the last task in M1.3, and the smallest (S). A user can
+now filter the whole workspace, and one command already moves the table and the cards together.
+What remains is proving the *negative*: that no frame is ever painted where one component shows
+the new selection and another the old one. That is an integration test, not a feature.
 
 "No Dart-side data logic" is now enforced by tests rather than by absence: the table sends
 commands and renders pages, and the interaction suite asserts that no query plan was ever
@@ -177,8 +179,8 @@ expensive later:
    found no panic, no invariant violation and a 16 ms worst case. Running the *nightly* is still
    blocked, but on the merge to `main`, not on missing work.
 
-**Re-baseline the estimate.** State plainly that the remaining 24 core tasks are 33–57 focused
-days — more than the 30–40 the plan allowed for *all* of Phase 1, with 15 tasks already spent.
+**Re-baseline the estimate.** State plainly that the remaining 23 core tasks are 32–55 focused
+days — more than the 30–40 the plan allowed for *all* of Phase 1, with 16 tasks already spent.
 If the calendar cannot absorb that, the honest lever is scope: the two remaining ◇ stretch items (`.morphic` bundles, templates)
 are already optional, and M1.6's design sweep can be narrowed without touching correctness.
 
