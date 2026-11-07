@@ -1943,7 +1943,10 @@ mod tests {
             .iter()
             .map(|id| engine.metric_data("w1", id).unwrap().value)
             .collect();
-        assert_ne!(values[0], values[1], "a count and an average are not the same number");
+        assert_ne!(
+            values[0], values[1],
+            "a count and an average are not the same number"
+        );
         // And asking again is still a cache hit for each, not a recompute.
         for id in &cards {
             engine.metric_data("w1", id).unwrap();
