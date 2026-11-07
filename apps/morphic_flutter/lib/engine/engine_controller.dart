@@ -156,6 +156,15 @@ class EngineController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Yield once so a failure cannot notify listeners during the build phase.
+  ///
+  /// A renderer calls these read paths from `initState`, and the bridge call is synchronous:
+  /// an `async` function runs straight through to its first `await`. Without this yield a
+  /// failing read would call `notifyListeners()` inside the widget's `initState`, marking an
+  /// ancestor `AnimatedBuilder` dirty while the framework is still building, which throws
+  /// "setState() or markNeedsBuild() called during build". Degraded mode hit exactly that.
+  Future<void> _afterBuildPhase() => Future<void>.value();
+
   /// Open (or reopen) a workspace. Rust rehydrates the session from persisted source.
   Future<bool> open(String workspaceId) async {
     _busy = true;
@@ -180,6 +189,7 @@ class EngineController extends ChangeNotifier {
 
   /// Fetch one page. Returns null (and sets [error]) rather than throwing into the UI.
   Future<PageResult?> page({int offset = 0, int limit = 256, String? search}) async {
+    await _afterBuildPhase();
     final id = _workspaceId;
     if (id == null) {
       _error = 'no workspace open';
@@ -213,6 +223,7 @@ class EngineController extends ChangeNotifier {
     int offset = 0,
     int limit = 0,
   }) async {
+    await _afterBuildPhase();
     final id = _workspaceId;
     if (id == null) {
       _error = 'no workspace open';
@@ -276,6 +287,7 @@ class EngineController extends ChangeNotifier {
   /// caller must be able to tell "the engine could not compute this" from "there is nothing
   /// to compute". Compare [page], where an empty page is a value and null means failure.
   Future<Object?> metric(String componentId) async {
+    await _afterBuildPhase();
     final id = _workspaceId;
     if (id == null) {
       throw StateError('no workspace open');

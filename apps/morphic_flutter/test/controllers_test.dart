@@ -66,6 +66,7 @@ class RecordingBridge implements MorphicBridge {
   final List<List<Map<String, dynamic>>> commandBatches = [];
   final List<Map<String, dynamic>> componentPageCalls = [];
   bool failCommands = false;
+  bool failMetric = false;
   Map<String, dynamic>? commandOutcome;
   String? lastNowIso;
   bool failImport = false;
@@ -191,6 +192,9 @@ class RecordingBridge implements MorphicBridge {
     required String componentId,
   }) {
     calls.add('metric:$componentId');
+    if (failMetric) {
+      throw const MorphicBridgeException("core: source data for workspace 'w1' is unavailable");
+    }
     return {'componentId': componentId, 'value': metricValue, 'revision': 7};
   }
 
@@ -447,6 +451,35 @@ void main() {
       expect(await c.componentPage('data_table'), isNull);
       expect(c.error, isNotNull);
       expect(bridge.componentPageCalls, isEmpty);
+    });
+
+    test('a failing read notifies after the caller\'s synchronous frame', () async {
+      final bridge = RecordingBridge();
+      final c = EngineController(bridge: bridge, storageRoot: '/tmp/m');
+      await c.open('w1');
+      bridge.failMetric = true;
+      var notified = false;
+      c.addListener(() => notified = true);
+
+      // A renderer calls this from initState. The bridge is synchronous, so notifying here
+      // would mark an ancestor AnimatedBuilder dirty mid-build and throw.
+      final pending = c.metric('total_records');
+      expect(notified, isFalse, reason: 'notification must not land during the build phase');
+      await expectLater(pending, throwsA(isA<MorphicBridgeException>()));
+      expect(notified, isTrue, reason: 'the failure is still reported, just after the frame');
+    });
+
+    test('a failing component page also defers its notification', () async {
+      final bridge = RecordingBridge();
+      final c = EngineController(bridge: bridge, storageRoot: '/tmp/m');
+      await c.open('w1');
+      bridge.failQuery = true;
+      var notified = false;
+      c.addListener(() => notified = true);
+      final pending = c.componentPage('data_table');
+      expect(notified, isFalse);
+      expect(await pending, isNull);
+      expect(notified, isTrue);
     });
 
     test('page before open is a guarded error, not a crash', () async {
