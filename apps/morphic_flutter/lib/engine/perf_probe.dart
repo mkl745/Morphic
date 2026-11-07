@@ -204,10 +204,12 @@ class PerfProbe {
 
     // Two keys where the data allows it, matching the CI workload. Nulls last, one key
     // descending, so the comparator exercises both directions and the null policy.
-    final sortFields = <String>[
+    // A set literal de-duplicates when the table has one field; Dart's default set preserves
+    // insertion order, so the filter field stays the primary key.
+    final sortFields = <String>{
       filterField,
       fields.firstWhere((f) => f != filterField, orElse: () => filterField),
-    ].toSet().toList();
+    }.toList();
     final sort = [
       SortRule(field: sortFields.first, dir: SortDir.asc),
       if (sortFields.length > 1)

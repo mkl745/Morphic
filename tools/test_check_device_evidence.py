@@ -102,6 +102,24 @@ class At07Gate(unittest.TestCase):
         reasons = self.reasons(probe={"worstMs": None})
         self.assertTrue(any("timings missing" in r for r in reasons), reasons)
 
+    def test_low_class_pass_is_accepted_as_a_stronger_result(self):
+        # Both handsets actually available are low class (realme C51, Galaxy A15). Passing on
+        # one of those is harder than passing on a Pixel 6a, so it must not be discarded.
+        doc = honest()
+        doc["device"]["class"] = "low"
+        self.assertEqual(gate.qualifies_at07(doc, VERSION), [])
+
+    def test_flagship_pass_does_not_answer_the_mid_class_question(self):
+        doc = honest()
+        doc["device"]["class"] = "flagship"
+        reasons = gate.qualifies_at07(doc, VERSION)
+        self.assertTrue(any("mid-class" in r for r in reasons), reasons)
+
+    def test_unrecorded_class_is_rejected(self):
+        doc = honest()
+        doc["device"]["class"] = None
+        self.assertTrue(gate.qualifies_at07(doc, VERSION))
+
     def test_missing_sha_is_rejected(self):
         self.assertIn("git sha not recorded", self.reasons(gitSha=""))
 

@@ -154,12 +154,18 @@ These will not be closed by working through the task list, because no task owns 
 
 1. **Mid-class device evidence.** The matrix requires a Pixel 6a/7a-class phone for *every*
    milestone exit. Both available devices (C51, A15) are low class. Nothing downstream can be
-   signed off until this is solved.
+   signed off until this is solved. **Partly addressed:** AT-07's latency now has an instrument
+   (`tools/device_perf.sh`) and a machine-checkable gate (`--require-at07`), and the gate accepts
+   a low-class pass as the stronger result it is. The functional matrix still wants a mid-class
+   handset, and the measurement still has to be *run* — see
+   [at07-latency-measurement.md](../engineering/at07-latency-measurement.md).
 2. **The nightly workflow has never executed.** GitHub only registers workflow files from the
    default branch, so the cron has never fired and `cargo-deny` / `cargo-audit` have never run.
    The fuzz smoke was moved into CI so it actually executes; the supply-chain audit cannot be,
    and waits for the merge to `main`.
-3. **The 10 MB → ≤ 3 s hypothesis is unmeasured.** It is the product's central claim.
+3. **The 10 MB → ≤ 3 s hypothesis is unmeasured.** It is the product's central claim. The
+   dataset generator and the phone harness now exist, so this is one import away rather than
+   needing new tooling.
 4. **Zero golden images.** Task 1.1.5 promised them; M1.4 and M1.6 both assume they exist.
 5. **The report sheet shows caveat counts, not the quarantined rows themselves.** Users can
    see *that* 12 rows were set aside but not *which* — the honest-reporting promise is half kept.

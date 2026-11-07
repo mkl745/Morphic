@@ -47,6 +47,14 @@ Leave the workspace open.
 This step is manual on purpose: driving Android's system file picker from adb is brittle, and
 a flaky import would produce a *missing* measurement, which is worse than a slow one.
 
+**On the handsets actually available.** Both are **low** class (realme C51, Galaxy A15), not the
+Pixel 6a-class phone the matrix names. That is not a reason to skip the measurement — it is a
+*harder* target. A pass on a C51 is a stronger result than a pass on a Pixel 6a, so the gate
+accepts `--class low` and says so. A flagship pass is **not** accepted: it answers a different
+question, and substituting it is exactly what this gate exists to prevent.
+
+Record the class honestly. `--class low` on a C51 is worth more than `--class mid` on one.
+
 ### 3. Run the measurement
 
 ```bash

@@ -117,6 +117,13 @@ def qualifies_at07(doc: dict, version: str) -> list[str]:
         reasons.append("a sample exceeds 150 ms even though the verdict claims a pass")
     if not doc.get("gitSha"):
         reasons.append("git sha not recorded")
+    # AT-07 asks about a *mid-class* phone. A low-class pass is a strictly stronger result on
+    # the same architecture, so it is accepted and reported as such. A flagship pass answers a
+    # different question and is not a substitute — that is the substitution this gate exists
+    # to prevent.
+    cls = (doc.get("device") or {}).get("class")
+    if cls not in ("low", "mid"):
+        reasons.append(f"device class {cls!r} does not answer AT-07's mid-class question")
     return reasons
 
 
