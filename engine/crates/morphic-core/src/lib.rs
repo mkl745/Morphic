@@ -405,7 +405,7 @@ impl Engine {
             .table
             .as_ref()
             .ok_or_else(|| CoreError::SourceUnavailable(workspace_id.into()))?;
-        Ok(morphic_query::query_page(table, plan))
+        Ok(morphic_query::query_page(table, plan)?)
     }
 
     /// Compute the value behind a `metric_card`. Rust resolves the binding from the

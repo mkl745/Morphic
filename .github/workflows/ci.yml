@@ -98,6 +98,10 @@ jobs:
             echo '```'
             cat target/fuzz-smoke.md 2>/dev/null || echo "fuzz report not produced"
             echo '```'
+            echo "### M1.3 query perf (CI runner, not a phone)"
+            echo '```'
+            cat target/query-perf.md 2>/dev/null || echo "query perf report not produced"
+            echo '```'
             echo "### AT-02 schema accuracy"
             echo '```'
             cat target/schema-accuracy.md 2>/dev/null || echo "scorecard not produced"
