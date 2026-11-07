@@ -140,6 +140,9 @@ class _DataTableViewState extends State<DataTableView> {
 
   Future<void> _fetch() async {
     final attempt = ++_attempt;
+    // The revision this read is *for*. Captured before the await so a response can be
+    // checked against the document it was meant to describe (task 1.3.5).
+    final revision = widget.ctx.engine.revision;
     setState(() {
       _state = _Load.pending;
       _error = null;
@@ -150,6 +153,14 @@ class _DataTableViewState extends State<DataTableView> {
       limit: _pageSize,
     );
     if (!mounted || attempt != _attempt) return;
+    if (revision != widget.ctx.engine.revision) {
+      // The document moved while this read was in flight, so these rows belong to a
+      // selection the workspace is no longer on. Adopting them would paint this component
+      // on the old selection while another is already on the new one — the torn frame
+      // task 1.3.5 exists to rule out. Read again instead.
+      _fetch();
+      return;
+    }
     setState(() {
       if (res == null) {
         _error = widget.ctx.engine.error ?? 'The engine did not return a page.';
@@ -513,7 +524,11 @@ class _DataTableViewState extends State<DataTableView> {
   }
 
   Widget _footer(ThemeData theme) {
-    final p = _page;
+    // Only a *settled* page may state a range. While the next selection is loading, the old
+    // page's total is a claim about a selection the workspace has already left, and printing
+    // it beside a metric card that has already updated is precisely the torn frame task 1.3.5
+    // rules out. An empty label is honest; the header spinner says why.
+    final p = _state == _Load.ready ? _page : null;
     final label = p == null
         ? ''
         : rowRangeLabel(

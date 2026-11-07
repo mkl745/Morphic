@@ -1390,4 +1390,79 @@ mod tests {
         assert_eq!(again["revision"], first["revision"]);
         std::fs::remove_dir_all(&p).ok();
     }
+
+    // --- M1.3 task 1.3.5: one revision, every component ------------------------------------
+
+    #[test]
+    fn a_batch_spanning_two_components_is_observed_whole() {
+        let (p, rp) = root("batchwhole");
+        let id = c("w1");
+        unsafe { import(&rp, &id, None) };
+        // One batch, two scopes: a global filter and a component filter on the table.
+        let outcome = unsafe {
+            apply(
+                &rp,
+                &id,
+                r#"[{"kind":"setGlobalFilter","filters":[
+                        {"op":"eq","field":"region","value":"eu"}]},
+                    {"kind":"setComponentFilter","componentId":"data_table",
+                        "filter":{"op":"gt","field":"amount","value":10}}]"#,
+            )
+        };
+        assert_eq!(outcome["changed"], true);
+        let revision = outcome["revision"].as_u64().unwrap();
+
+        // The table sees both commands; the card sees the global one. Neither sees half.
+        let table = unsafe { page(&rp, &id, "data_table", 0, 0) };
+        assert_eq!(table["totalRows"], 1);
+        assert_eq!(table["rows"][0][1], 30);
+        let card = json(unsafe {
+            morphic_metric_data(rp.as_ptr(), id.as_ptr(), c("total_records").as_ptr())
+        });
+        assert_eq!(card["value"], 2);
+        assert_eq!(card["revision"], revision, "the read reports the batch's revision");
+
+        let snap = json(unsafe { morphic_snapshot(rp.as_ptr(), id.as_ptr()) });
+        assert_eq!(snap["doc"]["workspace"]["revision"], revision);
+        std::fs::remove_dir_all(&p).ok();
+    }
+
+    #[test]
+    fn a_rejected_batch_leaves_every_component_on_the_previous_revision() {
+        let (p, rp) = root("batchreject");
+        let id = c("w1");
+        unsafe { import(&rp, &id, None) };
+        let before = unsafe { metric(&rp, &id, "total_records") };
+        let rows_before = unsafe { page(&rp, &id, "data_table", 0, 0) }["totalRows"].clone();
+        let snap_before = json(unsafe { morphic_snapshot(rp.as_ptr(), id.as_ptr()) });
+        let rev_before = snap_before["doc"]["workspace"]["revision"].as_u64().unwrap();
+
+        // The first command is valid and global; the second names a field that does not exist.
+        // Neither may survive: a workspace where the cards moved and the table did not is the
+        // torn state this task rules out, expressed at the engine boundary.
+        let bad = unsafe {
+            apply(
+                &rp,
+                &id,
+                r#"[{"kind":"setGlobalFilter","filters":[
+                        {"op":"eq","field":"region","value":"eu"}]},
+                    {"kind":"setComponentFilter","componentId":"data_table",
+                        "filter":{"op":"eq","field":"nope","value":1}}]"#,
+            )
+        };
+        assert!(bad["error"].is_string(), "expected a typed error, got {bad}");
+        assert_eq!(unsafe { metric(&rp, &id, "total_records") }, before);
+        assert_eq!(
+            unsafe { page(&rp, &id, "data_table", 0, 0) }["totalRows"],
+            rows_before
+        );
+        let snap = json(unsafe { morphic_snapshot(rp.as_ptr(), id.as_ptr()) });
+        assert_eq!(snap["doc"]["workspace"]["revision"], rev_before);
+        assert!(snap["doc"]["workspace"]["globalFilters"]
+            .as_array()
+            .unwrap()
+            .is_empty());
+        std::fs::remove_dir_all(&p).ok();
+    }
+
 }

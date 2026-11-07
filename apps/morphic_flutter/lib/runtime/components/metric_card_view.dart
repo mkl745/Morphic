@@ -103,6 +103,9 @@ class _MetricCardViewState extends State<MetricCardView> {
 
   Future<void> _fetch() async {
     final attempt = ++_attempt;
+    // See DataTableView: a value computed for an old selection must not be painted next to
+    // a component already showing the new one (task 1.3.5).
+    final revision = widget.ctx.engine.revision;
     setState(() {
       _state = _Load.pending;
       _error = null;
@@ -110,12 +113,21 @@ class _MetricCardViewState extends State<MetricCardView> {
     try {
       final v = await widget.ctx.engine.metric(widget.ctx.id);
       if (!mounted || attempt != _attempt) return;
+      if (revision != widget.ctx.engine.revision) {
+        _fetch();
+        return;
+      }
       setState(() {
         _value = v;
         _state = _Load.ready;
       });
     } catch (e) {
       if (!mounted || attempt != _attempt) return;
+      // A failure for a superseded selection is not this workspace's answer either.
+      if (revision != widget.ctx.engine.revision) {
+        _fetch();
+        return;
+      }
       setState(() {
         _error = e.toString();
         _state = _Load.failed;
