@@ -70,6 +70,56 @@ def qualifying(doc: dict, version: str) -> list[str]:
     return reasons
 
 
+def qualifies_at07(doc: dict, version: str) -> list[str]:
+    """Reasons this perf evidence does NOT satisfy AT-07 (empty list = it does).
+
+    Deliberately stricter than the functional gate. A latency claim is easy to fake by
+    accident: an emulator, a 600-row table, or a median that hides one slow frame would each
+    produce a green-looking file. Every one of those is checked here, independently of whatever
+    the recording script asserted.
+    """
+    reasons = []
+    if doc.get("schema") != "morphic/perf-evidence/1":
+        reasons.append("not perf evidence")
+        return reasons
+    if doc.get("appVersion") != version:
+        reasons.append(f"version {doc.get('appVersion')!r} != {version!r}")
+    if doc.get("physicalDevice") is not True:
+        reasons.append("not a physical device")
+    if doc.get("rehearsal") is True:
+        reasons.append("marked as a rehearsal")
+    if doc.get("at07Evidence") is not True:
+        reasons.append("not marked as AT-07 evidence")
+    probe = doc.get("probe") or {}
+    if probe.get("schema") != "morphic/perf-probe/1":
+        reasons.append("unknown probe schema")
+    rows = probe.get("rowCount")
+    # Check the count, not just the flag derived from it: a hand-edited or buggy recorder
+    # could set representative=true on a 600-row run, and the gate is the last line of defence.
+    if not isinstance(rows, int) or rows < 100000:
+        reasons.append(f"dataset of {rows} rows is below AT-01's 100000")
+    elif probe.get("representative") is not True:
+        reasons.append("probe did not mark the dataset representative")
+    if probe.get("passes") is not True:
+        reasons.append(f"probe did not pass (worst {probe.get('worstMs')} ms)")
+    budget = probe.get("budgetMs")
+    worst = probe.get("worstMs")
+    if not isinstance(budget, (int, float)) or not isinstance(worst, (int, float)):
+        reasons.append("timings missing")
+    elif budget > 150:
+        reasons.append(f"budget {budget} ms is looser than AT-07's 150 ms")
+    elif worst > budget:
+        reasons.append(f"worst {worst} ms exceeds the stated budget {budget} ms")
+    samples = probe.get("samples") or []
+    if len(samples) < 5:
+        reasons.append(f"only {len(samples)} samples; at least 5 are required")
+    elif any((s.get("ms") or 0) > 150 for s in samples):
+        reasons.append("a sample exceeds 150 ms even though the verdict claims a pass")
+    if not doc.get("gitSha"):
+        reasons.append("git sha not recorded")
+    return reasons
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--version", required=True, help="version being released, e.g. 0.1.0")
@@ -79,6 +129,12 @@ def main() -> int:
         help="comma-separated device classes required (default: mid)",
     )
     ap.add_argument("--dir", default=str(EVIDENCE_DIR), help="evidence directory")
+    ap.add_argument(
+        "--require-at07",
+        action="store_true",
+        help="also require passing AT-07 latency evidence from a physical device "
+             "(the M1.3 exit clause); see tools/device_perf.sh",
+    )
     args = ap.parse_args()
 
     required = [c.strip() for c in args.require_classes.split(",") if c.strip()]
@@ -89,7 +145,9 @@ def main() -> int:
     print(f"  required classes: {', '.join(required)}")
     if not docs:
         print("  no evidence files found.")
-    for doc in docs:
+    functional = [d for d in docs if d.get("schema") == "morphic/device-evidence/1"]
+    perf = [d for d in docs if d.get("schema") == "morphic/perf-evidence/1"]
+    for doc in functional:
         reasons = qualifying(doc, args.version)
         label = doc.get("_file", "?")
         if reasons:
@@ -112,6 +170,28 @@ def main() -> int:
         print("then commit the generated JSON under docs/engineering/device-evidence/.")
         print("See docs/engineering/real-device-testing.md. Emulator runs do not count.")
         return 1
+
+    if args.require_at07:
+        print()
+        print("AT-07 latency gate (filter + sort, 100k x 10, <= 150 ms, physical device)")
+        at07_ok = None
+        for doc in perf:
+            reasons = qualifies_at07(doc, args.version)
+            label = doc.get("_file", "?")
+            if reasons:
+                print(f"  SKIP {label}: {'; '.join(reasons)}")
+                continue
+            at07_ok = doc
+            print(f"  OK   {label}: {doc['device'].get('model')} "
+                  f"worst {doc['probe']['worstMs']} ms")
+            break
+        if at07_ok is None:
+            print()
+            print("AT-07 BLOCKED — no passing physical-device latency evidence.")
+            print("On the phone, with a 100k x 10 workspace open:")
+            print('  tools/device_perf.sh --tester "Your Name" --class mid')
+            print("An emulator rehearsal does not count, and neither does a smaller table.")
+            return 1
 
     print()
     print("Device-evidence gate PASSED for classes: " + ", ".join(sorted(covered)))

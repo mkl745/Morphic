@@ -178,6 +178,8 @@ jobs:
           cache: true
       - name: Pub get
         run: flutter pub get
+      - name: Device-evidence gate tests
+        run: python3 tools/test_check_device_evidence.py
       - name: Analyze
         id: analyze
         continue-on-error: true
@@ -453,6 +455,46 @@ jobs:
             else
               echo "PAGING_MISSING"; echo "--- visible nodes ---"
               python3 tools/ui_texts.py /tmp/ui.xml || head -c 2000 /tmp/ui.xml
+              exit 1
+            fi
+            # Prove the AT-07 probe plumbing works end to end: navigate to it, run it, and
+            # confirm the engine's timings reach logcat in the shape device_perf.sh parses.
+            # The dataset here is 600 rows, so the probe MUST report "not AT-07 evidence" —
+            # that refusal is the thing being tested. A pass on this sample would be a bug.
+            adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1
+            adb pull /sdcard/ui.xml /tmp/ui.xml >/dev/null 2>&1
+            if python3 tools/tap_poc.py "Performance probe"; then
+              adb logcat -c >/dev/null 2>&1 || true
+              sleep 2
+              adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1
+              adb pull /sdcard/ui.xml /tmp/ui.xml >/dev/null 2>&1
+              python3 tools/tap_poc.py "Run probe"
+              PROBE=0
+              for i in $(seq 1 30); do
+                sleep 2
+                if adb logcat -d 2>/dev/null | grep -q "MORPHIC_PERF_JSON"; then PROBE=1; break; fi
+              done
+              if [ "$PROBE" = "1" ]; then
+                LINE="$(adb logcat -d 2>/dev/null | grep -o 'MORPHIC_PERF [A-Z].*' | tail -1)"
+                echo "PROBE_OK: $LINE"
+                # Either honest refusal is fine (too small, or it could not build distinct
+                # selections). Claiming a verdict on 600 rows is the bug this guards against.
+                case "$LINE" in
+                  *"AT-07 PASS"*|*"AT-07 FAIL"*)
+                    echo "PROBE_DISHONEST: a 600-row run must not claim an AT-07 verdict"; exit 1 ;;
+                  *"NOT AT-07 EVIDENCE"*)
+                    echo "PROBE_HONEST: the 600-row sample was correctly refused as AT-07 evidence" ;;
+                  *"DID NOT RUN"*)
+                    echo "PROBE_HONEST: declined rather than reporting a number it could not trust" ;;
+                  *)
+                    echo "PROBE_UNPARSEABLE: $LINE"; exit 1 ;;
+                esac
+              else
+                echo "PROBE_MISSING: no MORPHIC_PERF_JSON in logcat"; exit 1
+              fi
+            else
+              echo "PROBE_UNREACHABLE: no 'Performance probe' action in the workspace app bar"
+              python3 tools/ui_texts.py /tmp/ui.xml || true
               exit 1
             fi
             echo "NOTE: emulator evidence only — does not satisfy the physical-device rule."

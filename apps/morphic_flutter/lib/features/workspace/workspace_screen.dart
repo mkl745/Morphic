@@ -4,6 +4,7 @@ import '../../design_system/tokens.dart';
 import '../../engine/engine_controller.dart';
 import '../../runtime/component_registry.dart';
 import '../../runtime/workspace_view.dart';
+import 'perf_probe_screen.dart';
 import 'workspace_args.dart';
 
 /// Workspace host.
@@ -41,7 +42,23 @@ class WorkspaceScreen extends StatelessWidget {
     if (ctl != null) {
       final ws = ctl.doc?['workspace'] as Map<String, dynamic>?;
       return Scaffold(
-        appBar: AppBar(title: Text(ws?['title'] as String? ?? 'Workspace')),
+        appBar: AppBar(
+          title: Text(ws?['title'] as String? ?? 'Workspace'),
+          actions: [
+            // AT-07's measurement has to be runnable on the phone that is being judged, in
+            // the build the harness installs. Tucking it here keeps it one tap from the data
+            // it measures without putting a benchmark in the user's face.
+            IconButton(
+              tooltip: 'Performance probe',
+              icon: const Icon(Icons.speed),
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => PerfProbeScreen(controller: ctl),
+                ),
+              ),
+            ),
+          ],
+        ),
         body: Column(
           children: [
             if (notices.isNotEmpty) _WarningBanner(warnings: notices),
