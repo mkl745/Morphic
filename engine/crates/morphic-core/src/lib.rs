@@ -1490,7 +1490,7 @@ mod tests {
             component_id: table.clone(),
             sort: vec![sort_desc("amount")],
         };
-        let first = engine.apply("w1", &[cmd.clone()], NOW).unwrap();
+        let first = engine.apply("w1", std::slice::from_ref(&cmd), NOW).unwrap();
         assert!(first.changed);
         let second = engine.apply("w1", &[cmd], "2026-11-07T10:00:00Z").unwrap();
         assert!(!second.changed);

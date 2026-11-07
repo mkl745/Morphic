@@ -124,7 +124,7 @@ pub(crate) fn apply(
                 }
                 if let Some(names) = fields {
                     for rule in sort {
-                        if !names.iter().any(|n| *n == rule.field) {
+                        if !names.contains(&rule.field) {
                             return Err(at(i, format!("unknown sort field '{}'", rule.field)));
                         }
                     }

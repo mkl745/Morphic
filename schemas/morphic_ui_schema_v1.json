@@ -211,6 +211,14 @@
             "sort": false
           }
         },
+        "state": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/ComponentState"
+            }
+          ],
+          "description": "Persisted interaction state (docs/architecture/03 §2.1). Omitted from JSON when empty so a generated document is byte-identical to one written before M1.3."
+        },
         "title": {
           "default": null,
           "type": [
@@ -233,6 +241,35 @@
         "type",
         "typeVersion"
       ],
+      "type": "object"
+    },
+    "ComponentState": {
+      "additionalProperties": false,
+      "description": "What the user has done to one component: the filter they applied, the sort they chose, the search they typed. `interactions` says what a component *allows*; this says what is *currently set*. Persisted so a sort indicator survives save and reopen (AT-07, AT-09).\n\nA flat struct rather than a per-type enum, with pass 5 checking the keys against the component's capabilities — the contract's \"state keys valid for type\" rule.",
+      "properties": {
+        "filter": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/FilterExpr"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "search": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sort": {
+          "items": {
+            "$ref": "#/definitions/SortRule"
+          },
+          "type": "array"
+        }
+      },
       "type": "object"
     },
     "DataSourceRef": {
@@ -394,6 +431,50 @@
       },
       "required": [
         "componentId"
+      ],
+      "type": "object"
+    },
+    "NullsOrder": {
+      "description": "Where nulls go, independent of direction. `last` means last ascending *and* descending.",
+      "enum": [
+        "first",
+        "last"
+      ],
+      "type": "string"
+    },
+    "SortDir": {
+      "enum": [
+        "asc",
+        "desc"
+      ],
+      "type": "string"
+    },
+    "SortRule": {
+      "additionalProperties": false,
+      "description": "One sort key. This crate cannot depend on `morphic-query` (DAG rule), so it declares its own vocabulary and morphic-core converts; a test pins the two against each other.",
+      "properties": {
+        "dir": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/SortDir"
+            }
+          ],
+          "default": "asc"
+        },
+        "field": {
+          "type": "string"
+        },
+        "nulls": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/NullsOrder"
+            }
+          ],
+          "default": "last"
+        }
+      },
+      "required": [
+        "field"
       ],
       "type": "object"
     },
