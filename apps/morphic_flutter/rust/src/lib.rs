@@ -450,7 +450,11 @@ pub unsafe extern "C" fn morphic_apply_commands(
             Err(e) => return err(&format!("invalid commands: {e}")),
         };
         with_engine(&root, |engine| {
-            to_json(&engine.apply(&id, &commands, &now).map_err(|e| e.to_string())?)
+            to_json(
+                &engine
+                    .apply(&id, &commands, &now)
+                    .map_err(|e| e.to_string())?,
+            )
         })
     })
 }
@@ -1127,7 +1131,10 @@ mod tests {
                     "filter":{"op":"eq","field":"region","value":"eu"}}]"#,
             )
         };
-        assert_eq!(unsafe { page(&rp, &id, "data_table", 0, 0) }["totalRows"], 2);
+        assert_eq!(
+            unsafe { page(&rp, &id, "data_table", 0, 0) }["totalRows"],
+            2
+        );
         // A global filter is composed *with* the component's own, never instead of it.
         unsafe {
             apply(
@@ -1155,7 +1162,10 @@ mod tests {
                 r#"[{"kind":"setSearch","componentId":"data_table","text":"eu"}]"#,
             )
         };
-        assert_eq!(unsafe { page(&rp, &id, "data_table", 0, 0) }["totalRows"], 2);
+        assert_eq!(
+            unsafe { page(&rp, &id, "data_table", 0, 0) }["totalRows"],
+            2
+        );
         std::fs::remove_dir_all(&p).ok();
     }
 
@@ -1188,9 +1198,15 @@ mod tests {
                      "filter":{"op":"eq","field":"nope","value":1}}]"#,
             )
         };
-        assert!(bad["error"].is_string(), "expected a typed error, got {bad}");
+        assert!(
+            bad["error"].is_string(),
+            "expected a typed error, got {bad}"
+        );
         let v = unsafe { page(&rp, &id, "data_table", 0, 0) };
-        assert_eq!(v["totalRows"], 4, "the rejected search must not have applied");
+        assert_eq!(
+            v["totalRows"], 4,
+            "the rejected search must not have applied"
+        );
         assert_eq!(v["rows"][0][1], 30, "the earlier sort is still in force");
         let snap = json(unsafe { morphic_snapshot(rp.as_ptr(), id.as_ptr()) });
         assert_eq!(snap["doc"]["workspace"]["revision"], first["revision"]);
@@ -1225,22 +1241,26 @@ mod tests {
         let cmds = c("[]");
         let now = c("2026-11-07T00:00:00Z");
         let v = json(unsafe {
-            morphic_apply_commands(
-                std::ptr::null(),
-                id.as_ptr(),
-                cmds.as_ptr(),
-                now.as_ptr(),
-            )
+            morphic_apply_commands(std::ptr::null(), id.as_ptr(), cmds.as_ptr(), now.as_ptr())
         });
-        assert!(v["error"].as_str().unwrap().contains("invalid storage_root"));
+        assert!(v["error"]
+            .as_str()
+            .unwrap()
+            .contains("invalid storage_root"));
         let v = json(unsafe {
             morphic_apply_commands(id.as_ptr(), id.as_ptr(), std::ptr::null(), now.as_ptr())
         });
-        assert!(v["error"].as_str().unwrap().contains("invalid commands_json"));
+        assert!(v["error"]
+            .as_str()
+            .unwrap()
+            .contains("invalid commands_json"));
         let v = json(unsafe {
             morphic_component_page(id.as_ptr(), id.as_ptr(), std::ptr::null(), 0, 0)
         });
-        assert!(v["error"].as_str().unwrap().contains("invalid component_id"));
+        assert!(v["error"]
+            .as_str()
+            .unwrap()
+            .contains("invalid component_id"));
     }
 
     #[test]
@@ -1252,12 +1272,14 @@ mod tests {
         unsafe { morphic_close_workspace(rp.as_ptr(), id.as_ptr()) };
         // A fresh session reads the document from disk, so the indicator and the order return.
         let v = unsafe { page(&rp, &id, "data_table", 0, 2) };
-        assert_eq!(v["rows"][0][1], 30, "AT-07: the sort is document state, not UI state");
+        assert_eq!(
+            v["rows"][0][1], 30,
+            "AT-07: the sort is document state, not UI state"
+        );
         let snap = json(unsafe { morphic_snapshot(rp.as_ptr(), id.as_ptr()) });
         let comps = snap["doc"]["workspace"]["components"].as_array().unwrap();
         let table = comps.iter().find(|c| c["id"] == "data_table").unwrap();
         assert_eq!(table["state"]["sort"][0]["dir"], "desc");
         std::fs::remove_dir_all(&p).ok();
     }
-
 }
