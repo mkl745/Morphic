@@ -1383,7 +1383,8 @@ mod selection_aggregate_tests {
             ..Default::default()
         };
         let rows = select_rows(&table, &plan).unwrap();
-        assert_eq!(rows, vec![2, 0], "both matches, sorted, despite limit 1");
+        // Row 2's v is null, so nulls-last puts it after row 0 even descending.
+        assert_eq!(rows, vec![0, 2], "both matches, sorted, despite limit 1");
         let value = aggregate_over(&table, Some(&rows), &agg("count", None)).unwrap();
         assert_eq!(value, json!(2), "a metric sees every match, not the page");
     }

@@ -609,7 +609,18 @@ impl Engine {
             .table
             .as_ref()
             .ok_or_else(|| CoreError::SourceUnavailable(workspace_id.into()))?;
-        let key = morphic_query::cache::CacheKey::new(s.data_revision, plan.hash());
+        // The plan alone is NOT the metric's identity: two cards over the same selection with
+        // different aggregations produce identical plans. Keying on the plan alone handed the
+        // second card the first card's cached number. The aggregation is part of the key.
+        let fingerprint = serde_json::json!({
+            "plan": plan,
+            "op": aggregation.op,
+            "field": aggregation.field,
+        });
+        let key = morphic_query::cache::CacheKey::new(
+            s.data_revision,
+            morphic_query::cache::hash_json(&fingerprint),
+        );
         if let Some(value) = s.metrics.get(key) {
             return Ok(MetricResult {
                 component_id: component_id.into(),
@@ -1912,5 +1923,32 @@ mod tests {
                 "schema allows '{op}' but the executor rejects it"
             );
         }
+    }
+
+    #[test]
+    fn two_cards_over_the_same_selection_do_not_share_a_cache_entry() {
+        // Regression: the metric cache was keyed on the plan alone. Two unfiltered cards have
+        // identical plans, so the average card was served the record count from cache.
+        let (engine, root) = imported("cmd_metric_key");
+        let doc = engine.snapshot("w1").unwrap().doc;
+        let cards: Vec<String> = doc
+            .workspace
+            .components
+            .iter()
+            .filter(|c| matches!(c.binding, morphic_schema::Binding::MetricCard { .. }))
+            .map(|c| c.id.clone())
+            .collect();
+        assert!(cards.len() >= 2, "the fixture must produce two cards");
+        let values: Vec<serde_json::Value> = cards
+            .iter()
+            .map(|id| engine.metric_data("w1", id).unwrap().value)
+            .collect();
+        assert_ne!(values[0], values[1], "a count and an average are not the same number");
+        // And asking again is still a cache hit for each, not a recompute.
+        for id in &cards {
+            engine.metric_data("w1", id).unwrap();
+            assert_eq!(engine.compute_count("w1", id).unwrap(), 1);
+        }
+        std::fs::remove_dir_all(&root).ok();
     }
 }
