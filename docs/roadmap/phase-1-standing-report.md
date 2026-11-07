@@ -89,7 +89,7 @@ templates, and sharing into Morphic.
 | AT-02 scoring + heuristics | `00c446e` | 42264783444 | 6/6 ✅ |
 | Parser fuzz smoke | `b9269be` | 42273176017 | 6/6 ✅ |
 | 1.3.1 Full plan execution | `976578a` | 42335467607 | 6/6 ✅ |
-| **1.3.2 Interaction commands** | **`2a34af7`** | **42369715348** | **fmt/clippy/test ✅** (fmt fixed by bot `b857d62`) |
+| **1.3.2 Interaction commands** | **`57581a0`** | **42369916529** | **6/6 ✅** |
 
 Current totals: **572 Rust tests** across 8 engine crates + the bridge, **188 Dart tests**.
 M1.3 added 56: `morphic-query` 21 → 56, `morphic-core` 35 → 52, `morphic-schema` 24 → 33.
