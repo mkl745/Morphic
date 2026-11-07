@@ -281,7 +281,7 @@ class PerfProbe {
     );
     // One parseable line for logcat, then the full JSON for the evidence file.
     debugPrint('$kPerfLogTag ${result.verdict}');
-    debugPrint('$kPerfLogTag_JSON ${jsonEncode(result.toJson())}');
+    debugPrint('${kPerfLogTag}_JSON ${jsonEncode(result.toJson())}');
     return result;
   }
 

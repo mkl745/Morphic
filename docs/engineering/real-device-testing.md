@@ -58,6 +58,12 @@ of them missing or failing. Practical walkthrough: [phone-test-quickstart.md](ph
 From M1.3 add filter/sort/search; from M1.4 chart interaction; from M1.5 layout editing and
 kill-mid-save recovery; from M1.6 TalkBack and text-scale 1.3.
 
+**Latency is measured separately.** The ten checks above are behaviours; none of them times
+anything, and this harness's polling helper sleeps three seconds per attempt, so it could not
+observe a 150 ms budget. AT-07's latency clause has its own instrument:
+[at07-latency-measurement.md](at07-latency-measurement.md) (`tools/device_perf.sh`), enforced by
+`tools/check_device_evidence.py --require-at07`.
+
 ## 4. How to run it
 
 ```bash
@@ -114,3 +120,6 @@ The development sandbox has **no USB/ADB access to physical hardware**. Conseque
 - Until that file exists for a version, the version is **not** device-verified, and any
   status document must say so. Phase 0 is in exactly this state — see
   [phase-0-status.md](../roadmap/phase-0-status.md).
+- The same applies to **latency**. CI's x86 perf test and the emulator probe rehearsal prove the
+  workload runs and the instrument works; neither is evidence about a mid-class ARM phone. See
+  [at07-latency-measurement.md](at07-latency-measurement.md).
