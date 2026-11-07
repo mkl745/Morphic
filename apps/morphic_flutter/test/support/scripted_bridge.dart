@@ -453,4 +453,9 @@ class GatedEngineController extends EngineController {
   @override
   Future<PageResult?> page({int offset = 0, int limit = 256, String? search}) =>
       pageGate.future;
+
+  @override
+  Future<PageResult?> componentPage(String componentId,
+          {int offset = 0, int limit = 0}) =>
+      pageGate.future;
 }

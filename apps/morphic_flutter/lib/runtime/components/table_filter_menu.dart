@@ -75,7 +75,11 @@ class _FilterMenuState extends State<_FilterMenu> {
     _op = _ops.any((o) => o.op == existingOp) ? existingOp! : _ops.first.op;
     final v = widget.current?['value'];
     final text = v is List ? v.join(', ') : (v?.toString() ?? '');
-    _value = TextEditingController(text: text);
+    // A boolean choices widget always *shows* one of its two options, so the bound has to
+    // start as that option. Leaving it empty would display "True" while Apply stayed disabled.
+    _value = TextEditingController(
+      text: text.isEmpty && widget.kind == FieldKind.boolean ? 'true' : text,
+    );
   }
 
   @override

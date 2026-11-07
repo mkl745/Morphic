@@ -207,7 +207,10 @@ jobs:
             echo '```'
             echo '### failure details'
             echo '```'
-            grep -nE "Expected|Actual|Which|EXCEPTION|was thrown|consider|failed|passed|loading|settled|pump" /tmp/darttest.log | head -n 40
+            # Include the exception *message*, not just its banner: a "Bad state: No element"
+            # line does not match "was thrown", and dropping it makes a failure undiagnosable
+            # from the comment alone (the raw job log is not reachable from every environment).
+            grep -nE "Expected|Actual|Which|EXCEPTION|was thrown|Bad state|No element|StateError|RangeError|Assertion|overflowed|Error:|consider|failed|passed|loading|settled|pump" /tmp/darttest.log | head -n 60
             echo '```'
             echo '### tail'
             echo '```'

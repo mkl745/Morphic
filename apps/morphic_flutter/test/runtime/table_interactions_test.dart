@@ -305,6 +305,30 @@ void main() {
           {'op': 'eq', 'field': 'active', 'value': true});
     });
 
+    testWidgets('choosing False sends false', (tester) async {
+      final bridge = _bridge(
+        fields: ['region', 'active', 'note'],
+        dtypes: const {'active': 'bool'},
+        rows: [
+          ['eu', true, null],
+          ['us', false, 'alpha'],
+        ],
+      );
+      final engine = await _open(bridge);
+      await _pump(tester, engine);
+      await tester.tap(find.byKey(const Key('filter-active')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('filter-bool')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('False').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('filter-apply')));
+      await tester.pumpAndSettle();
+      expect(_lastCommand(bridge)['filter'],
+          {'op': 'eq', 'field': 'active', 'value': false});
+      expect(find.text('1–1 of 1'), findsOneWidget);
+    });
+
     testWidgets('a timestamp offers date bounds and a picker', (tester) async {
       final bridge = _bridge(dtypes: const {'amount': 'timestamp'});
       final engine = await _open(bridge);
@@ -487,7 +511,7 @@ void main() {
         },
       ]);
       await tester.pumpAndSettle();
-      expect(find.text('1–2 of 2'), findsOneWidget);
+      expect(find.text('1–1 of 1'), findsOneWidget);
       expect(find.text('region = eu'), findsOneWidget);
     });
 
