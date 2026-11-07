@@ -28,7 +28,6 @@
 ///   the user's saved workspace.
 library;
 
-import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -110,7 +109,9 @@ class PerfProbeResult {
   double _percentile(double q) {
     final v = _sorted;
     if (v.isEmpty) return 0;
-    final rank = (q * v.length).ceil().clamp(1, v.length);
+    var rank = (q * v.length).ceil();
+    if (rank < 1) rank = 1;
+    if (rank > v.length) rank = v.length;
     return v[rank - 1];
   }
 

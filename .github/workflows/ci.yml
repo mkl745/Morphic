@@ -179,6 +179,7 @@ jobs:
       - name: Pub get
         run: flutter pub get
       - name: Device-evidence gate tests
+        working-directory: ${{ github.workspace }}
         run: python3 tools/test_check_device_evidence.py
       - name: Analyze
         id: analyze
