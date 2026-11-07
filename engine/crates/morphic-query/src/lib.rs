@@ -264,6 +264,15 @@ pub fn query_groups(table: &Table, plan: &Plan) -> Result<GroupedRows, QueryErro
     )
 }
 
+/// The complete matching, sorted selection for a plan, with no paging applied.
+///
+/// Public because a filtered aggregation needs the selection rather than a page: a metric card
+/// must summarize every matching row, not the 256 the table happens to be showing.
+pub fn select_rows(table: &Table, plan: &Plan) -> Result<Vec<usize>, QueryError> {
+    plan.validate(table)?;
+    full_selection(table, plan)
+}
+
 /// The complete matching, sorted selection — the shared first half of both execution paths.
 fn full_selection(table: &Table, plan: &Plan) -> Result<Vec<usize>, QueryError> {
     let deadline = Deadline::new(plan.budget_ms);
@@ -318,21 +327,26 @@ pub struct Aggregate<'a> {
     pub field: Option<&'a str>,
 }
 
-/// Numeric values of a column, skipping nulls and non-finite floats.
-fn numbers(col: &Column) -> Vec<f64> {
+/// Iterate a selection, or every row when there is none. Boxed so the two shapes share one
+/// call site without allocating an index vector for the unfiltered case.
+fn selected(rows: Option<&[usize]>, row_count: usize) -> Box<dyn Iterator<Item = usize> + '_> {
+    match rows {
+        Some(r) => Box::new(r.iter().copied()),
+        None => Box::new(0..row_count),
+    }
+}
+
+/// Numeric values of the selected rows, skipping nulls and non-finite floats.
+fn numbers_over(col: &Column, rows: Option<&[usize]>, row_count: usize) -> Vec<f64> {
     let keep = |i: usize| !col.nulls.get(i).copied().unwrap_or(true);
     match &col.values {
-        ColumnValues::Int64(v) => v
-            .iter()
-            .enumerate()
-            .filter(|(i, _)| keep(*i))
-            .map(|(_, x)| *x as f64)
+        ColumnValues::Int64(v) => selected(rows, row_count)
+            .filter(|i| keep(*i))
+            .filter_map(|i| v.get(i).map(|x| *x as f64))
             .collect(),
-        ColumnValues::Float64(v) => v
-            .iter()
-            .enumerate()
-            .filter(|(i, _)| keep(*i))
-            .map(|(_, x)| *x)
+        ColumnValues::Float64(v) => selected(rows, row_count)
+            .filter(|i| keep(*i))
+            .filter_map(|i| v.get(i).copied())
             .filter(|x| x.is_finite())
             .collect(),
         _ => Vec::new(),
@@ -349,6 +363,18 @@ fn is_numeric(col: &Column) -> bool {
 /// Execute one aggregation. Returns JSON `null` when there is nothing to aggregate, so an
 /// empty dataset renders as "no data" rather than a misleading zero.
 pub fn aggregate(table: &Table, agg: &Aggregate<'_>) -> Result<serde_json::Value, QueryError> {
+    aggregate_over(table, None, agg)
+}
+
+/// Aggregate over a selection of rows, or the whole table when `rows` is `None`.
+///
+/// This is how a filter reaches a metric card: the caller selects once and aggregates the
+/// selection, rather than materializing a filtered copy of the table.
+pub fn aggregate_over(
+    table: &Table,
+    rows: Option<&[usize]>,
+    agg: &Aggregate<'_>,
+) -> Result<serde_json::Value, QueryError> {
     use serde_json::Value;
 
     let column = match agg.field {
@@ -366,16 +392,18 @@ pub fn aggregate(table: &Table, agg: &Aggregate<'_>) -> Result<serde_json::Value
         // count with no field = rows; with a field = non-null cells of that field.
         "count" => {
             let n = match column {
-                None => table.row_count,
-                Some(c) => c.nulls.iter().filter(|n| !**n).count(),
+                None => rows.map_or(table.row_count, |r| r.len()),
+                Some(c) => selected(rows, table.row_count)
+                    .filter(|i| !filter::is_null(c, *i))
+                    .count(),
             };
             Ok(serde_json::json!(n))
         }
         "distinct_count" => {
             let c = column.ok_or_else(|| QueryError::FieldRequired(agg.op.into()))?;
             let mut seen = std::collections::HashSet::new();
-            for i in 0..c.len() {
-                if !c.nulls.get(i).copied().unwrap_or(true) {
+            for i in selected(rows, table.row_count) {
+                if !filter::is_null(c, i) {
                     seen.insert(cell_text(c, i));
                 }
             }
@@ -389,7 +417,7 @@ pub fn aggregate(table: &Table, agg: &Aggregate<'_>) -> Result<serde_json::Value
                     dtype: c.dtype.as_str().to_string(),
                 });
             }
-            let vals = numbers(c);
+            let vals = numbers_over(c, rows, table.row_count);
             if vals.is_empty() {
                 return Ok(Value::Null);
             }
@@ -405,11 +433,9 @@ pub fn aggregate(table: &Table, agg: &Aggregate<'_>) -> Result<serde_json::Value
             let c = column.ok_or_else(|| QueryError::FieldRequired(agg.op.into()))?;
             // Timestamps are ordered: report the boundary as a readable UTC instant.
             if let ColumnValues::Timestamp(v) = &c.values {
-                let vals: Vec<i64> = v
-                    .iter()
-                    .enumerate()
-                    .filter(|(i, _)| !c.nulls.get(*i).copied().unwrap_or(true))
-                    .map(|(_, x)| *x)
+                let vals: Vec<i64> = selected(rows, table.row_count)
+                    .filter(|i| !filter::is_null(c, *i))
+                    .filter_map(|i| v.get(i).copied())
                     .collect();
                 let picked = if agg.op == "min" {
                     vals.iter().min()
@@ -427,7 +453,7 @@ pub fn aggregate(table: &Table, agg: &Aggregate<'_>) -> Result<serde_json::Value
                     dtype: c.dtype.as_str().to_string(),
                 });
             }
-            let vals = numbers(c);
+            let vals = numbers_over(c, rows, table.row_count);
             let picked = if agg.op == "min" {
                 vals.iter().copied().reduce(f64::min)
             } else {
@@ -1215,5 +1241,154 @@ mod plan_tests {
         assert_eq!(p.search.as_deref(), Some("eu"));
         assert!(p.sort.is_empty() && p.filter.is_none());
         assert_eq!(query_page(&sales(), &p).unwrap().total_rows, 2);
+    }
+}
+
+#[cfg(test)]
+mod selection_aggregate_tests {
+    use super::*;
+    use morphic_model::{DataType, Table};
+    use serde_json::{json, Value};
+
+    fn t() -> Table {
+        Table {
+            columns: vec![
+                Column {
+                    name: "grp".into(),
+                    dtype: DataType::Utf8,
+                    values: ColumnValues::Utf8(
+                        ["a", "b", "a", "c"].iter().map(|s| s.to_string()).collect(),
+                    ),
+                    nulls: vec![false, false, false, true],
+                },
+                Column {
+                    name: "v".into(),
+                    dtype: DataType::Int64,
+                    values: ColumnValues::Int64(vec![1, 2, 3, 4]),
+                    nulls: vec![false, false, true, false],
+                },
+            ],
+            row_count: 4,
+        }
+    }
+
+    fn agg<'a>(op: &'a str, field: Option<&'a str>) -> Aggregate<'a> {
+        Aggregate { op, field }
+    }
+
+    #[test]
+    fn no_selection_matches_the_whole_table_aggregate() {
+        let table = t();
+        for (op, field) in [
+            ("count", None),
+            ("count", Some("v")),
+            ("sum", Some("v")),
+            ("avg", Some("v")),
+            ("min", Some("v")),
+            ("max", Some("v")),
+            ("distinct_count", Some("grp")),
+        ] {
+            let whole = aggregate(&table, &agg(op, field)).unwrap();
+            let explicit = aggregate_over(&table, None, &agg(op, field)).unwrap();
+            let all: Vec<usize> = (0..table.row_count).collect();
+            let selected = aggregate_over(&table, Some(&all), &agg(op, field)).unwrap();
+            assert_eq!(whole, explicit, "{op} {field:?}");
+            assert_eq!(whole, selected, "{op} {field:?} over every row");
+        }
+    }
+
+    #[test]
+    fn a_selection_narrows_every_operator() {
+        let table = t();
+        let rows = [0usize, 1];
+        assert_eq!(aggregate_over(&table, Some(&rows), &agg("count", None)).unwrap(), json!(2));
+        assert_eq!(
+            aggregate_over(&table, Some(&rows), &agg("count", Some("v"))).unwrap(),
+            json!(2)
+        );
+        assert_eq!(
+            aggregate_over(&table, Some(&rows), &agg("sum", Some("v"))).unwrap(),
+            json!(3.0)
+        );
+        assert_eq!(
+            aggregate_over(&table, Some(&rows), &agg("min", Some("v"))).unwrap(),
+            json!(1.0)
+        );
+        assert_eq!(
+            aggregate_over(&table, Some(&rows), &agg("max", Some("v"))).unwrap(),
+            json!(2.0)
+        );
+        assert_eq!(
+            aggregate_over(&table, Some(&rows), &agg("distinct_count", Some("grp"))).unwrap(),
+            json!(2)
+        );
+    }
+
+    #[test]
+    fn an_empty_selection_is_null_not_zero_for_value_aggregates() {
+        let table = t();
+        let none: [usize; 0] = [];
+        assert_eq!(
+            aggregate_over(&table, Some(&none), &agg("count", None)).unwrap(),
+            json!(0)
+        );
+        assert_eq!(
+            aggregate_over(&table, Some(&none), &agg("sum", Some("v"))).unwrap(),
+            Value::Null
+        );
+        assert_eq!(
+            aggregate_over(&table, Some(&none), &agg("avg", Some("v"))).unwrap(),
+            Value::Null
+        );
+        assert_eq!(
+            aggregate_over(&table, Some(&none), &agg("min", Some("v"))).unwrap(),
+            Value::Null
+        );
+    }
+
+    #[test]
+    fn nulls_are_skipped_inside_a_selection_too() {
+        let table = t();
+        // Row 2 has a null v; row 3 a null grp.
+        let rows = [2usize, 3];
+        assert_eq!(aggregate_over(&table, Some(&rows), &agg("count", None)).unwrap(), json!(2));
+        assert_eq!(
+            aggregate_over(&table, Some(&rows), &agg("count", Some("v"))).unwrap(),
+            json!(1),
+            "count of a field counts non-null cells"
+        );
+        assert_eq!(
+            aggregate_over(&table, Some(&rows), &agg("sum", Some("v"))).unwrap(),
+            json!(4.0)
+        );
+        assert_eq!(
+            aggregate_over(&table, Some(&rows), &agg("distinct_count", Some("grp"))).unwrap(),
+            json!(1)
+        );
+    }
+
+    #[test]
+    fn select_rows_applies_the_plan_without_paging() {
+        let table = t();
+        let plan = Plan {
+            filter: Some(json!({"op":"eq","field":"grp","value":"a"})),
+            sort: vec![SortSpec::desc("v")],
+            limit: 1,
+            ..Default::default()
+        };
+        let rows = select_rows(&table, &plan).unwrap();
+        assert_eq!(rows, vec![2, 0], "both matches, sorted, despite limit 1");
+        let value = aggregate_over(&table, Some(&rows), &agg("count", None)).unwrap();
+        assert_eq!(value, json!(2), "a metric sees every match, not the page");
+    }
+
+    #[test]
+    fn select_rows_validates_the_plan() {
+        let table = t();
+        let plan = Plan {
+            filter: Some(json!({"op":"eq","field":"nope","value":1})),
+            ..Default::default()
+        };
+        assert!(select_rows(&table, &plan).is_err());
     }
 }

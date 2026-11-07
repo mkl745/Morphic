@@ -222,7 +222,13 @@ pub fn compile(
         binding: Binding::MetricCard {
             aggregation: count_all(),
         },
-        interactions: Interactions::default(),
+        // A metric card is filterable (docs/architecture/03 §2.1, AT-06's tap-to-filter).
+        // It has no ordering and no text search, so those stay off.
+        interactions: Interactions {
+            filter: true,
+            ..Default::default()
+        },
+        state: Default::default(),
         explanation: Some(explanation(
             "R1_records",
             "A record count is the fastest orientation signal for any dataset.".into(),
@@ -242,7 +248,11 @@ pub fn compile(
             binding: Binding::MetricCard {
                 aggregation: average_of(&m.name),
             },
-            interactions: Interactions::default(),
+            interactions: Interactions {
+                filter: true,
+                ..Default::default()
+            },
+            state: Default::default(),
             explanation: Some(explanation(
                 "R2_primary_measure",
                 format!(
@@ -277,6 +287,7 @@ pub fn compile(
                     select: true,
                     ..Default::default()
                 },
+                state: Default::default(),
                 explanation: Some(explanation(
                     "R3_time_series",
                     format!(
@@ -312,6 +323,7 @@ pub fn compile(
                     filter: true,
                     ..Default::default()
                 },
+                state: Default::default(),
                 explanation: Some(explanation(
                     "R4_event_timeline",
                     format!(
@@ -349,6 +361,7 @@ pub fn compile(
                 select: true,
                 ..Default::default()
             },
+            state: Default::default(),
             explanation: Some(explanation(
                 "R5_category_breakdown",
                 format!(
@@ -378,6 +391,7 @@ pub fn compile(
             filter: true,
             select: true,
         },
+        state: Default::default(),
         explanation: Some(explanation(
             "R6_raw_table",
             "A searchable, sortable table keeps every record reachable.".into(),

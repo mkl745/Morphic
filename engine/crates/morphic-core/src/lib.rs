@@ -16,6 +16,11 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Mutex;
 
+pub mod commands;
+mod plans;
+
+pub use commands::Command;
+
 use morphic_model::{DatasetProfile, ImportReport, Table};
 use morphic_schema::WorkspaceDoc;
 use morphic_workspace::{FileStore, StoreError, WorkspaceStore};
@@ -54,6 +59,8 @@ pub enum CoreError {
     UnknownFormat(String),
     #[error("import cancelled")]
     Cancelled,
+    #[error("command rejected: {0}")]
+    Command(String),
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -137,12 +144,57 @@ pub struct MetricResult {
     pub revision: u64,
 }
 
+/// What one committed command batch changed.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApplyOutcome {
+    pub revision: u64,
+    /// Components whose data may have changed, in layout order. Empty for a no-op batch.
+    pub affected: Vec<String>,
+    /// False when every command set a value that was already set: no revision, no save.
+    pub changed: bool,
+    pub doc: WorkspaceDoc,
+}
+
 /// An open workspace: canonical Rust state that Flutter only renders.
 struct Session {
     doc: WorkspaceDoc,
     table: Option<Table>,
     profile: Option<DatasetProfile>,
     notice: Option<String>,
+    /// Revision of the *data*, not the document. Editing a filter bumps the document revision
+    /// but not this one, which is what lets an untouched component keep its cached result.
+    /// Bumped when the table is replaced (re-import or a field override, M1.5).
+    data_revision: u64,
+    pages: morphic_query::cache::ResultCache<morphic_query::Page>,
+    metrics: morphic_query::cache::ResultCache<serde_json::Value>,
+    /// Actual engine executions per component. The evidence that a command recomputed only
+    /// what it affected, rather than a claim that it did.
+    computes: HashMap<String, u64>,
+}
+
+impl Session {
+    fn new(
+        doc: WorkspaceDoc,
+        table: Option<Table>,
+        profile: Option<DatasetProfile>,
+        notice: Option<String>,
+    ) -> Session {
+        Session {
+            doc,
+            table,
+            profile,
+            notice,
+            data_revision: 1,
+            pages: morphic_query::cache::ResultCache::default(),
+            metrics: morphic_query::cache::ResultCache::default(),
+            computes: HashMap::new(),
+        }
+    }
+
+    fn bump_compute(&mut self, component_id: &str) {
+        *self.computes.entry(component_id.to_string()).or_insert(0) += 1;
+    }
 }
 
 /// The engine handle. Owns the workspace store and the open sessions.
@@ -257,12 +309,7 @@ impl Engine {
             .map_err(|_| CoreError::SessionPoisoned)?
             .insert(
                 workspace_id.to_string(),
-                Session {
-                    doc: doc.clone(),
-                    table: Some(table),
-                    profile: Some(profile.clone()),
-                    notice: None,
-                },
+                Session::new(doc.clone(), Some(table), Some(profile.clone()), None),
             );
 
         Ok(ImportOutcome {
@@ -339,12 +386,7 @@ impl Engine {
             .map_err(|_| CoreError::SessionPoisoned)?
             .insert(
                 workspace_id.to_string(),
-                Session {
-                    doc,
-                    table,
-                    profile,
-                    notice,
-                },
+                Session::new(doc, table, profile, notice),
             );
         Ok(snapshot)
     }
@@ -408,8 +450,132 @@ impl Engine {
         Ok(morphic_query::query_page(table, plan)?)
     }
 
+    /// Apply a batch of interaction commands atomically.
+    ///
+    /// Either every command lands and the document is saved once at one new revision, or
+    /// nothing changes. The save is durable *before* the in-memory session is swapped, so a
+    /// failed write cannot leave the engine showing state that was never persisted.
+    ///
+    /// The session lock is held across the save. That serializes edits against reads, which is
+    /// the correct trade for a single-user local app: a torn read would be worse than a brief
+    /// wait. Debouncing and autosave belong to the UI layer, not here.
+    pub fn apply(
+        &self,
+        workspace_id: &str,
+        commands: &[Command],
+        now_iso: &str,
+    ) -> Result<ApplyOutcome, CoreError> {
+        if !self.has_session(workspace_id) {
+            self.open_session(workspace_id)?;
+        }
+        let mut sessions = self
+            .sessions
+            .lock()
+            .map_err(|_| CoreError::SessionPoisoned)?;
+        let s = sessions
+            .get_mut(workspace_id)
+            .ok_or_else(|| CoreError::SessionNotFound(workspace_id.into()))?;
+
+        let fields: Option<Vec<String>> = s
+            .table
+            .as_ref()
+            .map(|t| t.columns.iter().map(|c| c.name.clone()).collect());
+        let applied = commands::apply(&s.doc, commands, fields.as_deref(), now_iso)?;
+        if !applied.changed {
+            return Ok(ApplyOutcome {
+                revision: s.doc.workspace.revision,
+                affected: Vec::new(),
+                changed: false,
+                doc: s.doc.clone(),
+            });
+        }
+        self.store.save_workspace(&applied.doc)?;
+        s.doc = applied.doc;
+        // Old-revision entries can never be asked for again; reclaim them rather than waiting
+        // for eviction pressure. The current data revision's entries stay: an unaffected
+        // component's plan hash has not changed and must still hit.
+        let data_revision = s.data_revision;
+        s.pages.retain_revision(data_revision);
+        s.metrics.retain_revision(data_revision);
+        Ok(ApplyOutcome {
+            revision: s.doc.workspace.revision,
+            affected: applied.affected,
+            changed: true,
+            doc: s.doc.clone(),
+        })
+    }
+
+    /// One page of a component's rows, with global filters, its own filter, sort and search
+    /// already applied. This is the path the table UI uses; `query_page` remains the raw
+    /// escape hatch for a caller that supplies its own plan.
+    pub fn component_page(
+        &self,
+        workspace_id: &str,
+        component_id: &str,
+        offset: usize,
+        limit: usize,
+    ) -> Result<morphic_query::Page, CoreError> {
+        if !self.has_session(workspace_id) {
+            self.open_session(workspace_id)?;
+        }
+        let mut sessions = self
+            .sessions
+            .lock()
+            .map_err(|_| CoreError::SessionPoisoned)?;
+        let s = sessions
+            .get_mut(workspace_id)
+            .ok_or_else(|| CoreError::SessionNotFound(workspace_id.into()))?;
+        let component = s
+            .doc
+            .workspace
+            .components
+            .iter()
+            .find(|c| c.id == component_id)
+            .ok_or_else(|| CoreError::UnknownComponent(component_id.into()))?;
+        // limit 0 means "the page size this table declares".
+        let effective = if limit == 0 {
+            plans::page_size(component)
+        } else {
+            limit
+        };
+        let plan = plans::for_component(&s.doc, component, offset, effective)?;
+        let table = s
+            .table
+            .as_ref()
+            .ok_or_else(|| CoreError::SourceUnavailable(workspace_id.into()))?;
+        let key = morphic_query::cache::CacheKey::new(s.data_revision, plan.hash());
+        if let Some(page) = s.pages.get(key) {
+            return Ok(page.clone());
+        }
+        let page = morphic_query::query_page(table, &plan)?;
+        s.bump_compute(component_id);
+        s.pages.insert(key, page.clone());
+        Ok(page)
+    }
+
+    /// How many times this component's data has actually been executed this session. A cache
+    /// hit does not count. This is what the incremental-recomputation test asserts against.
+    pub fn compute_count(
+        &self,
+        workspace_id: &str,
+        component_id: &str,
+    ) -> Result<u64, CoreError> {
+        let sessions = self
+            .sessions
+            .lock()
+            .map_err(|_| CoreError::SessionPoisoned)?;
+        let s = sessions
+            .get(workspace_id)
+            .ok_or_else(|| CoreError::SessionNotFound(workspace_id.into()))?;
+        Ok(s.computes.get(component_id).copied().unwrap_or(0))
+    }
+
     /// Compute the value behind a `metric_card`. Rust resolves the binding from the
     /// document; Flutter never re-implements aggregation.
+    ///
+    /// Global filters, the component's own filter and the binding's filter all apply. Before
+    /// M1.3 the binding filter was parsed and then ignored, so a card declared as
+    /// `count where level = ERROR` counted every row.
     pub fn metric_data(
         &self,
         workspace_id: &str,
@@ -418,12 +584,12 @@ impl Engine {
         if !self.has_session(workspace_id) {
             self.open_session(workspace_id)?;
         }
-        let sessions = self
+        let mut sessions = self
             .sessions
             .lock()
             .map_err(|_| CoreError::SessionPoisoned)?;
         let s = sessions
-            .get(workspace_id)
+            .get_mut(workspace_id)
             .ok_or_else(|| CoreError::SessionNotFound(workspace_id.into()))?;
         let component = s
             .doc
@@ -441,21 +607,38 @@ impl Engine {
                 ))
             }
         };
+        let plan = plans::for_metric(&s.doc, component)?;
+        let revision = s.doc.workspace.revision;
         let table = s
             .table
             .as_ref()
             .ok_or_else(|| CoreError::SourceUnavailable(workspace_id.into()))?;
-        let value = morphic_query::aggregate(
-            table,
-            &morphic_query::Aggregate {
-                op: &aggregation.op,
-                field: aggregation.field.as_deref(),
-            },
-        )?;
+        let key = morphic_query::cache::CacheKey::new(s.data_revision, plan.hash());
+        if let Some(value) = s.metrics.get(key) {
+            return Ok(MetricResult {
+                component_id: component_id.into(),
+                value: value.clone(),
+                revision,
+            });
+        }
+        let agg = morphic_query::Aggregate {
+            op: &aggregation.op,
+            field: aggregation.field.as_deref(),
+        };
+        // Only pay for a selection when there is something to select: an unfiltered card
+        // aggregates the table directly.
+        let value = if plan.filter.is_none() && plan.search.is_none() {
+            morphic_query::aggregate(table, &agg)?
+        } else {
+            let rows = morphic_query::select_rows(table, &plan)?;
+            morphic_query::aggregate_over(table, Some(&rows), &agg)?
+        };
+        s.bump_compute(component_id);
+        s.metrics.insert(key, value.clone());
         Ok(MetricResult {
             component_id: component_id.into(),
             value,
-            revision: s.doc.workspace.revision,
+            revision,
         })
     }
 
@@ -1143,5 +1326,565 @@ mod tests {
         assert_eq!(out.report.rows_imported, 5);
         assert!(dataset_written(&root, SALES));
         std::fs::remove_dir_all(&root).ok();
+    }
+
+    // --- M1.3 task 1.3.2: interaction commands, atomic batches, incremental recomputation ---
+
+    const NOW: &str = "2026-11-07T09:00:00Z";
+
+    fn table_id(doc: &WorkspaceDoc) -> String {
+        doc.workspace
+            .components
+            .iter()
+            .find(|c| matches!(c.binding, morphic_schema::Binding::DataTable { .. }))
+            .expect("the compiler always emits a raw table")
+            .id
+            .clone()
+    }
+
+    fn metric_id(doc: &WorkspaceDoc) -> String {
+        doc.workspace
+            .components
+            .iter()
+            .find(|c| matches!(c.binding, morphic_schema::Binding::MetricCard { .. }))
+            .expect("the compiler always emits a record count")
+            .id
+            .clone()
+    }
+
+    fn eq_filter(field: &str, value: serde_json::Value) -> morphic_schema::FilterExpr {
+        morphic_schema::FilterExpr {
+            op: "eq".into(),
+            field: Some(field.into()),
+            value: Some(value),
+            args: vec![],
+        }
+    }
+
+    fn sort_desc(field: &str) -> morphic_schema::SortRule {
+        morphic_schema::SortRule {
+            field: field.into(),
+            dir: morphic_schema::SortDir::Desc,
+            nulls: morphic_schema::NullsOrder::Last,
+        }
+    }
+
+    #[test]
+    fn a_component_command_affects_only_that_component() {
+        let (engine, root) = imported("cmd_affected");
+        let doc = engine.snapshot("w1").unwrap().doc;
+        let table = table_id(&doc);
+        let out = engine
+            .apply(
+                "w1",
+                &[Command::SetComponentSort {
+                    component_id: table.clone(),
+                    sort: vec![sort_desc("amount")],
+                }],
+                NOW,
+            )
+            .unwrap();
+        assert!(out.changed);
+        assert_eq!(out.affected, vec![table]);
+        assert_eq!(out.revision, 2);
+        assert_eq!(out.doc.workspace.modified_at, NOW);
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn a_global_filter_affects_every_component_in_layout_order() {
+        let (engine, root) = imported("cmd_global");
+        let doc = engine.snapshot("w1").unwrap().doc;
+        let out = engine
+            .apply(
+                "w1",
+                &[Command::SetGlobalFilter {
+                    filters: vec![eq_filter("region", serde_json::json!("eu"))],
+                }],
+                NOW,
+            )
+            .unwrap();
+        assert_eq!(out.affected, doc.workspace.layout.order);
+        assert!(out.affected.len() >= 2);
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn a_rejected_command_leaves_the_document_and_the_disk_untouched() {
+        let (engine, root) = imported("cmd_atomic");
+        let before = engine.snapshot("w1").unwrap();
+        let table = table_id(&before.doc);
+        // The first command is valid, the second is not. Neither may land.
+        let err = engine
+            .apply(
+                "w1",
+                &[
+                    Command::SetComponentSort {
+                        component_id: table.clone(),
+                        sort: vec![sort_desc("amount")],
+                    },
+                    Command::SetSearch {
+                        component_id: "no_such_component".into(),
+                        text: Some("eu".into()),
+                    },
+                ],
+                NOW,
+            )
+            .unwrap_err();
+        assert!(err.to_string().contains("command 1"), "{err}");
+        let after = engine.snapshot("w1").unwrap();
+        assert_eq!(after.revision, before.revision);
+        assert_eq!(
+            serde_json::to_value(&after.doc).unwrap(),
+            serde_json::to_value(&before.doc).unwrap(),
+            "the valid first command must not have landed either"
+        );
+        // And nothing reached the store: a fresh engine sees the original document.
+        drop(engine);
+        let reopened = Engine::new(&root).unwrap();
+        let stored = reopened.snapshot("w1").unwrap();
+        assert_eq!(stored.revision, before.revision);
+        assert!(stored.doc.workspace.components.iter().all(|c| c.state.is_empty()));
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn a_batch_lands_as_one_revision() {
+        let (engine, root) = imported("cmd_batch");
+        let doc = engine.snapshot("w1").unwrap().doc;
+        let table = table_id(&doc);
+        let metric = metric_id(&doc);
+        let out = engine
+            .apply(
+                "w1",
+                &[
+                    Command::SetComponentSort {
+                        component_id: table.clone(),
+                        sort: vec![sort_desc("amount")],
+                    },
+                    Command::SetSearch {
+                        component_id: table.clone(),
+                        text: Some("eu".into()),
+                    },
+                    Command::SetComponentFilter {
+                        component_id: metric.clone(),
+                        filter: Some(eq_filter("region", serde_json::json!("us"))),
+                    },
+                ],
+                NOW,
+            )
+            .unwrap();
+        assert_eq!(out.revision, 2, "three commands, one revision");
+        assert_eq!(out.affected.len(), 2);
+        assert!(out.affected.contains(&table) && out.affected.contains(&metric));
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn setting_what_is_already_set_changes_nothing() {
+        let (engine, root) = imported("cmd_idempotent");
+        let doc = engine.snapshot("w1").unwrap().doc;
+        let table = table_id(&doc);
+        let cmd = Command::SetComponentSort {
+            component_id: table.clone(),
+            sort: vec![sort_desc("amount")],
+        };
+        let first = engine.apply("w1", &[cmd.clone()], NOW).unwrap();
+        assert!(first.changed);
+        let second = engine.apply("w1", &[cmd], "2026-11-07T10:00:00Z").unwrap();
+        assert!(!second.changed);
+        assert!(second.affected.is_empty());
+        assert_eq!(second.revision, first.revision);
+        assert_eq!(
+            second.doc.workspace.modified_at, first.doc.workspace.modified_at,
+            "a no-op must not touch modified_at either"
+        );
+        assert!(engine.apply("w1", &[], NOW).unwrap().affected.is_empty());
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn commands_cannot_exceed_a_components_capabilities() {
+        let (engine, root) = imported("cmd_capability");
+        let doc = engine.snapshot("w1").unwrap().doc;
+        let metric = metric_id(&doc);
+        // The compiler gives metric cards filter but not sort or search.
+        let err = engine
+            .apply(
+                "w1",
+                &[Command::SetComponentSort {
+                    component_id: metric.clone(),
+                    sort: vec![sort_desc("amount")],
+                }],
+                NOW,
+            )
+            .unwrap_err();
+        assert!(err.to_string().contains("does not allow sorting"), "{err}");
+        let err = engine
+            .apply(
+                "w1",
+                &[Command::SetSearch {
+                    component_id: metric,
+                    text: Some("eu".into()),
+                }],
+                NOW,
+            )
+            .unwrap_err();
+        assert!(err.to_string().contains("does not allow search"), "{err}");
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn unknown_fields_are_rejected_at_the_command_not_at_query_time() {
+        let (engine, root) = imported("cmd_fields");
+        let doc = engine.snapshot("w1").unwrap().doc;
+        let table = table_id(&doc);
+        let err = engine
+            .apply(
+                "w1",
+                &[Command::SetComponentFilter {
+                    component_id: table.clone(),
+                    filter: Some(eq_filter("regn", serde_json::json!("eu"))),
+                }],
+                NOW,
+            )
+            .unwrap_err();
+        assert!(err.to_string().contains("unknown field 'regn'"), "{err}");
+        let err = engine
+            .apply(
+                "w1",
+                &[Command::SetComponentSort {
+                    component_id: table,
+                    sort: vec![sort_desc("amout")],
+                }],
+                NOW,
+            )
+            .unwrap_err();
+        assert!(err.to_string().contains("unknown sort field"), "{err}");
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn only_affected_components_recompute() {
+        // The plan's stated verification for 1.3.2. Two components are computed, one is
+        // changed, both are asked for again: the untouched one must be served from cache.
+        let (engine, root) = imported("cmd_incremental");
+        let doc = engine.snapshot("w1").unwrap().doc;
+        let table = table_id(&doc);
+        let metric = metric_id(&doc);
+
+        engine.component_page("w1", &table, 0, 0).unwrap();
+        engine.metric_data("w1", &metric).unwrap();
+        assert_eq!(engine.compute_count("w1", &table).unwrap(), 1);
+        assert_eq!(engine.compute_count("w1", &metric).unwrap(), 1);
+
+        // Asking again with nothing changed is already free.
+        engine.component_page("w1", &table, 0, 0).unwrap();
+        engine.metric_data("w1", &metric).unwrap();
+        assert_eq!(engine.compute_count("w1", &table).unwrap(), 1, "cache hit");
+        assert_eq!(engine.compute_count("w1", &metric).unwrap(), 1, "cache hit");
+
+        let out = engine
+            .apply(
+                "w1",
+                &[Command::SetComponentSort {
+                    component_id: table.clone(),
+                    sort: vec![sort_desc("amount")],
+                }],
+                NOW,
+            )
+            .unwrap();
+        assert_eq!(out.affected, vec![table.clone()]);
+
+        engine.component_page("w1", &table, 0, 0).unwrap();
+        engine.metric_data("w1", &metric).unwrap();
+        assert_eq!(
+            engine.compute_count("w1", &table).unwrap(),
+            2,
+            "the sorted table must recompute"
+        );
+        assert_eq!(
+            engine.compute_count("w1", &metric).unwrap(),
+            1,
+            "the metric's plan did not change, so it must still hit the cache"
+        );
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn a_global_filter_recomputes_everything_because_everything_changed() {
+        let (engine, root) = imported("cmd_global_recompute");
+        let doc = engine.snapshot("w1").unwrap().doc;
+        let table = table_id(&doc);
+        let metric = metric_id(&doc);
+        engine.component_page("w1", &table, 0, 0).unwrap();
+        engine.metric_data("w1", &metric).unwrap();
+        engine
+            .apply(
+                "w1",
+                &[Command::SetGlobalFilter {
+                    filters: vec![eq_filter("region", serde_json::json!("eu"))],
+                }],
+                NOW,
+            )
+            .unwrap();
+        engine.component_page("w1", &table, 0, 0).unwrap();
+        engine.metric_data("w1", &metric).unwrap();
+        assert_eq!(engine.compute_count("w1", &table).unwrap(), 2);
+        assert_eq!(engine.compute_count("w1", &metric).unwrap(), 2);
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn global_and_component_filters_intersect() {
+        let (engine, root) = imported("cmd_intersect");
+        let doc = engine.snapshot("w1").unwrap().doc;
+        let table = table_id(&doc);
+        // SALES: eu 10, us 20, eu 10, us 40, eu 50.
+        engine
+            .apply(
+                "w1",
+                &[Command::SetGlobalFilter {
+                    filters: vec![eq_filter("region", serde_json::json!("eu"))],
+                }],
+                NOW,
+            )
+            .unwrap();
+        let page = engine.component_page("w1", &table, 0, 0).unwrap();
+        assert_eq!(page.total_rows, 3);
+
+        engine
+            .apply(
+                "w1",
+                &[Command::SetComponentFilter {
+                    component_id: table.clone(),
+                    filter: Some(morphic_schema::FilterExpr {
+                        op: "gte".into(),
+                        field: Some("amount".into()),
+                        value: Some(serde_json::json!(50)),
+                        args: vec![],
+                    }),
+                }],
+                NOW,
+            )
+            .unwrap();
+        let page = engine.component_page("w1", &table, 0, 0).unwrap();
+        assert_eq!(page.total_rows, 1, "eu AND amount >= 50");
+        assert_eq!(page.rows[0][0], serde_json::json!("eu"));
+
+        // Clearing the component filter restores the global-only answer exactly.
+        engine
+            .apply(
+                "w1",
+                &[Command::SetComponentFilter {
+                    component_id: table.clone(),
+                    filter: None,
+                }],
+                NOW,
+            )
+            .unwrap();
+        assert_eq!(engine.component_page("w1", &table, 0, 0).unwrap().total_rows, 3);
+        // Clearing the global filter restores the original five.
+        engine
+            .apply("w1", &[Command::SetGlobalFilter { filters: vec![] }], NOW)
+            .unwrap();
+        assert_eq!(engine.component_page("w1", &table, 0, 0).unwrap().total_rows, 5);
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn a_component_sort_reorders_the_page_and_search_narrows_it() {
+        let (engine, root) = imported("cmd_sort_search");
+        let doc = engine.snapshot("w1").unwrap().doc;
+        let table = table_id(&doc);
+        engine
+            .apply(
+                "w1",
+                &[Command::SetComponentSort {
+                    component_id: table.clone(),
+                    sort: vec![sort_desc("amount")],
+                }],
+                NOW,
+            )
+            .unwrap();
+        let page = engine.component_page("w1", &table, 0, 0).unwrap();
+        let amounts: Vec<i64> = page.rows.iter().map(|r| r[1].as_i64().unwrap()).collect();
+        assert_eq!(amounts, vec![50, 40, 20, 10, 10]);
+
+        engine
+            .apply(
+                "w1",
+                &[Command::SetSearch {
+                    component_id: table.clone(),
+                    text: Some("  eu  ".into()),
+                }],
+                NOW,
+            )
+            .unwrap();
+        let page = engine.component_page("w1", &table, 0, 0).unwrap();
+        assert_eq!(page.total_rows, 3, "search is trimmed, not taken literally");
+        let amounts: Vec<i64> = page.rows.iter().map(|r| r[1].as_i64().unwrap()).collect();
+        assert_eq!(amounts, vec![50, 10, 10], "search and sort compose");
+
+        // Whitespace-only clears the search rather than searching for spaces.
+        engine
+            .apply(
+                "w1",
+                &[Command::SetSearch {
+                    component_id: table.clone(),
+                    text: Some("   ".into()),
+                }],
+                NOW,
+            )
+            .unwrap();
+        assert_eq!(engine.component_page("w1", &table, 0, 0).unwrap().total_rows, 5);
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn a_metric_cards_own_filter_narrows_its_value() {
+        let (engine, root) = imported("cmd_metric_filter");
+        let doc = engine.snapshot("w1").unwrap().doc;
+        let metric = metric_id(&doc);
+        let before = engine.metric_data("w1", &metric).unwrap().value;
+        assert_eq!(before, serde_json::json!(5), "record count over all rows");
+        engine
+            .apply(
+                "w1",
+                &[Command::SetComponentFilter {
+                    component_id: metric.clone(),
+                    filter: Some(eq_filter("region", serde_json::json!("us"))),
+                }],
+                NOW,
+            )
+            .unwrap();
+        let after = engine.metric_data("w1", &metric).unwrap();
+        assert_eq!(after.value, serde_json::json!(2));
+        assert_eq!(after.revision, 2);
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn a_binding_filter_is_applied_not_ignored() {
+        // Regression: before M1.3 the aggregation's filter was parsed and then dropped, so a
+        // card declared as "count where region = us" counted every row.
+        let (engine, root) = imported("cmd_binding_filter");
+        let mut doc = engine.snapshot("w1").unwrap().doc;
+        let metric = metric_id(&doc);
+        {
+            let c = doc
+                .workspace
+                .components
+                .iter_mut()
+                .find(|c| c.id == metric)
+                .unwrap();
+            if let morphic_schema::Binding::MetricCard { aggregation } = &mut c.binding {
+                aggregation.filter = Some(eq_filter("region", serde_json::json!("us")));
+            }
+        }
+        // Persist the edited binding through the store, then reopen so the engine reads it.
+        let store = FileStore::new(&root).unwrap();
+        store.save_workspace(&doc).unwrap();
+        drop(engine);
+        let engine = Engine::new(&root).unwrap();
+        let got = engine.metric_data("w1", &metric).unwrap();
+        assert_eq!(got.value, serde_json::json!(2), "the binding filter must count");
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn interaction_state_survives_save_and_reopen() {
+        let (engine, root) = imported("cmd_persist");
+        let doc = engine.snapshot("w1").unwrap().doc;
+        let table = table_id(&doc);
+        engine
+            .apply(
+                "w1",
+                &[
+                    Command::SetComponentSort {
+                        component_id: table.clone(),
+                        sort: vec![sort_desc("amount")],
+                    },
+                    Command::SetSearch {
+                        component_id: table.clone(),
+                        text: Some("eu".into()),
+                    },
+                    Command::SetGlobalFilter {
+                        filters: vec![eq_filter("region", serde_json::json!("eu"))],
+                    },
+                ],
+                NOW,
+            )
+            .unwrap();
+        drop(engine);
+        let reopened = Engine::new(&root).unwrap();
+        let snap = reopened.snapshot("w1").unwrap();
+        assert_eq!(snap.revision, 2);
+        assert_eq!(snap.doc.workspace.global_filters.len(), 1);
+        let c = snap
+            .doc
+            .workspace
+            .components
+            .iter()
+            .find(|c| c.id == table)
+            .unwrap();
+        assert_eq!(c.state.sort, vec![sort_desc("amount")]);
+        assert_eq!(c.state.search.as_deref(), Some("eu"));
+        // And the reopened engine produces the same filtered, sorted answer.
+        let page = reopened.component_page("w1", &table, 0, 0).unwrap();
+        assert_eq!(page.total_rows, 3);
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn commands_have_a_stable_wire_shape() {
+        let cmd = Command::SetComponentSort {
+            component_id: "t1".into(),
+            sort: vec![sort_desc("amount")],
+        };
+        let wire = serde_json::to_value(&cmd).unwrap();
+        assert_eq!(wire["kind"], "setComponentSort");
+        assert_eq!(wire["componentId"], "t1");
+        let back: Command = serde_json::from_value(wire).unwrap();
+        assert_eq!(back, cmd);
+        let clear = Command::SetGlobalFilter { filters: vec![] };
+        assert_eq!(
+            serde_json::to_value(&clear).unwrap()["kind"],
+            "setGlobalFilter"
+        );
+    }
+
+    #[test]
+    fn the_duplicated_sort_and_filter_ceilings_agree() {
+        // schema may not depend on query, so the constants are declared twice. This is the
+        // guard that stops them drifting apart.
+        assert_eq!(morphic_schema::MAX_SORT_KEYS, morphic_query::sort::MAX_SORT_KEYS);
+        assert_eq!(
+            morphic_schema::MAX_FILTER_DEPTH,
+            morphic_query::filter::MAX_FILTER_DEPTH
+        );
+        assert_eq!(
+            morphic_schema::MAX_FILTER_NODES,
+            morphic_query::filter::MAX_FILTER_NODES
+        );
+        // And every operator the schema allows, the executor parses.
+        for op in morphic_schema::FILTER_OPS {
+            let node = match *op {
+                "and" | "or" => serde_json::json!({"op": op, "args": [
+                    {"op": "eq", "field": "region", "value": "eu"}
+                ]}),
+                "not" => serde_json::json!({"op": op, "args": [
+                    {"op": "eq", "field": "region", "value": "eu"}
+                ]}),
+                "is_null" | "not_null" => serde_json::json!({"op": op, "field": "region"}),
+                "in" => serde_json::json!({"op": op, "field": "region", "value": ["eu"]}),
+                "contains" => serde_json::json!({"op": op, "field": "region", "value": "e"}),
+                _ => serde_json::json!({"op": op, "field": "amount", "value": 1}),
+            };
+            assert!(
+                morphic_query::Filter::from_json(&node).is_ok(),
+                "schema allows '{op}' but the executor rejects it"
+            );
+        }
     }
 }

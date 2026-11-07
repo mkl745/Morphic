@@ -22,9 +22,22 @@ pub const MAX_COMPONENTS: usize = 64;
 pub const MAX_PAGE_SIZE: u32 = 1024;
 pub const MAX_BAR_LIMIT: u32 = 2000;
 pub const MAX_LINE_SERIES: usize = 8;
+/// Sort keys per component. Mirrors `morphic_query::sort::MAX_SORT_KEYS`; the two are pinned
+/// equal by a test in morphic-core, because this crate may not depend on the query crate.
+pub const MAX_SORT_KEYS: usize = 8;
+/// Filter tree ceilings (docs/architecture/03 §3 pass 4). Same values as the executor's, for
+/// the same reason: a plan the schema accepts must be a plan the engine will run.
+pub const MAX_FILTER_DEPTH: usize = 32;
+pub const MAX_FILTER_NODES: usize = 512;
 
 /// The closed aggregation vocabulary. Anything else is a schema error, not a silent no-op.
 pub const AGGREGATION_OPS: &[&str] = &["count", "sum", "avg", "min", "max", "distinct_count"];
+
+/// The closed filter vocabulary. Kept in step with `morphic_query::Filter::from_json`.
+pub const FILTER_OPS: &[&str] = &[
+    "and", "or", "not", "eq", "neq", "gt", "gte", "lt", "lte", "in", "contains", "is_null",
+    "not_null",
+];
 
 // ---------------------------------------------------------------------------
 // Document
@@ -110,6 +123,10 @@ pub struct ComponentSpec {
     pub binding: Binding,
     #[serde(default)]
     pub interactions: Interactions,
+    /// Persisted interaction state (docs/architecture/03 §2.1). Omitted from JSON when empty so
+    /// a generated document is byte-identical to one written before M1.3.
+    #[serde(default, skip_serializing_if = "ComponentState::is_empty")]
+    pub state: ComponentState,
     #[serde(default)]
     pub explanation: Option<Explanation>,
 }
@@ -125,6 +142,58 @@ pub struct Interactions {
     pub sort: bool,
     #[serde(default)]
     pub select: bool,
+}
+
+/// What the user has done to one component: the filter they applied, the sort they chose, the
+/// search they typed. `interactions` says what a component *allows*; this says what is
+/// *currently set*. Persisted so a sort indicator survives save and reopen (AT-07, AT-09).
+///
+/// A flat struct rather than a per-type enum, with pass 5 checking the keys against the
+/// component's capabilities — the contract's "state keys valid for type" rule.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ComponentState {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub filter: Option<FilterExpr>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub sort: Vec<SortRule>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub search: Option<String>,
+}
+
+impl ComponentState {
+    pub fn is_empty(&self) -> bool {
+        self.filter.is_none() && self.sort.is_empty() && self.search.is_none()
+    }
+}
+
+/// One sort key. This crate cannot depend on `morphic-query` (DAG rule), so it declares its own
+/// vocabulary and morphic-core converts; a test pins the two against each other.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SortRule {
+    pub field: String,
+    #[serde(default)]
+    pub dir: SortDir,
+    #[serde(default)]
+    pub nulls: NullsOrder,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum SortDir {
+    #[default]
+    Asc,
+    Desc,
+}
+
+/// Where nulls go, independent of direction. `last` means last ascending *and* descending.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum NullsOrder {
+    First,
+    #[default]
+    Last,
 }
 
 /// Type-specific data binding. Tagged by `kind`.
@@ -193,7 +262,7 @@ pub struct Aggregation {
 
 /// A safe filter expression. Phase 0 uses a flat node representation; the typed-tree
 /// grammar with the full operator set is finalized in M1.3 (docs/architecture/03 §2.3).
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct FilterExpr {
     /// and | or | not | eq | neq | gt | gte | lt | lte | in | contains | is_null | not_null
@@ -324,6 +393,13 @@ pub fn validate(doc: &WorkspaceDoc) -> Vec<ValidationIssue> {
 
         // Pass 5: resource ceilings + closed aggregation vocabulary.
         validate_binding_resources(c, &ptr, &mut issues);
+        validate_state(c, &ptr, &mut issues);
+    }
+
+    // Pass 4: global filters obey the same ceilings as component filters.
+    for (i, f) in ws.global_filters.iter().enumerate() {
+        let mut nodes = 0usize;
+        validate_filter(f, &format!("/workspace/globalFilters/{i}"), 0, &mut nodes, &mut issues);
     }
 
     // Layout order must reference exactly the component ids (no orphans, no missing).
@@ -349,6 +425,136 @@ pub fn validate(doc: &WorkspaceDoc) -> Vec<ValidationIssue> {
     issues
 }
 
+/// Pass 5: "state keys valid for type". `interactions` declares what a component allows; state
+/// that exceeds it is a document error, not something the UI is trusted to avoid sending.
+fn validate_state(c: &ComponentSpec, ptr: &str, issues: &mut Vec<ValidationIssue>) {
+    let st = &c.state;
+    if st.filter.is_some() && !c.interactions.filter {
+        issues.push(ValidationIssue {
+            pointer: format!("{ptr}/state/filter"),
+            rule: format!("'{}' does not allow filtering", c.component_type),
+        });
+    }
+    if !st.sort.is_empty() && !c.interactions.sort {
+        issues.push(ValidationIssue {
+            pointer: format!("{ptr}/state/sort"),
+            rule: format!("'{}' does not allow sorting", c.component_type),
+        });
+    }
+    if st.search.is_some() && !c.interactions.search {
+        issues.push(ValidationIssue {
+            pointer: format!("{ptr}/state/search"),
+            rule: format!("'{}' does not allow search", c.component_type),
+        });
+    }
+    if let Some(f) = &st.filter {
+        let mut nodes = 0usize;
+        validate_filter(f, &format!("{ptr}/state/filter"), 0, &mut nodes, issues);
+    }
+    if st.sort.len() > MAX_SORT_KEYS {
+        issues.push(ValidationIssue {
+            pointer: format!("{ptr}/state/sort"),
+            rule: format!("too many sort keys ({} > {})", st.sort.len(), MAX_SORT_KEYS),
+        });
+    }
+    // A repeated field makes the second key unreachable, which is a mistake rather than a
+    // preference; silently ignoring it would hide the mistake.
+    for (i, rule) in st.sort.iter().enumerate() {
+        if rule.field.is_empty() {
+            issues.push(ValidationIssue {
+                pointer: format!("{ptr}/state/sort/{i}/field"),
+                rule: "sort field must not be empty".into(),
+            });
+        }
+        if st.sort[..i].iter().any(|prev| prev.field == rule.field) {
+            issues.push(ValidationIssue {
+                pointer: format!("{ptr}/state/sort/{i}/field"),
+                rule: format!("duplicate sort field '{}'", rule.field),
+            });
+        }
+    }
+}
+
+/// Pass 4: the filter grammar is closed and its shape is bounded. Depth and node ceilings match
+/// the executor's so a document the schema accepts is a plan the engine will run.
+fn validate_filter(
+    f: &FilterExpr,
+    ptr: &str,
+    depth: usize,
+    nodes: &mut usize,
+    issues: &mut Vec<ValidationIssue>,
+) {
+    if depth > MAX_FILTER_DEPTH {
+        issues.push(ValidationIssue {
+            pointer: ptr.into(),
+            rule: format!("filter nesting exceeds {MAX_FILTER_DEPTH} levels"),
+        });
+        return;
+    }
+    *nodes += 1;
+    if *nodes > MAX_FILTER_NODES {
+        // One issue for the whole tree, not one per remaining node.
+        if *nodes == MAX_FILTER_NODES + 1 {
+            issues.push(ValidationIssue {
+                pointer: ptr.into(),
+                rule: format!("filter exceeds {MAX_FILTER_NODES} nodes"),
+            });
+        }
+        return;
+    }
+    if !FILTER_OPS.contains(&f.op.as_str()) {
+        issues.push(ValidationIssue {
+            pointer: format!("{ptr}/op"),
+            rule: format!("unknown filter operator '{}'", f.op),
+        });
+        return;
+    }
+    let connective = matches!(f.op.as_str(), "and" | "or" | "not");
+    if connective {
+        if f.op == "not" && f.args.len() != 1 {
+            issues.push(ValidationIssue {
+                pointer: format!("{ptr}/args"),
+                rule: "'not' takes exactly one arg".into(),
+            });
+        }
+        if f.op != "not" && f.args.is_empty() {
+            issues.push(ValidationIssue {
+                pointer: format!("{ptr}/args"),
+                rule: format!("'{}' needs at least one arg", f.op),
+            });
+        }
+    } else {
+        if !f.args.is_empty() {
+            issues.push(ValidationIssue {
+                pointer: format!("{ptr}/args"),
+                rule: format!("'{}' is a leaf and takes no args", f.op),
+            });
+        }
+        if f.field.as_deref().unwrap_or("").is_empty() {
+            issues.push(ValidationIssue {
+                pointer: format!("{ptr}/field"),
+                rule: format!("'{}' requires a field", f.op),
+            });
+        }
+        let needs_value = !matches!(f.op.as_str(), "is_null" | "not_null");
+        if needs_value && f.value.is_none() {
+            issues.push(ValidationIssue {
+                pointer: format!("{ptr}/value"),
+                rule: format!("'{}' requires a value", f.op),
+            });
+        }
+        if f.op == "in" && !matches!(f.value, Some(serde_json::Value::Array(_))) {
+            issues.push(ValidationIssue {
+                pointer: format!("{ptr}/value"),
+                rule: "'in' requires an array value".into(),
+            });
+        }
+    }
+    for (i, arg) in f.args.iter().enumerate() {
+        validate_filter(arg, &format!("{ptr}/args/{i}"), depth + 1, nodes, issues);
+    }
+}
+
 /// Closed-vocabulary check for one aggregation. A free function rather than a closure so
 /// callers can keep pushing to the same `issues` vector without a unique-borrow conflict.
 fn check_agg_op(agg: &Aggregation, location: &str, issues: &mut Vec<ValidationIssue>) {
@@ -357,6 +563,16 @@ fn check_agg_op(agg: &Aggregation, location: &str, issues: &mut Vec<ValidationIs
             pointer: location.into(),
             rule: format!("unknown aggregation op '{}'", agg.op),
         });
+    }
+    if let Some(f) = &agg.filter {
+        let mut nodes = 0usize;
+        validate_filter(
+            f,
+            &format!("{location}/filter"),
+            0,
+            &mut nodes,
+            issues,
+        );
     }
 }
 
@@ -627,7 +843,7 @@ pub fn registry_manifest() -> serde_json::Value {
 mod tests {
     use super::*;
 
-    fn minimal_doc() -> WorkspaceDoc {
+    pub(crate) fn minimal_doc() -> WorkspaceDoc {
         WorkspaceDoc {
             schema_version: SCHEMA_VERSION.into(),
             workspace: Workspace {
@@ -664,6 +880,7 @@ mod tests {
                         },
                     },
                     interactions: Interactions::default(),
+                    state: Default::default(),
                     explanation: None,
                 }],
             },
@@ -1019,5 +1236,239 @@ mod tests {
             checked > 10,
             "expected a meaningful number of pointers, got {checked}"
         );
+    }
+}
+
+#[cfg(test)]
+mod state_tests {
+    use super::*;
+
+    fn doc_with_state(state: ComponentState, interactions: Interactions) -> WorkspaceDoc {
+        let mut doc = crate::tests::minimal_doc();
+        doc.workspace.components[0].state = state;
+        doc.workspace.components[0].interactions = interactions;
+        doc
+    }
+
+    fn table_interactions() -> Interactions {
+        Interactions {
+            filter: true,
+            search: true,
+            sort: true,
+            select: true,
+        }
+    }
+
+    fn rule(field: &str) -> SortRule {
+        SortRule {
+            field: field.into(),
+            dir: SortDir::Asc,
+            nulls: NullsOrder::Last,
+        }
+    }
+
+    #[test]
+    fn empty_state_is_omitted_from_json() {
+        // A generated document must stay byte-identical to a pre-M1.3 one.
+        let doc = doc_with_state(ComponentState::default(), table_interactions());
+        let json = serde_json::to_value(&doc).unwrap();
+        assert!(json["workspace"]["components"][0].get("state").is_none());
+    }
+
+    #[test]
+    fn state_round_trips_and_defaults_are_direction_and_nulls() {
+        // Deserialized without dir/nulls, so this genuinely tests the defaults.
+        let bare: SortRule = serde_json::from_value(serde_json::json!({"field":"amount"})).unwrap();
+        assert_eq!(bare.dir, SortDir::Asc);
+        assert_eq!(bare.nulls, NullsOrder::Last);
+        let state = ComponentState {
+            filter: None,
+            sort: vec![bare],
+            search: Some("eu".into()),
+        };
+        let doc = doc_with_state(state.clone(), table_interactions());
+        let wire = serde_json::to_value(&doc).unwrap();
+        assert_eq!(wire["workspace"]["components"][0]["state"]["sort"][0]["dir"], "asc");
+        assert_eq!(
+            wire["workspace"]["components"][0]["state"]["sort"][0]["nulls"],
+            "last"
+        );
+        let back: WorkspaceDoc = serde_json::from_value(wire).unwrap();
+        assert_eq!(back.workspace.components[0].state, state);
+        assert!(validate(&back).is_empty());
+    }
+
+    #[test]
+    fn a_pre_13_document_without_state_still_decodes() {
+        let mut doc = crate::tests::minimal_doc();
+        doc.workspace.components[0].interactions = table_interactions();
+        let mut wire = serde_json::to_value(&doc).unwrap();
+        wire["workspace"]["components"][0].as_object_mut().unwrap().remove("state");
+        let back: WorkspaceDoc = serde_json::from_value(wire).unwrap();
+        assert!(back.workspace.components[0].state.is_empty());
+    }
+
+    #[test]
+    fn state_beyond_the_components_capabilities_is_rejected() {
+        // A metric card allows filtering but not sorting or search.
+        let metric = Interactions {
+            filter: true,
+            ..Default::default()
+        };
+        let doc = doc_with_state(
+            ComponentState {
+                sort: vec![rule("amount")],
+                ..Default::default()
+            },
+            metric.clone(),
+        );
+        let issues = validate(&doc);
+        assert!(issues.iter().any(|i| i.pointer.ends_with("/state/sort")), "{issues:?}");
+
+        let doc = doc_with_state(
+            ComponentState {
+                search: Some("x".into()),
+                ..Default::default()
+            },
+            metric,
+        );
+        assert!(validate(&doc).iter().any(|i| i.pointer.ends_with("/state/search")));
+    }
+
+    #[test]
+    fn sort_keys_are_bounded_and_unique() {
+        let many: Vec<SortRule> = (0..MAX_SORT_KEYS + 1).map(|i| rule(&format!("f{i}"))).collect();
+        let doc = doc_with_state(
+            ComponentState {
+                sort: many,
+                ..Default::default()
+            },
+            table_interactions(),
+        );
+        assert!(validate(&doc).iter().any(|i| i.rule.contains("too many sort keys")));
+
+        let doc = doc_with_state(
+            ComponentState {
+                sort: vec![rule("a"), rule("a")],
+                ..Default::default()
+            },
+            table_interactions(),
+        );
+        assert!(validate(&doc).iter().any(|i| i.rule.contains("duplicate sort field")));
+    }
+
+    #[test]
+    fn filter_grammar_is_closed_and_bounded_wherever_it_appears() {
+        let bad = FilterExpr {
+            op: "regex".into(),
+            field: Some("level".into()),
+            value: Some(serde_json::json!("x")),
+            args: vec![],
+        };
+        // component state
+        let doc = doc_with_state(
+            ComponentState {
+                filter: Some(bad.clone()),
+                ..Default::default()
+            },
+            table_interactions(),
+        );
+        assert!(validate(&doc).iter().any(|i| i.rule.contains("unknown filter operator")));
+        // global filters
+        let mut doc = crate::tests::minimal_doc();
+        doc.workspace.global_filters = vec![bad];
+        assert!(validate(&doc).iter().any(|i| i.pointer.starts_with("/workspace/globalFilters")));
+    }
+
+    #[test]
+    fn filter_depth_and_node_ceilings_are_enforced() {
+        let mut f = FilterExpr {
+            op: "eq".into(),
+            field: Some("level".into()),
+            value: Some(serde_json::json!("ERROR")),
+            args: vec![],
+        };
+        for _ in 0..MAX_FILTER_DEPTH + 2 {
+            f = FilterExpr {
+                op: "not".into(),
+                field: None,
+                value: None,
+                args: vec![f],
+            };
+        }
+        let mut doc = crate::tests::minimal_doc();
+        doc.workspace.global_filters = vec![f];
+        assert!(validate(&doc).iter().any(|i| i.rule.contains("nesting")));
+
+        let leaf = FilterExpr {
+            op: "eq".into(),
+            field: Some("level".into()),
+            value: Some(serde_json::json!("ERROR")),
+            args: vec![],
+        };
+        let wide = FilterExpr {
+            op: "or".into(),
+            field: None,
+            value: None,
+            args: vec![leaf; MAX_FILTER_NODES + 5],
+        };
+        let mut doc = crate::tests::minimal_doc();
+        doc.workspace.global_filters = vec![wide];
+        let issues = validate(&doc);
+        assert_eq!(
+            issues.iter().filter(|i| i.rule.contains("nodes")).count(),
+            1,
+            "one issue for the tree, not one per node"
+        );
+    }
+
+    #[test]
+    fn leaf_and_connective_shapes_are_checked() {
+        let cases = [
+            (
+                FilterExpr { op: "and".into(), field: None, value: None, args: vec![] },
+                "at least one",
+            ),
+            (
+                FilterExpr { op: "not".into(), field: None, value: None, args: vec![] },
+                "exactly one",
+            ),
+            (FilterExpr {
+                op: "eq".into(),
+                field: None,
+                value: Some(serde_json::json!(1)),
+                args: vec![],
+            }, "requires a field"),
+            (FilterExpr {
+                op: "eq".into(),
+                field: Some("x".into()),
+                value: None,
+                args: vec![],
+            }, "requires a value"),
+            (FilterExpr {
+                op: "in".into(),
+                field: Some("x".into()),
+                value: Some(serde_json::json!(3)),
+                args: vec![],
+            }, "array"),
+        ];
+        for (f, want) in cases {
+            let mut doc = crate::tests::minimal_doc();
+            doc.workspace.global_filters = vec![f];
+            let issues = validate(&doc);
+            assert!(issues.iter().any(|i| i.rule.contains(want)), "{want}: {issues:?}");
+        }
+    }
+
+    #[test]
+    fn is_null_needs_no_value() {
+        let mut doc = crate::tests::minimal_doc();
+        doc.workspace.global_filters = vec![FilterExpr {
+            op: "is_null".into(),
+            field: Some("level".into()),
+            value: None,
+            args: vec![],
+        }];
+        assert!(validate(&doc).is_empty());
     }
 }

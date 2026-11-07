@@ -581,6 +581,7 @@ mod tests {
                         },
                     },
                     interactions: Interactions::default(),
+                    state: Default::default(),
                     explanation: None,
                 }],
             },
