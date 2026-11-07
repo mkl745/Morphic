@@ -425,7 +425,11 @@ jobs:
               sleep 2
               adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1
               adb pull /sdcard/ui.xml /tmp/ui.xml >/dev/null 2>&1
-              if [ -n "$(python3 tools/read_row_range.py /tmp/ui.xml --signature)" ]; then GEN=1; break; fi
+              # Require the RANGE, not just a data row. The range lives in the pager footer,
+              # so seeing it proves the footer is on screen and the page has settled. Breaking
+              # on the first data row let this stop with the footer below the fold, and the
+              # "Next page" tap then hit nothing — a fold-dependent race, not an engine bug.
+              if [ -n "$(python3 tools/read_row_range.py /tmp/ui.xml)" ]; then GEN=1; break; fi
               if [ $((i % 2)) = 0 ]; then
                 adb shell input swipe 540 1600 540 500 300 >/dev/null 2>&1
               fi
@@ -439,6 +443,15 @@ jobs:
             echo "RUNTIME_OK: live table rendered, range $(python3 tools/read_row_range.py /tmp/ui.xml)"
             echo "  first row: $BEFORE"
             echo "=== paging must be executed by Rust ==="
+            # Belt and braces: confirm the control is really in the dump before tapping it.
+            for i in $(seq 1 6); do
+              if grep -q "Next page" /tmp/ui.xml; then break; fi
+              adb shell input swipe 540 1600 540 700 300 >/dev/null 2>&1
+              sleep 2
+              adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1
+              adb pull /sdcard/ui.xml /tmp/ui.xml >/dev/null 2>&1
+            done
+            BEFORE="$(python3 tools/read_row_range.py /tmp/ui.xml --signature)"
             python3 tools/tap_poc.py "Next page"
             PAGE=0
             for i in $(seq 1 12); do
