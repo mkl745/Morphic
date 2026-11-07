@@ -527,7 +527,8 @@ mod tests {
                 offset: 0,
                 ..Default::default()
             },
-        ).unwrap();
+        )
+        .unwrap();
         let p2 = query_page(
             &t,
             &Plan {
@@ -535,7 +536,8 @@ mod tests {
                 offset: 2,
                 ..Default::default()
             },
-        ).unwrap();
+        )
+        .unwrap();
         let p3 = query_page(
             &t,
             &Plan {
@@ -543,7 +545,8 @@ mod tests {
                 offset: 4,
                 ..Default::default()
             },
-        ).unwrap();
+        )
+        .unwrap();
         assert_eq!(p1.rows[0][0], serde_json::json!(1));
         assert_eq!(p2.rows[0][0], serde_json::json!(3));
         assert_eq!(p3.rows[0][0], serde_json::json!(5));
@@ -561,7 +564,8 @@ mod tests {
                 offset: 999,
                 ..Default::default()
             },
-        ).unwrap();
+        )
+        .unwrap();
         assert!(page.rows.is_empty());
         assert_eq!(page.offset, 5);
         assert!(!page.has_more);
@@ -576,7 +580,8 @@ mod tests {
                 limit: 1,
                 ..Default::default()
             },
-        ).unwrap();
+        )
+        .unwrap();
         assert_eq!(page.rows[0][1], serde_json::Value::Null);
         assert_eq!(page.rows[0][2], serde_json::Value::Null);
     }
@@ -791,10 +796,7 @@ mod plan_tests {
     }
 
     fn ids(page: &Page) -> Vec<i64> {
-        page.rows
-            .iter()
-            .map(|r| r[0].as_i64().unwrap())
-            .collect()
+        page.rows.iter().map(|r| r[0].as_i64().unwrap()).collect()
     }
 
     fn run(filter: serde_json::Value) -> Page {
@@ -835,7 +837,11 @@ mod plan_tests {
         let p = run(json!({"op": "not", "args": [
             {"op": "eq", "field": "region", "value": "eu"}
         ]}));
-        assert_eq!(ids(&p), vec![2, 3, 4, 5], "row 3 is null and not-eu matched");
+        assert_eq!(
+            ids(&p),
+            vec![2, 3, 4, 5],
+            "row 3 is null and not-eu matched"
+        );
     }
 
     #[test]
@@ -931,7 +937,11 @@ mod plan_tests {
             },
         )
         .unwrap();
-        assert_eq!(ids(&p), vec![1, 6, 2, 5, 3, 4], "nulls last, ties in source order");
+        assert_eq!(
+            ids(&p),
+            vec![1, 6, 2, 5, 3, 4],
+            "nulls last, ties in source order"
+        );
     }
 
     #[test]
@@ -1052,7 +1062,10 @@ mod plan_tests {
             &sales(),
             &Plan {
                 group_by: vec!["region".into()],
-                aggs: vec![AggSpec::new("count", None), AggSpec::new("sum", Some("amount"))],
+                aggs: vec![
+                    AggSpec::new("count", None),
+                    AggSpec::new("sum", Some("amount")),
+                ],
                 ..Default::default()
             },
         )

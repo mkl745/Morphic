@@ -46,9 +46,7 @@ fn wide_table() -> Table {
     cols.push(Column {
         name: "amount".into(),
         dtype: DataType::Float64,
-        values: ColumnValues::Float64(
-            (0..ROWS).map(|i| ((i * 37) % 1000) as f64 / 7.0).collect(),
-        ),
+        values: ColumnValues::Float64((0..ROWS).map(|i| ((i * 37) % 1000) as f64 / 7.0).collect()),
         nulls: (0..ROWS).map(|i| i % 97 == 0).collect(),
     });
     for c in 3..10 {
@@ -89,13 +87,19 @@ fn filter_and_sort_100k_by_10() {
     let start = Instant::now();
     let page = query_page(&table, &plan).expect("plan must be valid");
     let elapsed = start.elapsed();
-    assert_eq!(page.total_rows, warm.total_rows, "the query must be deterministic");
+    assert_eq!(
+        page.total_rows, warm.total_rows,
+        "the query must be deterministic"
+    );
     assert_eq!(page.rows.len(), 256);
 
     // A second measurement with grouping, since charts take that path.
     let grouped = Plan {
         group_by: vec!["region".into()],
-        aggs: vec![AggSpec::new("sum", Some("amount")), AggSpec::new("count", None)],
+        aggs: vec![
+            AggSpec::new("sum", Some("amount")),
+            AggSpec::new("count", None),
+        ],
         ..plan.clone()
     };
     let gstart = Instant::now();
@@ -129,10 +133,10 @@ fn filter_and_sort_100k_by_10() {
         unfiltered.total_rows
     ));
     card.push_str(
-        "\n**This is a CI x86 runner, not a phone.** The M1.3 exit target is ≤150 ms on a\n"
+        "\n**This is a CI x86 runner, not a phone.** The M1.3 exit target is ≤150 ms on a\n",
     );
     card.push_str(
-        "mid-class ARM device; that figure must come from the device harness. The assertion\n"
+        "mid-class ARM device; that figure must come from the device harness. The assertion\n",
     );
     card.push_str(&format!(
         "here is a {CEILING_MS} ms regression ceiling, loose on purpose — it catches an\n"
@@ -140,8 +144,7 @@ fn filter_and_sort_100k_by_10() {
     card.push_str("accidental quadratic path, not a 20% drift on a shared runner.\n");
 
     std::fs::create_dir_all(format!("{ROOT}/target")).ok();
-    std::fs::write(format!("{ROOT}/target/query-perf.md"), &card)
-        .expect("report must be writable");
+    std::fs::write(format!("{ROOT}/target/query-perf.md"), &card).expect("report must be writable");
     println!("{card}");
 
     assert!(

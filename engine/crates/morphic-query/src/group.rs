@@ -105,7 +105,10 @@ pub(crate) fn validate(
             Some(name) => {
                 let col = crate::find_column(table, name)?;
                 if matches!(a.op.as_str(), "sum" | "avg")
-                    && !matches!(col.values, ColumnValues::Int64(_) | ColumnValues::Float64(_))
+                    && !matches!(
+                        col.values,
+                        ColumnValues::Int64(_) | ColumnValues::Float64(_)
+                    )
                 {
                     return Err(QueryError::NotNumeric {
                         field: col.name.clone(),
@@ -159,12 +162,7 @@ pub(crate) fn execute(
                 }
                 let i = keys.len();
                 index.insert(key, i);
-                keys.push(
-                    key_cols
-                        .iter()
-                        .map(|c| crate::cell_json(c, *row))
-                        .collect(),
-                );
+                keys.push(key_cols.iter().map(|c| crate::cell_json(c, *row)).collect());
                 accs.push(aggs.iter().map(|_| Acc::default()).collect());
                 i
             }
@@ -238,7 +236,11 @@ fn number_at(col: &morphic_model::Column, row: usize) -> Option<f64> {
 /// `aggregate` follows.
 fn finish(acc: &Acc, spec: &AggSpec) -> Value {
     match spec.op.as_str() {
-        "count" => serde_json::json!(if spec.field.is_none() { acc.n } else { acc.seen }),
+        "count" => serde_json::json!(if spec.field.is_none() {
+            acc.n
+        } else {
+            acc.seen
+        }),
         "distinct_count" => serde_json::json!(acc.distinct.len()),
         "sum" | "avg" => {
             if acc.seen == 0 {

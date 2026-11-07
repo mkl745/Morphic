@@ -146,7 +146,9 @@ impl Filter {
             "and" | "or" => {
                 let kids = args()?;
                 if kids.is_empty() {
-                    return Err(QueryError::InvalidPlan(format!("'{op}' needs at least one arg")));
+                    return Err(QueryError::InvalidPlan(format!(
+                        "'{op}' needs at least one arg"
+                    )));
                 }
                 Ok(if op == "and" {
                     Filter::And(kids)
@@ -157,7 +159,9 @@ impl Filter {
             "not" => {
                 let mut kids = args()?;
                 if kids.len() != 1 {
-                    return Err(QueryError::InvalidPlan("'not' takes exactly one arg".into()));
+                    return Err(QueryError::InvalidPlan(
+                        "'not' takes exactly one arg".into(),
+                    ));
                 }
                 Ok(Filter::Not(Box::new(kids.remove(0))))
             }
@@ -191,7 +195,9 @@ impl Filter {
                     }
                 };
                 if values.is_empty() {
-                    return Err(QueryError::InvalidPlan("'in' needs at least one value".into()));
+                    return Err(QueryError::InvalidPlan(
+                        "'in' needs at least one value".into(),
+                    ));
                 }
                 Ok(Filter::In { field: f, values })
             }
@@ -405,9 +411,7 @@ impl Bound {
         }
         match (self, &col.values) {
             (Bound::Int(b), ColumnValues::Int64(v)) => v.get(row).map(|x| x.cmp(b)),
-            (Bound::Float(b), ColumnValues::Float64(v)) => {
-                v.get(row).map(|x| x.total_cmp(b))
-            }
+            (Bound::Float(b), ColumnValues::Float64(v)) => v.get(row).map(|x| x.total_cmp(b)),
             // An integer column can meet a float bound through `in` on a mixed plan.
             (Bound::Float(b), ColumnValues::Int64(v)) => {
                 v.get(row).map(|x| (*x as f64).total_cmp(b))
