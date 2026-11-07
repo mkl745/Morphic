@@ -161,6 +161,71 @@ class EngineController extends ChangeNotifier {
     }
   }
 
+  /// One page of a component's rows, with its persisted filter/sort/search and any global
+  /// filters applied **by Rust**. The UI never assembles that plan.
+  ///
+  /// Returns null (and sets [error]) on failure, matching [page]'s convention.
+  Future<PageResult?> componentPage(
+    String componentId, {
+    int offset = 0,
+    int limit = 0,
+  }) async {
+    final id = _workspaceId;
+    if (id == null) {
+      _error = 'no workspace open';
+      notifyListeners();
+      return null;
+    }
+    try {
+      final res = bridge.componentPage(
+        storageRoot: storageRoot,
+        workspaceId: id,
+        componentId: componentId,
+        offset: offset,
+        limit: limit,
+      );
+      return PageResult.fromJson(res);
+    } catch (e) {
+      _error = e.toString();
+      notifyListeners();
+      return null;
+    }
+  }
+
+  /// Apply interaction commands and adopt the document Rust returns.
+  ///
+  /// The outcome carries the whole document, so the UI re-renders from canonical state rather
+  /// than guessing what changed. Returns the ids of components whose data may have changed,
+  /// or null when the batch was rejected — in which case nothing was applied and the previous
+  /// document is still current.
+  Future<List<String>?> applyCommands(List<Map<String, dynamic>> commands) async {
+    final id = _workspaceId;
+    if (id == null) {
+      _error = 'no workspace open';
+      notifyListeners();
+      return null;
+    }
+    if (commands.isEmpty) return const [];
+    try {
+      final res = bridge.applyCommands(
+        storageRoot: storageRoot,
+        workspaceId: id,
+        commands: commands,
+        nowIso: DateTime.now().toUtc().toIso8601String(),
+      );
+      final doc = res['doc'];
+      if (doc is Map<String, dynamic>) _doc = doc;
+      _revision = (res['revision'] as num?)?.toInt() ?? _revision;
+      _error = null;
+      notifyListeners();
+      return (res['affected'] as List? ?? const []).whereType<String>().toList();
+    } catch (e) {
+      _error = e.toString();
+      notifyListeners();
+      return null;
+    }
+  }
+
   /// The value behind a metric card.
   ///
   /// A returned `null` means **no data** — a real answer, distinct from zero. A *failure*

@@ -15,8 +15,59 @@ import 'package:morphic_flutter/engine/import_controller.dart';
 
 /// Records every call so tests can assert the controller never computes data itself.
 class RecordingBridge implements MorphicBridge {
+  @override
+  Map<String, dynamic> applyCommands({
+    required String storageRoot,
+    required String workspaceId,
+    required List<Map<String, dynamic>> commands,
+    required String nowIso,
+  }) {
+    commandBatches.add(commands);
+    lastNowIso = nowIso;
+    if (failCommands) {
+      throw const MorphicBridgeException("commands: filter field 'nope' is unknown");
+    }
+    return commandOutcome ??
+        {
+          'revision': 8,
+          'affected': ['data_table'],
+          'changed': true,
+          'doc': _doc(),
+        };
+  }
+
+  @override
+  Map<String, dynamic> componentPage({
+    required String storageRoot,
+    required String workspaceId,
+    required String componentId,
+    required int offset,
+    required int limit,
+  }) {
+    componentPageCalls.add({
+      'componentId': componentId,
+      'offset': offset,
+      'limit': limit,
+    });
+    if (failQuery) throw const MorphicBridgeException('query: unknown field');
+    return {
+      'rows': [
+        ['eu', 10],
+      ],
+      'totalRows': 5,
+      'offset': offset,
+      'limit': limit,
+      'hasMore': true,
+    };
+  }
+
   final List<String> calls = [];
   final List<Map<String, dynamic>> plans = [];
+  final List<List<Map<String, dynamic>>> commandBatches = [];
+  final List<Map<String, dynamic>> componentPageCalls = [];
+  bool failCommands = false;
+  Map<String, dynamic>? commandOutcome;
+  String? lastNowIso;
   bool failImport = false;
   bool failQuery = false;
   Object? metricValue = 42;
@@ -44,7 +95,7 @@ class RecordingBridge implements MorphicBridge {
 
   @override
   EngineInfo engineInfo() =>
-      const EngineInfo(apiVersion: 4, coreVersion: '0.1.0', engine: 'morphic');
+      const EngineInfo(apiVersion: 5, coreVersion: '0.1.0', engine: 'morphic');
 
   @override
   Map<String, dynamic> profileCsv(Uint8List bytes) => {'rowCount': 3, 'fieldCount': 2};
@@ -303,6 +354,99 @@ void main() {
       await c.open('w1');
       await c.page(search: '');
       expect(bridge.plans.last.containsKey('search'), isFalse);
+    });
+
+    test('applyCommands forwards the batch and adopts the returned document',
+        () async {
+      final bridge = RecordingBridge();
+      final c = EngineController(bridge: bridge, storageRoot: '/tmp/m');
+      await c.open('w1');
+      final cmds = [
+        {
+          'kind': 'setComponentSort',
+          'componentId': 'data_table',
+          'sort': [
+            {'field': 'amount', 'dir': 'desc', 'nulls': 'last'},
+          ],
+        },
+      ];
+      final affected = await c.applyCommands(cmds);
+      expect(affected, ['data_table']);
+      expect(bridge.commandBatches.single, cmds);
+      expect(c.revision, 8, reason: 'the engine owns the revision, not the UI');
+      expect(c.doc, isNotNull);
+      expect(c.error, isNull);
+      // Rust stamps the timestamp; Dart only supplies a UTC clock reading.
+      expect(bridge.lastNowIso, isNotNull);
+      expect(bridge.lastNowIso!, endsWith('Z'));
+    });
+
+    test('a rejected batch leaves the previous document current', () async {
+      final bridge = RecordingBridge();
+      final c = EngineController(bridge: bridge, storageRoot: '/tmp/m');
+      await c.open('w1');
+      final before = c.revision;
+      final docBefore = c.doc;
+      bridge.failCommands = true;
+      final affected = await c.applyCommands([
+        {'kind': 'setComponentFilter', 'componentId': 'data_table', 'filter': null},
+      ]);
+      expect(affected, isNull);
+      expect(c.revision, before, reason: 'a rejected batch must not bump the revision');
+      expect(identical(c.doc, docBefore), isTrue,
+          reason: 'nothing was applied, so the old document is still the truth');
+      expect(c.error, contains('unknown'));
+    });
+
+    test('an empty batch is a no-op that never reaches the bridge', () async {
+      final bridge = RecordingBridge();
+      final c = EngineController(bridge: bridge, storageRoot: '/tmp/m');
+      await c.open('w1');
+      expect(await c.applyCommands([]), isEmpty);
+      expect(bridge.commandBatches, isEmpty);
+    });
+
+    test('applyCommands before open is a guarded error, not a crash', () async {
+      final bridge = RecordingBridge();
+      final c = EngineController(bridge: bridge, storageRoot: '/tmp/m');
+      expect(await c.applyCommands([
+        {'kind': 'setSearch', 'componentId': 'data_table', 'text': 'x'},
+      ]), isNull);
+      expect(c.error, isNotNull);
+      expect(bridge.commandBatches, isEmpty);
+    });
+
+    test('componentPage asks Rust for the page instead of building a plan', () async {
+      final bridge = RecordingBridge();
+      final c = EngineController(bridge: bridge, storageRoot: '/tmp/m');
+      await c.open('w1');
+      final page = await c.componentPage('data_table', offset: 2, limit: 2);
+      expect(page, isNotNull);
+      expect(page!.rows, [
+        ['eu', 10],
+      ]);
+      expect(page.totalRows, 5);
+      expect(bridge.componentPageCalls.single,
+          {'componentId': 'data_table', 'offset': 2, 'limit': 2});
+      expect(bridge.plans, isEmpty,
+          reason: 'the composed plan is Rust\'s job — it must apply global filters too');
+    });
+
+    test('a component page failure is null with the error recorded', () async {
+      final bridge = RecordingBridge();
+      final c = EngineController(bridge: bridge, storageRoot: '/tmp/m');
+      await c.open('w1');
+      bridge.failQuery = true;
+      expect(await c.componentPage('data_table'), isNull);
+      expect(c.error, contains('unknown field'));
+    });
+
+    test('componentPage before open is a guarded error, not a crash', () async {
+      final bridge = RecordingBridge();
+      final c = EngineController(bridge: bridge, storageRoot: '/tmp/m');
+      expect(await c.componentPage('data_table'), isNull);
+      expect(c.error, isNotNull);
+      expect(bridge.componentPageCalls, isEmpty);
     });
 
     test('page before open is a guarded error, not a crash', () async {

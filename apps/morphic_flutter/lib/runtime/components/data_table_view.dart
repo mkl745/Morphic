@@ -1,8 +1,10 @@
-/// `data_table` renderer (M1.1 task 1.1.5).
+/// `data_table` renderer (M1.1 task 1.1.5; interactions M1.3 task 1.3.3).
 ///
-/// Paging and search are executed by Rust: this widget sends a plan and draws the page it
-/// gets back. It never slices or filters the full dataset locally, so what the user sees
-/// cannot disagree with canonical engine state.
+/// Paging, search, sorting and filtering are all executed by Rust. This widget sends
+/// **commands** to change persisted interaction state and then asks for the component's page;
+/// it never slices, filters or sorts a row locally, so what the user sees cannot disagree with
+/// canonical engine state — and a sort survives save and reopen because it lives in the
+/// document, not in this State object.
 ///
 /// Layout: the header sits *outside* the vertical scroll view but *inside* the shared
 /// horizontal one, so it stays pinned while rows scroll vertically and moves in lockstep
@@ -14,9 +16,12 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../design_system/tokens.dart';
-import '../component_registry.dart';
 import '../../engine/engine_controller.dart';
+import '../../engine/interaction.dart';
+import '../component_registry.dart';
 import '../value_format.dart';
+import 'row_detail_sheet.dart';
+import 'table_filter_menu.dart';
 
 /// Hard ceiling mirrored from `MAX_PAGE_SIZE` in morphic-schema / morphic-query.
 const int maxPageSize = 1024;
@@ -51,8 +56,23 @@ class _DataTableViewState extends State<DataTableView> {
   PageResult? _page;
   String? _error;
   int _offset = 0;
-  String _search = '';
   int _attempt = 0;
+
+  /// The revision this widget last rendered. Comparing `old.ctx.engine.revision` against
+  /// `widget.ctx.engine.revision` cannot work — both contexts hold the *same* controller, so
+  /// both sides always read the new value. The last rendered revision has to be remembered
+  /// here, or a command sent by another component would never refresh this table.
+  int _seenRevision = -1;
+
+  /// What the engine has persisted for this component. Read from the document, never held
+  /// independently, so a rejected command cannot leave the header showing a sort that is not
+  /// actually applied.
+  ComponentInteraction get _interaction => widget.ctx.state;
+  String get _search => _interaction.search ?? '';
+
+  /// Set while a command is in flight, so a second tap cannot race the first.
+  bool _commandBusy = false;
+  String? _commandError;
 
   /// Column widths measured from real cell content, then **frozen** for the session so they
   /// do not jitter as you page. Sizing from the header alone made a 24-character ISO
@@ -85,15 +105,28 @@ class _DataTableViewState extends State<DataTableView> {
   @override
   void initState() {
     super.initState();
+    _searchCtrl.text = _search;
+    _seenRevision = widget.ctx.engine.revision;
     _fetch();
   }
 
   @override
   void didUpdateWidget(DataTableView old) {
     super.didUpdateWidget(old);
-    if (old.ctx.id != widget.ctx.id ||
-        old.ctx.engine.revision != widget.ctx.engine.revision) {
+    final revision = widget.ctx.engine.revision;
+    if (old.ctx.id != widget.ctx.id) {
       _offset = 0;
+      _seenRevision = revision;
+      _searchCtrl.text = _search;
+      _fetch();
+      return;
+    }
+    if (revision != _seenRevision) {
+      // A new revision means the interaction state or the data changed; either way the
+      // current offset may not exist any more. Reset to the top (AT-07).
+      _seenRevision = revision;
+      _offset = 0;
+      if (_searchCtrl.text != _search) _searchCtrl.text = _search;
       _fetch();
     }
   }
@@ -111,10 +144,10 @@ class _DataTableViewState extends State<DataTableView> {
       _state = _Load.pending;
       _error = null;
     });
-    final res = await widget.ctx.engine.page(
+    final res = await widget.ctx.engine.componentPage(
+      widget.ctx.id,
       offset: _offset,
       limit: _pageSize,
-      search: _search.isEmpty ? null : _search,
     );
     if (!mounted || attempt != _attempt) return;
     setState(() {
@@ -164,10 +197,67 @@ class _DataTableViewState extends State<DataTableView> {
     _debounce?.cancel();
     _debounce = Timer(widget.searchDebounce, () {
       if (!mounted) return;
-      _search = value.trim();
-      _offset = 0;
-      _fetch();
+      final trimmed = value.trim();
+      if (trimmed == _search) return;
+      _send([Commands.setSearch(widget.ctx.id, trimmed.isEmpty ? null : trimmed)]);
     });
+  }
+
+  /// Send a batch and let the controller's revision bump drive the rebuild. A rejected batch
+  /// leaves the document alone, so the header keeps showing what is actually applied.
+  Future<void> _send(List<Map<String, dynamic>> commands) async {
+    if (_commandBusy) return;
+    setState(() {
+      _commandBusy = true;
+      _commandError = null;
+    });
+    final affected = await widget.ctx.engine.applyCommands(commands);
+    if (!mounted) return;
+    setState(() {
+      _commandBusy = false;
+      _commandError = affected == null ? widget.ctx.engine.error : null;
+    });
+    if (affected != null) {
+      // Claim the revision before fetching, so the rebuild this command triggered does not
+      // fetch the same page a second time.
+      _seenRevision = widget.ctx.engine.revision;
+      _offset = 0;
+      await _fetch();
+    }
+  }
+
+  void _toggleSort(String field) {
+    if (!widget.ctx.canSort || _commandBusy) return;
+    _send([
+      Commands.setComponentSort(widget.ctx.id, cycledSort(_interaction.sort, field)),
+    ]);
+  }
+
+  Future<void> _openFilter(String field) async {
+    if (!widget.ctx.canFilter || _commandBusy) return;
+    final choice = await showColumnFilterMenu(
+      context,
+      field: field,
+      kind: fieldKindOf(widget.ctx.dtypeOf(field)),
+      current: _interaction.filterFor(field),
+      suggestions: widget.ctx.topValuesOf(field),
+    );
+    if (choice == null || !mounted) return;
+    final next = withFieldFilter(
+      _interaction.filter,
+      field,
+      choice.cleared ? null : choice.filter,
+    );
+    await _send([Commands.setComponentFilter(widget.ctx.id, next)]);
+  }
+
+  void _clearAll() {
+    if (_commandBusy) return;
+    _searchCtrl.clear();
+    _send([
+      Commands.setComponentFilter(widget.ctx.id, null),
+      Commands.setSearch(widget.ctx.id, null),
+    ]);
   }
 
   void _next() {
@@ -192,20 +282,20 @@ class _DataTableViewState extends State<DataTableView> {
     return w;
   }
 
-  /// A capped or long value must still be readable in full.
-  void _inspect(String column, Object? value) {
-    showDialog<void>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(column),
-        content: SelectableText(value == null ? 'No value (null)' : value.toString()),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Close'),
-          ),
-        ],
-      ),
+  /// A capped or long value must still be readable in full, and a wide row is not readable in
+  /// the grid at all. One tap opens the whole record.
+  void _inspectRow(int index) {
+    final page = _page;
+    if (page == null || index >= page.rows.length) return;
+    final cols = _columns;
+    final row = page.rows[index];
+    showRowDetail(
+      context,
+      rowNumber: page.offset + index + 1,
+      columns: cols,
+      values: [
+        for (var i = 0; i < cols.length; i++) i < row.length ? row[i] : null,
+      ],
     );
   }
 
@@ -253,6 +343,17 @@ class _DataTableViewState extends State<DataTableView> {
                   ),
                 ),
               ],
+              if (widget.ctx.canFilter || widget.ctx.canSearch)
+                _activeFilters(theme),
+              if (_commandError != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: MorphicSpace.xs),
+                  child: Text(
+                    _commandError!,
+                    style: theme.textTheme.labelSmall
+                        ?.copyWith(color: MorphicColors.error),
+                  ),
+                ),
               const SizedBox(height: MorphicSpace.sm),
               Expanded(child: _body(theme, cols, totalWidth)),
               const SizedBox(height: MorphicSpace.sm),
@@ -260,6 +361,68 @@ class _DataTableViewState extends State<DataTableView> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  String _emptyLabel() {
+    final bits = <String>[];
+    if (_search.isNotEmpty) bits.add('“$_search”');
+    final f = _interaction.filter;
+    if (f != null) bits.add(describeFilter(f));
+    if (bits.isEmpty) return 'This dataset has no rows.';
+    return 'No rows match ${bits.join(' and ')}.';
+  }
+
+  /// Active filters as removable chips, so a narrowed table always says why it is narrow.
+  Widget _activeFilters(ThemeData theme) {
+    final chips = <Widget>[];
+    final filter = _interaction.filter;
+    if (filter != null) {
+      final parts = (filter['op'] as String?) == 'and'
+          ? (filter['args'] as List? ?? const []).whereType<Map<String, dynamic>>()
+          : <Map<String, dynamic>>[filter];
+      for (final part in parts) {
+        final field = part['field'] as String?;
+        chips.add(InputChip(
+          label: Text(describeFilter(part)),
+          onDeleted: _commandBusy || field == null
+              ? null
+              : () => _send([
+                    Commands.setComponentFilter(
+                      widget.ctx.id,
+                      withFieldFilter(_interaction.filter, field, null),
+                    ),
+                  ]),
+        ));
+      }
+    }
+    if (_search.isNotEmpty) {
+      chips.add(InputChip(
+        label: Text('Search: $_search'),
+        onDeleted: _commandBusy
+            ? null
+            : () {
+                _searchCtrl.clear();
+                _send([Commands.setSearch(widget.ctx.id, null)]);
+              },
+      ));
+    }
+    if (chips.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: MorphicSpace.sm),
+      child: Wrap(
+        spacing: MorphicSpace.xs,
+        runSpacing: MorphicSpace.xs,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          ...chips,
+          TextButton(
+            key: const Key('table-clear-all'),
+            onPressed: _commandBusy ? null : _clearAll,
+            child: const Text('Clear all'),
+          ),
+        ],
       ),
     );
   }
@@ -303,7 +466,7 @@ class _DataTableViewState extends State<DataTableView> {
     if (page.rows.isEmpty) {
       return Center(
         child: Text(
-          _search.isEmpty ? 'This dataset has no rows.' : 'No rows match “$_search”.',
+          _emptyLabel(),
           style: theme.textTheme.bodySmall,
         ),
       );
@@ -315,7 +478,16 @@ class _DataTableViewState extends State<DataTableView> {
         width: totalWidth,
         child: Column(
           children: [
-            _HeaderRow(columns: cols, widthOf: _columnWidth),
+            _HeaderRow(
+              columns: cols,
+              widthOf: _columnWidth,
+              interaction: _interaction,
+              canSort: widget.ctx.canSort,
+              canFilter: widget.ctx.canFilter,
+              busy: _commandBusy,
+              onSort: _toggleSort,
+              onFilter: _openFilter,
+            ),
             const Divider(height: 1),
             Expanded(
               child: ListView.builder(
@@ -329,7 +501,7 @@ class _DataTableViewState extends State<DataTableView> {
                     widthOf: _columnWidth,
                     striped: i.isOdd,
                     rowNumber: page.offset + i + 1,
-                    onInspect: _inspect,
+                    onTap: () => _inspectRow(i),
                   );
                 },
               ),
@@ -375,10 +547,28 @@ class _DataTableViewState extends State<DataTableView> {
 }
 
 class _HeaderRow extends StatelessWidget {
-  const _HeaderRow({required this.columns, required this.widthOf});
+  const _HeaderRow({
+    required this.columns,
+    required this.widthOf,
+    required this.interaction,
+    required this.canSort,
+    required this.canFilter,
+    required this.busy,
+    required this.onSort,
+    required this.onFilter,
+  });
 
   final List<String> columns;
   final double Function(String) widthOf;
+  final ComponentInteraction interaction;
+  final bool canSort;
+  final bool canFilter;
+  final bool busy;
+  final void Function(String) onSort;
+  final void Function(String) onFilter;
+
+  static String _sortLabel(SortRule rule) =>
+      rule.dir == SortDir.asc ? 'Sorted ascending' : 'Sorted descending';
 
   @override
   Widget build(BuildContext context) {
@@ -390,16 +580,54 @@ class _HeaderRow extends StatelessWidget {
           for (final c in columns)
             SizedBox(
               width: widthOf(c),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: MorphicSpace.sm),
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    c,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.labelMedium,
+              child: Row(
+                children: [
+                  Expanded(
+                    child: InkWell(
+                      key: Key('sort-$c'),
+                      onTap: canSort && !busy ? () => onSort(c) : null,
+                      child: Padding(
+                        padding:
+                            const EdgeInsets.symmetric(horizontal: MorphicSpace.sm),
+                        child: Row(
+                          children: [
+                            Flexible(
+                              child: Text(
+                                c,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.labelMedium,
+                              ),
+                            ),
+                            if (interaction.sortFor(c) != null)
+                              Icon(
+                                interaction.sortFor(c)!.dir == SortDir.asc
+                                    ? Icons.arrow_upward
+                                    : Icons.arrow_downward,
+                                size: 14,
+                                semanticLabel: _sortLabel(interaction.sortFor(c)!),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
                   ),
-                ),
+                  if (canFilter)
+                    SizedBox(
+                      width: 28,
+                      child: IconButton(
+                        key: Key('filter-$c'),
+                        padding: EdgeInsets.zero,
+                        iconSize: 16,
+                        tooltip: 'Filter $c',
+                        icon: Icon(
+                          interaction.filterFor(c) != null
+                              ? Icons.filter_alt
+                              : Icons.filter_alt_outlined,
+                        ),
+                        onPressed: busy ? null : () => onFilter(c),
+                      ),
+                    ),
+                ],
               ),
             ),
         ],
@@ -415,7 +643,7 @@ class _DataRow extends StatelessWidget {
     required this.widthOf,
     required this.striped,
     required this.rowNumber,
-    required this.onInspect,
+    required this.onTap,
   });
 
   final List<String> columns;
@@ -426,7 +654,7 @@ class _DataRow extends StatelessWidget {
   /// Absolute row number in the dataset, not the index within this page.
   final int rowNumber;
 
-  final void Function(String column, Object? value) onInspect;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -454,7 +682,7 @@ class _DataRow extends StatelessWidget {
               SizedBox(
                 width: widthOf(columns[i]),
                 child: InkWell(
-                  onTap: () => onInspect(columns[i], values[i]),
+                  onTap: onTap,
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: MorphicSpace.sm),
                     child: Align(

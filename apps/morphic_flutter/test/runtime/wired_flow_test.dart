@@ -47,7 +47,7 @@ void main() {
         reason: 'the live runtime must be reachable, not just unit-tested');
     expect(find.byType(DataTableView), findsOneWidget);
     expect(find.text('12'), findsOneWidget);
-    expect(bridge.plans, isNotEmpty,
+    expect(bridge.pageCalls, isNotEmpty,
         reason: 'the table must have asked the engine for a real page');
     expect(bridge.metricCalls, contains('total_records'));
   });
@@ -65,7 +65,7 @@ void main() {
     expect(find.byType(MetricCardView), findsOneWidget,
         reason: 'reopen must reach the runtime, not the read-only structural view');
     expect(find.text('7'), findsOneWidget);
-    expect(bridge.plans, isNotEmpty,
+    expect(bridge.pageCalls, isNotEmpty,
         reason: 'a reopened workspace must be queryable, not just describable');
   });
 
@@ -108,7 +108,7 @@ void main() {
     await tester.tap(find.byTooltip('Next page'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 200));
-    expect(bridge.plans.last['offset'], 2);
+    expect(bridge.pageCalls.last['offset'], 2);
     expect(find.text('3–4 of 4'), findsOneWidget);
   });
 }

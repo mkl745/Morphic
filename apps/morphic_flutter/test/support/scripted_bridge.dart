@@ -17,6 +17,8 @@ class ScriptedBridge implements MorphicBridge {
     List<String>? fields,
     List<Map<String, dynamic>>? components,
     List<String>? order,
+    Map<String, String>? dtypes,
+    Map<String, List<String>>? topValues,
     this.degraded = false,
     this.notice,
     this.sourceUnavailable = false,
@@ -48,15 +50,24 @@ class ScriptedBridge implements MorphicBridge {
                   'columns': <String>[],
                   'page_size': 2,
                 },
-                'interactions': {'search': true},
+                'interactions': {
+                  'search': true,
+                  'sort': true,
+                  'filter': true,
+                  'drillDown': true,
+                },
                 'explanation': {'detail': 'Keeps every record reachable.'},
               },
             ],
-        order = order ?? ['total_records', 'data_table'];
+        order = order ?? ['total_records', 'data_table'],
+        dtypes = dtypes ?? const {},
+        topValues = topValues ?? const {};
 
   final Map<String, Object?> metrics;
   final List<List<dynamic>> rows;
   final List<String> fields;
+  final Map<String, String> dtypes;
+  final Map<String, List<String>> topValues;
   final List<Map<String, dynamic>> components;
   final List<String> order;
 
@@ -76,6 +87,25 @@ class ScriptedBridge implements MorphicBridge {
   final List<Map<String, dynamic>> plans = [];
   final List<String> metricCalls = [];
 
+  /// Every command batch, so a test can prove the widget sends state instead of computing.
+  final List<List<Map<String, dynamic>>> commandBatches = [];
+
+  /// Every component page request, with the state it was resolved against.
+  final List<Map<String, dynamic>> pageCalls = [];
+
+  /// Set to reject the next command batch, the way the engine rejects an invalid one.
+  bool failCommands = false;
+  String commandError = "filter references unknown field 'nope'";
+
+  int _revision = 1;
+
+  Map<String, dynamic>? _component(String id) {
+    for (final c in components) {
+      if (c['id'] == id) return c;
+    }
+    return null;
+  }
+
   /// Rows matching the current search, so paging maths is exercised realistically.
   List<List<dynamic>> _matching(String? search) {
     if (search == null || search.isEmpty) return rows;
@@ -90,7 +120,7 @@ class ScriptedBridge implements MorphicBridge {
         'workspace': {
           'id': 'w1',
           'title': 'Scripted',
-          'revision': 1,
+          'revision': _revision,
           'layout': {'mode': 'adaptive', 'order': order},
           'components': components,
         },
@@ -100,13 +130,21 @@ class ScriptedBridge implements MorphicBridge {
         'rowCount': rows.length,
         'fieldCount': fields.length,
         'fields': [
-          for (final f in fields) {'name': f, 'dtype': 'utf8'},
+          for (final f in fields)
+            {
+              'name': f,
+              'dtype': dtypes[f] ?? 'utf8',
+              if (topValues[f] != null)
+                'topValues': [
+                  for (final v in topValues[f]!) {'value': v, 'count': 1},
+                ],
+            },
         ],
       };
 
   @override
   EngineInfo engineInfo() =>
-      const EngineInfo(apiVersion: 4, coreVersion: '0.1.0', engine: 'morphic');
+      const EngineInfo(apiVersion: 5, coreVersion: '0.1.0', engine: 'morphic');
 
   @override
   Map<String, dynamic> profileCsv(Uint8List bytes) => profileJson();
@@ -163,6 +201,183 @@ class ScriptedBridge implements MorphicBridge {
       'degraded': degraded,
       'notice': notice,
     };
+  }
+
+  @override
+  Map<String, dynamic> applyCommands({
+    required String storageRoot,
+    required String workspaceId,
+    required List<Map<String, dynamic>> commands,
+    required String nowIso,
+  }) {
+    commandBatches.add(commands);
+    if (failCommands) throw MorphicBridgeException(commandError);
+    var changed = false;
+    final affected = <String>[];
+    for (final cmd in commands) {
+      switch (cmd['kind'] as String) {
+        case 'setComponentSort':
+          final c = _component(cmd['componentId'] as String);
+          if (c == null) throw const MorphicBridgeException('unknown component');
+          final state = _stateOf(c);
+          final sort = cmd['sort'] as List?;
+          if (sort == null || sort.isEmpty) {
+            state.remove('sort');
+          } else {
+            state['sort'] = sort;
+          }
+          affected.add(c['id'] as String);
+          changed = true;
+        case 'setComponentFilter':
+          final c = _component(cmd['componentId'] as String);
+          if (c == null) throw const MorphicBridgeException('unknown component');
+          final state = _stateOf(c);
+          if (cmd['filter'] == null) {
+            state.remove('filter');
+          } else {
+            state['filter'] = cmd['filter'];
+          }
+          affected.add(c['id'] as String);
+          changed = true;
+        case 'setSearch':
+          final c = _component(cmd['componentId'] as String);
+          if (c == null) throw const MorphicBridgeException('unknown component');
+          final state = _stateOf(c);
+          final text = (cmd['text'] as String?)?.trim();
+          if (text == null || text.isEmpty) {
+            state.remove('search');
+          } else {
+            state['search'] = text;
+          }
+          affected.add(c['id'] as String);
+          changed = true;
+        case 'setGlobalFilter':
+          affected.addAll(order);
+          changed = true;
+        default:
+          throw MorphicBridgeException('unknown command ${cmd['kind']}');
+      }
+    }
+    if (changed) _revision++;
+    return {
+      'revision': _revision,
+      'affected': affected,
+      'changed': changed,
+      'doc': doc(),
+    };
+  }
+
+  Map<String, dynamic> _stateOf(Map<String, dynamic> component) {
+    final existing = (component['state'] as Map?)?.cast<String, dynamic>();
+    final state = existing ?? <String, dynamic>{};
+    component['state'] = state;
+    return state;
+  }
+
+  @override
+  Map<String, dynamic> componentPage({
+    required String storageRoot,
+    required String workspaceId,
+    required String componentId,
+    required int offset,
+    required int limit,
+  }) {
+    if (failQuery) throw const MorphicBridgeException('query: unknown field');
+    if (sourceUnavailable) {
+      throw const MorphicBridgeException(
+          "core: source data for workspace 'w1' is unavailable");
+    }
+    final c = _component(componentId);
+    final state = (c?['state'] as Map?)?.cast<String, dynamic>() ?? const {};
+    final search = state['search'] as String?;
+    final filter = (state['filter'] as Map?)?.cast<String, dynamic>();
+    final sort = (state['sort'] as List?) ?? const [];
+    pageCalls.add({
+      'componentId': componentId,
+      'offset': offset,
+      'limit': limit,
+      'search': search,
+      'filter': filter,
+      'sort': sort,
+    });
+    final matched = _matching(search).where((r) => _passes(r, filter)).toList();
+    if (sort.isNotEmpty) {
+      final rule = (sort.first as Map).cast<String, dynamic>();
+      final idx = fields.indexOf(rule['field'] as String);
+      final desc = rule['dir'] == 'desc';
+      final nullsFirst = rule['nulls'] == 'first';
+      if (idx >= 0) {
+        matched.sort((a, b) {
+          final x = a[idx], y = b[idx];
+          if (x == null || y == null) {
+            if (x == null && y == null) return 0;
+            final nullFirst = x == null ? nullsFirst : !nullsFirst;
+            return nullFirst ? -1 : 1;
+          }
+          final cmp = (x is num && y is num)
+              ? x.compareTo(y)
+              : x.toString().compareTo(y.toString());
+          return desc ? -cmp : cmp;
+        });
+      }
+    }
+    final start = offset.clamp(0, matched.length);
+    final end = (offset + limit).clamp(0, matched.length);
+    return {
+      'rows': matched.sublist(start, end),
+      'totalRows': matched.length,
+      'offset': offset,
+      'limit': limit,
+      'hasMore': end < matched.length,
+    };
+  }
+
+  /// A deliberately small stand-in for the engine's predicate evaluator. The authoritative
+  /// semantics live in `morphic-query` and are pinned by its property tests; this exists so a
+  /// widget test can observe a page change without a native library.
+  bool _passes(List<dynamic> row, Map<String, dynamic>? filter) {
+    if (filter == null) return true;
+    final op = filter['op'] as String?;
+    if (op == 'and') {
+      return (filter['args'] as List? ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .every((f) => _passes(row, f));
+    }
+    final idx = fields.indexOf(filter['field'] as String? ?? '');
+    if (idx < 0 || idx >= row.length) return true;
+    final cell = row[idx];
+    final bound = filter['value'];
+    switch (op) {
+      case 'is_null':
+        return cell == null;
+      case 'not_null':
+        return cell != null;
+      case 'contains':
+        return cell != null &&
+            cell.toString().toLowerCase().contains('$bound'.toLowerCase());
+      case 'in':
+        // The engine reads `in`'s candidates from `value` as an array, not from `args`.
+        return (bound as List? ?? const []).contains(cell);
+    }
+    if (cell == null || bound == null) return false;
+    final cmp = (cell is num && bound is num)
+        ? cell.compareTo(bound)
+        : cell.toString().compareTo(bound.toString());
+    switch (op) {
+      case 'eq':
+        return cmp == 0;
+      case 'neq':
+        return cmp != 0;
+      case 'gt':
+        return cmp > 0;
+      case 'gte':
+        return cmp >= 0;
+      case 'lt':
+        return cmp < 0;
+      case 'lte':
+        return cmp <= 0;
+    }
+    return true;
   }
 
   @override

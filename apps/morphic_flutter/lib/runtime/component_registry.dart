@@ -11,6 +11,7 @@ library;
 import 'package:flutter/widgets.dart';
 
 import '../engine/engine_controller.dart';
+import '../engine/interaction.dart';
 import 'components/data_table_view.dart';
 import 'components/deferred_component.dart';
 import 'components/metric_card_view.dart';
@@ -66,6 +67,40 @@ class ComponentContext {
       spec['explanation'] as Map<String, dynamic>? ?? const {};
 
   bool get canSearch => interactions['search'] == true;
+  bool get canSort => interactions['sort'] == true;
+  bool get canFilter => interactions['filter'] == true;
+
+  /// What the user has already applied to this component, as persisted by Rust.
+  ComponentInteraction get state => ComponentInteraction.fromSpec(spec);
+
+  /// The engine's inferred type for a field, or null when the profile is unavailable (degraded
+  /// mode). The filter menu uses this to offer only operators the column can mean.
+  String? dtypeOf(String field) {
+    final profile = engine.profile;
+    final fields = (profile?['fields'] as List? ?? const [])
+        .whereType<Map<String, dynamic>>();
+    for (final f in fields) {
+      if (f['name'] == field) return f['dtype'] as String?;
+    }
+    return null;
+  }
+
+  /// Frequently occurring values, offered as choices by a text column's filter menu. Empty
+  /// when the profile is unavailable; the menu then falls back to free text.
+  List<String> topValuesOf(String field) {
+    final profile = engine.profile;
+    final fields = (profile?['fields'] as List? ?? const [])
+        .whereType<Map<String, dynamic>>();
+    for (final f in fields) {
+      if (f['name'] != field) continue;
+      return (f['topValues'] as List? ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .map((v) => v['value']?.toString() ?? '')
+          .where((s) => s.isNotEmpty)
+          .toList();
+    }
+    return const [];
+  }
 }
 
 typedef ComponentBuilder = Widget Function(ComponentContext ctx);

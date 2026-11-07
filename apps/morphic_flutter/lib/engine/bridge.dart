@@ -82,6 +82,25 @@ abstract interface class MorphicBridge {
     Map<String, dynamic>? plan,
   });
 
+  /// Apply a batch of interaction commands atomically. Returns
+  /// `{revision, affected, changed, doc}`. A rejected command changes nothing.
+  Map<String, dynamic> applyCommands({
+    required String storageRoot,
+    required String workspaceId,
+    required List<Map<String, dynamic>> commands,
+    required String nowIso,
+  });
+
+  /// One page of a component's rows with its persisted filter, sort and search applied, plus
+  /// any global filters. [limit] of 0 means the page size the binding declares.
+  Map<String, dynamic> componentPage({
+    required String storageRoot,
+    required String workspaceId,
+    required String componentId,
+    required int offset,
+    required int limit,
+  });
+
   /// The computed value behind a metric_card; Rust resolves the binding.
   Map<String, dynamic> metricData({
     required String storageRoot,
@@ -154,6 +173,16 @@ typedef _ThreeStringNative = Pointer<Utf8> Function(
 typedef _ThreeStringDart = Pointer<Utf8> Function(
     Pointer<Utf8>, Pointer<Utf8>, Pointer<Utf8>);
 
+typedef _FourStringNative = Pointer<Utf8> Function(
+    Pointer<Utf8>, Pointer<Utf8>, Pointer<Utf8>, Pointer<Utf8>);
+typedef _FourStringDart = Pointer<Utf8> Function(
+    Pointer<Utf8>, Pointer<Utf8>, Pointer<Utf8>, Pointer<Utf8>);
+
+typedef _ComponentPageNative = Pointer<Utf8> Function(
+    Pointer<Utf8>, Pointer<Utf8>, Pointer<Utf8>, IntPtr, IntPtr);
+typedef _ComponentPageDart = Pointer<Utf8> Function(
+    Pointer<Utf8>, Pointer<Utf8>, Pointer<Utf8>, int, int);
+
 typedef _FreeStringNative = Void Function(Pointer<Utf8>);
 typedef _FreeStringDart = void Function(Pointer<Utf8>);
 
@@ -199,6 +228,10 @@ class FfiBridge implements MorphicBridge {
       _lib.lookupFunction<_ThreeStringNative, _ThreeStringDart>('morphic_query_page');
   late final _metricData =
       _lib.lookupFunction<_ThreeStringNative, _ThreeStringDart>('morphic_metric_data');
+  late final _applyCommands = _lib
+      .lookupFunction<_FourStringNative, _FourStringDart>('morphic_apply_commands');
+  late final _componentPage = _lib
+      .lookupFunction<_ComponentPageNative, _ComponentPageDart>('morphic_component_page');
   late final _closeWorkspace =
       _lib.lookupFunction<_TwoStringNative, _TwoStringDart>('morphic_close_workspace');
   late final _freeString =
@@ -389,6 +422,49 @@ class FfiBridge implements MorphicBridge {
       calloc.free(root);
       calloc.free(id);
       if (p != nullptr) calloc.free(p);
+    }
+  }
+
+  @override
+  Map<String, dynamic> applyCommands({
+    required String storageRoot,
+    required String workspaceId,
+    required List<Map<String, dynamic>> commands,
+    required String nowIso,
+  }) {
+    final root = storageRoot.toNativeUtf8();
+    final id = workspaceId.toNativeUtf8();
+    final body = jsonEncode(commands).toNativeUtf8();
+    final now = nowIso.toNativeUtf8();
+    try {
+      return _withResponse(
+          () => _applyCommands(root, id, body, now), _decodeMap);
+    } finally {
+      calloc.free(root);
+      calloc.free(id);
+      calloc.free(body);
+      calloc.free(now);
+    }
+  }
+
+  @override
+  Map<String, dynamic> componentPage({
+    required String storageRoot,
+    required String workspaceId,
+    required String componentId,
+    required int offset,
+    required int limit,
+  }) {
+    final root = storageRoot.toNativeUtf8();
+    final id = workspaceId.toNativeUtf8();
+    final comp = componentId.toNativeUtf8();
+    try {
+      return _withResponse(
+          () => _componentPage(root, id, comp, offset, limit), _decodeMap);
+    } finally {
+      calloc.free(root);
+      calloc.free(id);
+      calloc.free(comp);
     }
   }
 

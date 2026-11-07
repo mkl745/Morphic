@@ -11,8 +11,35 @@ import 'package:morphic_flutter/features/workspace/workspace_screen.dart';
 /// A fake bridge so widget tests run without the native library.
 class FakeBridge implements MorphicBridge {
   @override
+  Map<String, dynamic> applyCommands({
+    required String storageRoot,
+    required String workspaceId,
+    required List<Map<String, dynamic>> commands,
+    required String nowIso,
+  }) {
+    return {'revision': 1, 'affected': <String>[], 'changed': false, 'doc': _sampleDoc()};
+  }
+
+  @override
+  Map<String, dynamic> componentPage({
+    required String storageRoot,
+    required String workspaceId,
+    required String componentId,
+    required int offset,
+    required int limit,
+  }) {
+    return {
+      'rows': <List<dynamic>>[],
+      'totalRows': 0,
+      'offset': offset,
+      'limit': limit,
+      'hasMore': false,
+    };
+  }
+
+  @override
   EngineInfo engineInfo() =>
-      const EngineInfo(apiVersion: 1, coreVersion: '0.1.0', engine: 'morphic');
+      const EngineInfo(apiVersion: 5, coreVersion: '0.1.0', engine: 'morphic');
 
   @override
   Map<String, dynamic> profileCsv(Uint8List bytes) => {

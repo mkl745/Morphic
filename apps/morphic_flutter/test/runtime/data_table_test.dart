@@ -29,6 +29,47 @@ Future<EngineController> _open(ScriptedBridge b) async {
 Widget _host(Widget child) =>
     MaterialApp(home: Scaffold(body: Center(child: child)));
 
+/// The paging part of a component page request. The table no longer sends a plan: it asks for
+/// a component's page and Rust resolves the persisted filter/sort/search into one.
+Map<String, dynamic> _req(Map<String, dynamic> call) => {
+      'offset': call['offset'],
+      'limit': call['limit'],
+      if (call['search'] != null) 'search': call['search'],
+    };
+
+/// A bridge whose document holds exactly this table, so commands have somewhere to persist.
+ScriptedBridge _bridgeWith(
+  List<List<dynamic>> rows, {
+  Map<String, dynamic>? spec,
+  List<String>? fields,
+  Map<String, String>? dtypes,
+}) {
+  final s = spec ?? _spec();
+  return ScriptedBridge(
+    rows: rows,
+    fields: fields,
+    dtypes: dtypes,
+    components: [s],
+    order: [s['id'] as String],
+  );
+}
+
+/// Hosts the table the way the app does: rebuilt from the controller's document on every
+/// notification, so persisted interaction state reaches the widget after a command.
+Widget _live(
+  EngineController engine, {
+  double height = 400,
+  Duration debounce = Duration.zero,
+}) =>
+    _host(AnimatedBuilder(
+      animation: engine,
+      builder: (context, _) => DataTableView(
+        ctx: ComponentContext(spec: engine.components.first, engine: engine),
+        height: height,
+        searchDebounce: debounce,
+      ),
+    ));
+
 const _rows = [
   ['eu', 10, null],
   ['us', 20, 'alpha'],
@@ -55,7 +96,7 @@ void main() {
     // Page size 2 of 4 rows.
     expect(find.text('1–2 of 4'), findsOneWidget);
     expect(find.text('apac'), findsNothing);
-    expect(bridge.plans.first, {'offset': 0, 'limit': 2});
+    expect(_req(bridge.pageCalls.first), {'offset': 0, 'limit': 2});
   });
 
   testWidgets('a null cell is a glyph and zero would not be', (tester) async {
@@ -86,14 +127,14 @@ void main() {
     await tester.tap(find.byTooltip('Next page'));
     await tester.pumpAndSettle();
 
-    expect(bridge.plans.last, {'offset': 2, 'limit': 2});
+    expect(_req(bridge.pageCalls.last), {'offset': 2, 'limit': 2});
     expect(find.text('apac'), findsOneWidget);
     expect(find.text('eu'), findsNothing);
     expect(find.text('3–4 of 4'), findsOneWidget);
 
     await tester.tap(find.byTooltip('Previous page'));
     await tester.pumpAndSettle();
-    expect(bridge.plans.last, {'offset': 0, 'limit': 2});
+    expect(_req(bridge.pageCalls.last), {'offset': 0, 'limit': 2});
     expect(find.text('eu'), findsOneWidget);
   });
 
@@ -125,27 +166,28 @@ void main() {
   });
 
   testWidgets('search is debounced and executed by the engine', (tester) async {
-    final bridge = ScriptedBridge(rows: List.of(_rows));
+    final bridge = _bridgeWith(List.of(_rows));
     final engine = await _open(bridge);
-    await tester.pumpWidget(_host(DataTableView(
-      ctx: ComponentContext(spec: _spec(), engine: engine),
-      height: 400,
-      searchDebounce: const Duration(milliseconds: 200),
-    )));
+    await tester.pumpWidget(
+        _live(engine, debounce: const Duration(milliseconds: 200)));
     await tester.pumpAndSettle();
-    final before = bridge.plans.length;
+    final before = bridge.pageCalls.length;
 
     await tester.enterText(find.byType(TextField), 'ap');
     await tester.pump(const Duration(milliseconds: 50));
     await tester.enterText(find.byType(TextField), 'apa');
     await tester.pump(const Duration(milliseconds: 50));
-    expect(bridge.plans.length, before, reason: 'keystrokes must not each hit the engine');
+    expect(bridge.pageCalls.length, before, reason: 'keystrokes must not each hit the engine');
 
     await tester.pump(const Duration(milliseconds: 250));
     await tester.pumpAndSettle();
-    expect(bridge.plans.last, {'offset': 0, 'limit': 2, 'search': 'apa'});
+    expect(_req(bridge.pageCalls.last), {'offset': 0, 'limit': 2, 'search': 'apa'});
     expect(find.text('apac'), findsOneWidget);
     expect(find.text('1–1 of 1'), findsOneWidget);
+    // One keystroke burst, one command — and it is persisted state, not a plan field.
+    expect(bridge.commandBatches.length, 1);
+    expect(bridge.commandBatches.single.single,
+        {'kind': 'setSearch', 'componentId': 'data_table', 'text': 'apa'});
   });
 
   testWidgets('search is hidden when the binding does not allow it', (tester) async {
@@ -159,13 +201,9 @@ void main() {
   });
 
   testWidgets('no matches says so, rather than showing an empty grid', (tester) async {
-    final bridge = ScriptedBridge(rows: List.of(_rows));
+    final bridge = _bridgeWith(List.of(_rows));
     final engine = await _open(bridge);
-    await tester.pumpWidget(_host(DataTableView(
-      ctx: ComponentContext(spec: _spec(), engine: engine),
-      height: 400,
-      searchDebounce: Duration.zero,
-    )));
+    await tester.pumpWidget(_live(engine));
     await tester.pumpAndSettle();
 
     await tester.enterText(find.byType(TextField), 'zzzz');
@@ -236,7 +274,7 @@ void main() {
       height: 400,
     )));
     await tester.pumpAndSettle();
-    expect(bridge.plans.first['limit'], maxPageSize);
+    expect(bridge.pageCalls.first['limit'], maxPageSize);
   });
 
   testWidgets('a zero page_size still requests at least one row', (tester) async {
@@ -247,7 +285,7 @@ void main() {
       height: 400,
     )));
     await tester.pumpAndSettle();
-    expect(bridge.plans.first['limit'], 1);
+    expect(bridge.pageCalls.first['limit'], 1);
   });
 
   testWidgets('bound columns override the profile order', (tester) async {
@@ -354,19 +392,24 @@ void main() {
       expect(headerWidth(tester, 'note'), lessThanOrEqualTo(300));
     });
 
-    testWidgets('tapping a cell reveals the full value', (tester) async {
+    testWidgets('tapping a cell opens the whole row, with the full value',
+        (tester) async {
       const long = 'a value far too long to ever fit inside a table column whatsoever';
       await pump(tester, ScriptedBridge(rows: [
         ['eu', 1, long],
       ]));
       await tester.tap(find.text(long).hitTestable());
       await tester.pumpAndSettle();
-      expect(find.byType(AlertDialog), findsOneWidget);
+      expect(find.byType(BottomSheet), findsOneWidget);
+      expect(find.text('Row 1'), findsOneWidget);
+      // Every field of the record, not just the cell that was tapped.
+      expect(find.text('region'), findsWidgets);
+      expect(find.text('amount'), findsWidgets);
       expect(find.text('note'), findsWidgets);
       expect(find.text(long), findsWidgets);
-      await tester.tap(find.text('Close'));
+      await tester.tap(find.byKey(const Key('row-detail-close')));
       await tester.pumpAndSettle();
-      expect(find.byType(AlertDialog), findsNothing);
+      expect(find.byType(BottomSheet), findsNothing);
     });
 
     testWidgets('a null cell is described as null, not as an empty string', (tester) async {

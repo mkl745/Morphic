@@ -413,6 +413,86 @@ pub unsafe extern "C" fn morphic_metric_data(
     })
 }
 
+/// Apply a batch of interaction commands atomically (M1.3 task 1.3.3).
+///
+/// `commands_json` is a JSON array of tagged commands, e.g.
+/// `[{"kind":"setComponentSort","componentId":"t1","sort":[{"field":"amount","dir":"desc"}]}]`.
+/// Returns `{revision, affected, changed, doc}`. A rejected command changes nothing.
+///
+/// # Safety
+/// All pointers must be valid C strings.
+#[no_mangle]
+pub unsafe extern "C" fn morphic_apply_commands(
+    storage_root: *const c_char,
+    workspace_id: *const c_char,
+    commands_json: *const c_char,
+    now_iso: *const c_char,
+) -> *mut c_char {
+    guarded(|| {
+        let root = match unsafe { cstr(storage_root) } {
+            Some(r) => r,
+            None => return err("invalid storage_root"),
+        };
+        let id = match unsafe { cstr(workspace_id) } {
+            Some(i) => i,
+            None => return err("invalid workspace_id"),
+        };
+        let raw = match unsafe { cstr(commands_json) } {
+            Some(s) => s,
+            None => return err("invalid commands_json"),
+        };
+        let now = match unsafe { cstr(now_iso) } {
+            Some(s) => s,
+            None => return err("invalid now_iso"),
+        };
+        let commands: Vec<morphic_core::Command> = match serde_json::from_str(&raw) {
+            Ok(c) => c,
+            Err(e) => return err(&format!("invalid commands: {e}")),
+        };
+        with_engine(&root, |engine| {
+            to_json(&engine.apply(&id, &commands, &now).map_err(|e| e.to_string())?)
+        })
+    })
+}
+
+/// One page of a component's rows with its persisted filter, sort and search applied, plus
+/// any global filters. The UI never assembles this plan itself.
+///
+/// `limit` of 0 means the page size the component's binding declares.
+///
+/// # Safety
+/// All pointers must be valid C strings.
+#[no_mangle]
+pub unsafe extern "C" fn morphic_component_page(
+    storage_root: *const c_char,
+    workspace_id: *const c_char,
+    component_id: *const c_char,
+    offset: usize,
+    limit: usize,
+) -> *mut c_char {
+    guarded(|| {
+        let root = match unsafe { cstr(storage_root) } {
+            Some(r) => r,
+            None => return err("invalid storage_root"),
+        };
+        let id = match unsafe { cstr(workspace_id) } {
+            Some(i) => i,
+            None => return err("invalid workspace_id"),
+        };
+        let component = match unsafe { cstr(component_id) } {
+            Some(c) => c,
+            None => return err("invalid component_id"),
+        };
+        with_engine(&root, |engine| {
+            to_json(
+                &engine
+                    .component_page(&id, &component, offset, limit)
+                    .map_err(|e| e.to_string())?,
+            )
+        })
+    })
+}
+
 /// Drop an open session's in-memory state. The persisted workspace is untouched.
 ///
 /// # Safety
@@ -543,7 +623,7 @@ mod tests {
     fn engine_info_returns_json() {
         let v = json(morphic_engine_info());
         assert_eq!(v["engine"], "morphic");
-        assert_eq!(v["apiVersion"], 4);
+        assert_eq!(v["apiVersion"], 5);
     }
 
     #[test]
@@ -956,4 +1036,228 @@ mod tests {
         assert_eq!(stored, 0, "a cancelled import left a dataset behind");
         std::fs::remove_dir_all(&p).ok();
     }
+
+    // --- M1.3 task 1.3.3: interaction commands and component pages ------------------------
+
+    /// Apply one batch and return the parsed outcome.
+    unsafe fn apply(rp: &CString, id: &CString, commands: &str) -> serde_json::Value {
+        json(morphic_apply_commands(
+            rp.as_ptr(),
+            id.as_ptr(),
+            c(commands).as_ptr(),
+            c("2026-11-07T00:00:00Z").as_ptr(),
+        ))
+    }
+
+    unsafe fn page(
+        rp: &CString,
+        id: &CString,
+        component: &str,
+        offset: usize,
+        limit: usize,
+    ) -> serde_json::Value {
+        json(morphic_component_page(
+            rp.as_ptr(),
+            id.as_ptr(),
+            c(component).as_ptr(),
+            offset,
+            limit,
+        ))
+    }
+
+    const SORT_AMOUNT_DESC: &str = r#"[{"kind":"setComponentSort","componentId":"data_table",
+        "sort":[{"field":"amount","dir":"desc","nulls":"last"}]}]"#;
+
+    #[test]
+    fn apply_commands_persists_state_and_returns_the_document() {
+        let (p, rp) = root("apply");
+        let id = c("w1");
+        let before = unsafe { import(&rp, &id, None) };
+        let revision = before["doc"]["workspace"]["revision"].as_u64().unwrap();
+        let v = unsafe { apply(&rp, &id, SORT_AMOUNT_DESC) };
+        assert_eq!(v["changed"], true);
+        assert_eq!(v["revision"], revision + 1);
+        assert_eq!(v["affected"][0], "data_table");
+        let comps = v["doc"]["workspace"]["components"].as_array().unwrap();
+        let table = comps
+            .iter()
+            .find(|c| c["id"] == "data_table")
+            .expect("the compiler emits a table");
+        assert_eq!(table["state"]["sort"][0]["field"], "amount");
+        assert_eq!(table["state"]["sort"][0]["dir"], "desc");
+        std::fs::remove_dir_all(&p).ok();
+    }
+
+    #[test]
+    fn component_page_applies_the_persisted_sort() {
+        let (p, rp) = root("comppage");
+        let id = c("w1");
+        unsafe { import(&rp, &id, None) };
+        unsafe { apply(&rp, &id, SORT_AMOUNT_DESC) };
+        // The UI sends no plan: Rust composes it from the state the command persisted.
+        let v = unsafe { page(&rp, &id, "data_table", 0, 2) };
+        assert_eq!(v["totalRows"], 4);
+        assert_eq!(v["rows"][0][1], 30);
+        assert_eq!(v["rows"][1][1], 20);
+        assert_eq!(v["hasMore"], true);
+        std::fs::remove_dir_all(&p).ok();
+    }
+
+    #[test]
+    fn a_zero_limit_uses_the_page_size_the_binding_declares() {
+        let (p, rp) = root("pagesize");
+        let id = c("w1");
+        unsafe { import(&rp, &id, None) };
+        let v = unsafe { page(&rp, &id, "data_table", 0, 0) };
+        assert_eq!(v["limit"], 256, "the compiler emits page_size 256");
+        assert_eq!(v["totalRows"], 4);
+        std::fs::remove_dir_all(&p).ok();
+    }
+
+    #[test]
+    fn a_component_filter_narrows_the_page_and_a_global_filter_still_applies() {
+        let (p, rp) = root("compfilter");
+        let id = c("w1");
+        unsafe { import(&rp, &id, None) };
+        unsafe {
+            apply(
+                &rp,
+                &id,
+                r#"[{"kind":"setComponentFilter","componentId":"data_table",
+                    "filter":{"op":"eq","field":"region","value":"eu"}}]"#,
+            )
+        };
+        assert_eq!(unsafe { page(&rp, &id, "data_table", 0, 0) }["totalRows"], 2);
+        // A global filter is composed *with* the component's own, never instead of it.
+        unsafe {
+            apply(
+                &rp,
+                &id,
+                r#"[{"kind":"setGlobalFilter","filters":[
+                    {"op":"gt","field":"amount","value":10}]}]"#,
+            )
+        };
+        let v = unsafe { page(&rp, &id, "data_table", 0, 0) };
+        assert_eq!(v["totalRows"], 1);
+        assert_eq!(v["rows"][0][1], 30);
+        std::fs::remove_dir_all(&p).ok();
+    }
+
+    #[test]
+    fn search_is_per_component_state_and_narrows_the_page() {
+        let (p, rp) = root("compsearch");
+        let id = c("w1");
+        unsafe { import(&rp, &id, None) };
+        unsafe {
+            apply(
+                &rp,
+                &id,
+                r#"[{"kind":"setSearch","componentId":"data_table","text":"eu"}]"#,
+            )
+        };
+        assert_eq!(unsafe { page(&rp, &id, "data_table", 0, 0) }["totalRows"], 2);
+        std::fs::remove_dir_all(&p).ok();
+    }
+
+    #[test]
+    fn repeating_a_command_is_a_no_op_with_no_revision_bump() {
+        let (p, rp) = root("noop");
+        let id = c("w1");
+        unsafe { import(&rp, &id, None) };
+        let first = unsafe { apply(&rp, &id, SORT_AMOUNT_DESC) };
+        let again = unsafe { apply(&rp, &id, SORT_AMOUNT_DESC) };
+        assert_eq!(again["changed"], false);
+        assert_eq!(again["revision"], first["revision"]);
+        assert!(again["affected"].as_array().unwrap().is_empty());
+        std::fs::remove_dir_all(&p).ok();
+    }
+
+    #[test]
+    fn a_rejected_batch_leaves_the_persisted_state_untouched() {
+        let (p, rp) = root("reject");
+        let id = c("w1");
+        unsafe { import(&rp, &id, None) };
+        let first = unsafe { apply(&rp, &id, SORT_AMOUNT_DESC) };
+        // The second command in the batch is invalid, so the first must not survive either.
+        let bad = unsafe {
+            apply(
+                &rp,
+                &id,
+                r#"[{"kind":"setSearch","componentId":"data_table","text":"zzz"},
+                    {"kind":"setComponentFilter","componentId":"data_table",
+                     "filter":{"op":"eq","field":"nope","value":1}}]"#,
+            )
+        };
+        assert!(bad["error"].is_string(), "expected a typed error, got {bad}");
+        let v = unsafe { page(&rp, &id, "data_table", 0, 0) };
+        assert_eq!(v["totalRows"], 4, "the rejected search must not have applied");
+        assert_eq!(v["rows"][0][1], 30, "the earlier sort is still in force");
+        let snap = json(unsafe { morphic_snapshot(rp.as_ptr(), id.as_ptr()) });
+        assert_eq!(snap["doc"]["workspace"]["revision"], first["revision"]);
+        std::fs::remove_dir_all(&p).ok();
+    }
+
+    #[test]
+    fn malformed_commands_are_a_typed_error_not_a_crash() {
+        let (p, rp) = root("badcmds");
+        let id = c("w1");
+        unsafe { import(&rp, &id, None) };
+        let v = unsafe { apply(&rp, &id, "{not json") };
+        assert!(v["error"].as_str().unwrap().contains("invalid commands"));
+        let unknown = unsafe { apply(&rp, &id, r#"[{"kind":"dropTable"}]"#) };
+        assert!(unknown["error"].is_string());
+        std::fs::remove_dir_all(&p).ok();
+    }
+
+    #[test]
+    fn an_unknown_component_is_an_error_not_an_empty_page() {
+        let (p, rp) = root("unknowncomp");
+        let id = c("w1");
+        unsafe { import(&rp, &id, None) };
+        let v = unsafe { page(&rp, &id, "no_such_component", 0, 10) };
+        assert!(v["error"].is_string(), "expected a typed error, got {v}");
+        std::fs::remove_dir_all(&p).ok();
+    }
+
+    #[test]
+    fn null_pointers_on_the_new_endpoints_are_errors_not_crashes() {
+        let id = c("w1");
+        let cmds = c("[]");
+        let now = c("2026-11-07T00:00:00Z");
+        let v = json(unsafe {
+            morphic_apply_commands(
+                std::ptr::null(),
+                id.as_ptr(),
+                cmds.as_ptr(),
+                now.as_ptr(),
+            )
+        });
+        assert!(v["error"].as_str().unwrap().contains("invalid storage_root"));
+        let v = json(unsafe {
+            morphic_apply_commands(id.as_ptr(), id.as_ptr(), std::ptr::null(), now.as_ptr())
+        });
+        assert!(v["error"].as_str().unwrap().contains("invalid commands_json"));
+        let v = json(unsafe {
+            morphic_component_page(id.as_ptr(), id.as_ptr(), std::ptr::null(), 0, 0)
+        });
+        assert!(v["error"].as_str().unwrap().contains("invalid component_id"));
+    }
+
+    #[test]
+    fn persisted_sort_survives_close_and_reopen() {
+        let (p, rp) = root("reopenstate");
+        let id = c("w1");
+        unsafe { import(&rp, &id, None) };
+        unsafe { apply(&rp, &id, SORT_AMOUNT_DESC) };
+        unsafe { morphic_close_workspace(rp.as_ptr(), id.as_ptr()) };
+        // A fresh session reads the document from disk, so the indicator and the order return.
+        let v = unsafe { page(&rp, &id, "data_table", 0, 2) };
+        assert_eq!(v["rows"][0][1], 30, "AT-07: the sort is document state, not UI state");
+        let snap = json(unsafe { morphic_snapshot(rp.as_ptr(), id.as_ptr()) });
+        let comps = snap["doc"]["workspace"]["components"].as_array().unwrap();
+        let table = comps.iter().find(|c| c["id"] == "data_table").unwrap();
+        assert_eq!(table["state"]["sort"][0]["dir"], "desc");
+        std::fs::remove_dir_all(&p).ok();
+    }
+
 }

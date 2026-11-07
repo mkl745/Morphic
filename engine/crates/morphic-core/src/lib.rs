@@ -33,7 +33,9 @@ use thiserror::Error;
 
 /// Bridge contract version. Bumped on breaking FFI changes (docs/architecture/02 §5).
 /// v2 adds sessions, queryPage, metricData, and snapshot (M1.1 task 1.1.4).
-pub const API_VERSION: u32 = 4;
+/// v5 adds applyCommands and componentPage (M1.3 task 1.3.3). Additive: every v4 entry point
+/// still exists with the same shape, so an older client keeps working.
+pub const API_VERSION: u32 = 5;
 
 #[derive(Debug, Error)]
 pub enum CoreError {
