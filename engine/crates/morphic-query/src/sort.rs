@@ -82,7 +82,10 @@ pub(crate) fn validate(table: &Table, specs: &[SortSpec]) -> Result<(), QueryErr
 }
 
 /// Sort a selection vector in place. Stable, so equal keys keep their relative order.
-pub(crate) fn sort_selection(table: &Table, rows: &mut [usize], specs: &[SortSpec]) {
+///
+/// Public because callers that already hold a selection (a cached one, or a test checking
+/// idempotence) need to re-order it without re-running the filter.
+pub fn sort_selection(table: &Table, rows: &mut [usize], specs: &[SortSpec]) {
     if specs.is_empty() || rows.len() < 2 {
         return;
     }
@@ -128,8 +131,9 @@ pub(crate) fn sort_selection(table: &Table, rows: &mut [usize], specs: &[SortSpe
     });
 }
 
-/// Compare two non-null cells of the same column.
-pub(crate) fn compare_cells(col: &Column, a: usize, b: usize) -> Ordering {
+/// Compare two non-null cells of the same column. Nulls are the caller's business: use the
+/// [`Nulls`] policy, not this function, to place them.
+pub fn compare_cells(col: &Column, a: usize, b: usize) -> Ordering {
     match &col.values {
         ColumnValues::Int64(v) => match (v.get(a), v.get(b)) {
             (Some(x), Some(y)) => x.cmp(y),
