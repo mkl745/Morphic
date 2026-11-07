@@ -1420,7 +1420,10 @@ mod tests {
             morphic_metric_data(rp.as_ptr(), id.as_ptr(), c("total_records").as_ptr())
         });
         assert_eq!(card["value"], 2);
-        assert_eq!(card["revision"], revision, "the read reports the batch's revision");
+        assert_eq!(
+            card["revision"], revision,
+            "the read reports the batch's revision"
+        );
 
         let snap = json(unsafe { morphic_snapshot(rp.as_ptr(), id.as_ptr()) });
         assert_eq!(snap["doc"]["workspace"]["revision"], revision);
@@ -1435,7 +1438,9 @@ mod tests {
         let before = unsafe { metric(&rp, &id, "total_records") };
         let rows_before = unsafe { page(&rp, &id, "data_table", 0, 0) }["totalRows"].clone();
         let snap_before = json(unsafe { morphic_snapshot(rp.as_ptr(), id.as_ptr()) });
-        let rev_before = snap_before["doc"]["workspace"]["revision"].as_u64().unwrap();
+        let rev_before = snap_before["doc"]["workspace"]["revision"]
+            .as_u64()
+            .unwrap();
 
         // The first command is valid and global; the second names a field that does not exist.
         // Neither may survive: a workspace where the cards moved and the table did not is the
@@ -1450,7 +1455,10 @@ mod tests {
                         "filter":{"op":"eq","field":"nope","value":1}}]"#,
             )
         };
-        assert!(bad["error"].is_string(), "expected a typed error, got {bad}");
+        assert!(
+            bad["error"].is_string(),
+            "expected a typed error, got {bad}"
+        );
         assert_eq!(unsafe { metric(&rp, &id, "total_records") }, before);
         assert_eq!(
             unsafe { page(&rp, &id, "data_table", 0, 0) }["totalRows"],
@@ -1464,5 +1472,4 @@ mod tests {
             .is_empty());
         std::fs::remove_dir_all(&p).ok();
     }
-
 }
