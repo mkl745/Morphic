@@ -104,9 +104,11 @@ templates, and sharing into Morphic.
 | 1.3.2 Interaction commands | `57581a0` | 42369916529 | 6/6 ✅ |
 | 1.3.3 Table interactions | `97d20cb` | 42380094459 | 6/6 ✅ |
 | 1.3.4 Global filters + tap-to-filter | `44221b1` | 42388218245 | 6/6 ✅ |
-| **1.3.5 Cross-component consistency** | **`50b0f3b`** | **42393527394** | **6/6 ✅** |
+| 1.3.5 Cross-component consistency | `50b0f3b` | 42393527394 | 6/6 ✅ |
+| **AT-07 device instrument** | **`74c22f2`** | **42399189793** | **6/6 ✅** |
 
-Current totals: **588 Rust tests** across 8 engine crates + the bridge, **307 Dart tests**.
+Current totals: **588 Rust tests** across 8 engine crates + the bridge, **324 Dart tests**, and
+**20 Python cases** for the device-evidence gate.
 M1.3 added 72 Rust tests: `morphic-query` 21 → 56, `morphic-core` 35 → 52, `morphic-schema`
 24 → 33, bridge 32 → 48; and 119 Dart tests, the first substantial UI test suite.
 Gates on the latest run: `PERMISSIONS_OK`, `ENGINE_FFI_OK`, `POC_OK`,

@@ -111,9 +111,22 @@ The emulator smoke job now drives the probe end to end and asserts that it **ref
 all work. It deliberately produces no AT-07 evidence — an x86 emulator with 600 rows is two
 reasons short of the claim.
 
-`tools/test_check_device_evidence.py` (17 cases, run in CI) covers the ways a green-looking
+Verified on `74c22f2`, run **42399189793** (all six jobs green). The emulator reported:
+
+```
+RUNTIME_OK: live table rendered, range 1-256 of 600
+PAGING_OK: first row changed
+PROBE_OK: MORPHIC_PERF NOT AT-07 EVIDENCE: 600 rows < 100000 (worst 1.3 ms)
+PROBE_HONEST: the 600-row sample was correctly refused as AT-07 evidence
+```
+
+That 1.3 ms is a real measurement of the real engine over FFI — on 600 rows, on x86. It is
+reported here to show the instrument works, and it is **not** the AT-07 figure.
+
+`tools/test_check_device_evidence.py` (20 cases, run in CI) covers the ways a green-looking
 evidence file could still be worthless: an emulator, a rehearsal, a small table, a loosened
-budget, too few samples, and a verdict that contradicts its own samples.
+budget, too few samples, a flagship substituted for a mid-class phone, and a verdict that
+contradicts its own samples.
 
 ## If it fails
 
