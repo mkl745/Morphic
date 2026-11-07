@@ -82,7 +82,11 @@ fn table(rng: &mut Rng, rows: usize) -> Table {
 
 fn leaf(rng: &mut Rng) -> Value {
     match rng.below(8) {
-        0 => json!({"op": "eq", "field": "grp", "value": ["alpha", "beta", "gamma"][rng.below(3)]}),
+        0 => {
+            // Bound first: json! parses a leading `[` as an array literal, not an index expr.
+            let g = ["alpha", "beta", "gamma"][rng.below(3)];
+            json!({"op": "eq", "field": "grp", "value": g})
+        }
         1 => json!({"op": "neq", "field": "grp", "value": "delta"}),
         2 => json!({"op": "gte", "field": "val", "value": rng.below(5)}),
         3 => json!({"op": "lt", "field": "val", "value": rng.below(5)}),
