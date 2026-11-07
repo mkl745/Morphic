@@ -130,7 +130,7 @@ fn sorted_ids(t: &Table, specs: Vec<SortSpec>) -> Vec<i64> {
 #[test]
 fn filter_algebra_laws_hold_for_generated_trees() {
     let cases = env_num("MORPHIC_PROP_CASES", DEFAULT_CASES);
-    let base = env_num("MORPHIC_PROP_SEED", 0x4D4F_5250_4849_43);
+    let base = env_num("MORPHIC_PROP_SEED", 0x004D_4F52_5048_4943);
     let mut checked = 0u64;
     for c in 0..cases {
         let seed = base.wrapping_add(c);
@@ -358,7 +358,7 @@ fn paging_covers_every_matching_row_exactly_once() {
 
 #[test]
 fn group_counts_partition_the_matching_rows() {
-    let mut rng = Rng(env_num("MORPHIC_PROP_SEED", 0x4752_4F55_50));
+    let mut rng = Rng(env_num("MORPHIC_PROP_SEED", 0x0047_524F_5550));
     for _ in 0..40 {
         let t = table(&mut rng, 140);
         let f = leaf(&mut rng);
