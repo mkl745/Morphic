@@ -1325,7 +1325,10 @@ mod tests {
         }
         assert_eq!(unsafe { metric(&rp, &id, "total_records") }, 2);
         assert_eq!(unsafe { metric(&rp, &id, "metric_amount") }, 20.0);
-        assert_eq!(unsafe { page(&rp, &id, "data_table", 0, 0) }["totalRows"], 2);
+        assert_eq!(
+            unsafe { page(&rp, &id, "data_table", 0, 0) }["totalRows"],
+            2
+        );
 
         // AT-06: clearing restores the *exact* prior aggregates, not merely a plausible count.
         unsafe { apply(&rp, &id, r#"[{"kind":"setGlobalFilter","filters":[]}]"#) };
@@ -1351,7 +1354,10 @@ mod tests {
                     "filter":{"op":"gt","field":"amount","value":10}}]"#,
             )
         };
-        assert_eq!(unsafe { page(&rp, &id, "data_table", 0, 0) }["totalRows"], 2);
+        assert_eq!(
+            unsafe { page(&rp, &id, "data_table", 0, 0) }["totalRows"],
+            2
+        );
         unsafe {
             apply(
                 &rp,
@@ -1384,5 +1390,4 @@ mod tests {
         assert_eq!(again["revision"], first["revision"]);
         std::fs::remove_dir_all(&p).ok();
     }
-
 }
