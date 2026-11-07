@@ -207,10 +207,10 @@ jobs:
             echo '```'
             echo '### failure details'
             echo '```'
-            # Include the exception *message*, not just its banner: a "Bad state: No element"
-            # line does not match "was thrown", and dropping it makes a failure undiagnosable
-            # from the comment alone (the raw job log is not reachable from every environment).
-            grep -nE "Expected|Actual|Which|EXCEPTION|was thrown|Bad state|No element|StateError|RangeError|Assertion|overflowed|Error:|consider|failed|passed|loading|settled|pump" /tmp/darttest.log | head -n 60
+            # Drop the passing lines and keep everything else verbatim. A pattern grep lost
+            # the actual assertion text twice now: the banner matches, the message on the next
+            # line does not, and the raw job log is not reachable from every environment.
+            grep -vE "^✅|::group::✅|^::endgroup" /tmp/darttest.log | head -n 300
             echo '```'
             echo '### tail'
             echo '```'

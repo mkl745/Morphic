@@ -11,9 +11,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:morphic_flutter/engine/engine_controller.dart';
 import 'package:morphic_flutter/engine/interaction.dart';
 import 'package:morphic_flutter/runtime/component_registry.dart';
-import 'package:morphic_flutter/runtime/components/data_table_view.dart';
-import 'package:morphic_flutter/runtime/components/metric_card_view.dart';
-import 'package:morphic_flutter/runtime/global_filter_bar.dart';
+import 'package:morphic_flutter/runtime/workspace_view.dart';
 
 import '../support/scripted_bridge.dart';
 
@@ -68,29 +66,17 @@ Future<EngineController> _open(ScriptedBridge b) async {
   return c;
 }
 
-/// Hosts the bar, the cards and the table together, rebuilt from the document on every
-/// notification — the same wiring `WorkspaceScreen` uses.
+/// Hosts the real workspace route: `WorkspaceView` inside an `AnimatedBuilder`, exactly as
+/// `WorkspaceScreen` wires it. Using the production layout rather than a bespoke column means
+/// these tests exercise the same sizing and rebuild path a user gets.
 Future<void> _pump(WidgetTester tester, EngineController engine) async {
   await tester.pumpWidget(MaterialApp(
     home: Scaffold(
-      body: SingleChildScrollView(
-        child: AnimatedBuilder(
-          animation: engine,
-          builder: (context, _) => Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              GlobalFilterBar(engine: engine),
-              for (final spec in engine.components)
-                if (spec['type'] == 'metric_card')
-                  MetricCardView(ctx: ComponentContext(spec: spec, engine: engine))
-                else
-                  DataTableView(
-                    ctx: ComponentContext(spec: spec, engine: engine),
-                    height: 300,
-                    searchDebounce: Duration.zero,
-                  ),
-            ],
-          ),
+      body: AnimatedBuilder(
+        animation: engine,
+        builder: (context, _) => WorkspaceView(
+          controller: engine,
+          registry: ComponentRegistry(),
         ),
       ),
     ),

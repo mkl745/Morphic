@@ -105,6 +105,10 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
 
     expect(find.text('1–2 of 4'), findsOneWidget);
+    // The workspace filter bar sits above the table now, so the paging controls can be
+    // below the fold on the test surface. Scroll to them rather than tapping empty space.
+    await tester.ensureVisible(find.byTooltip('Next page'));
+    await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('Next page'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 200));
