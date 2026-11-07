@@ -66,9 +66,7 @@ fn table(rng: &mut Rng, rows: usize) -> Table {
                 name: "val".into(),
                 dtype: DataType::Float64,
                 // A small value domain, so ties are common and stability is actually exercised.
-                values: ColumnValues::Float64(
-                    (0..rows).map(|_| rng.below(5) as f64).collect(),
-                ),
+                values: ColumnValues::Float64((0..rows).map(|_| rng.below(5) as f64).collect()),
                 nulls: (0..rows).map(|_| rng.below(6) == 0).collect(),
             },
             Column {
@@ -149,7 +147,11 @@ fn filter_algebra_laws_hold_for_generated_trees() {
             assert_eq!(ids(&t, same), ra, "{op} idempotence, seed {seed:#x}");
             let ab = json!({"op":op,"args":[a.clone(), b.clone()]});
             let ba = json!({"op":op,"args":[b.clone(), a.clone()]});
-            assert_eq!(ids(&t, ab), ids(&t, ba), "{op} commutativity, seed {seed:#x}");
+            assert_eq!(
+                ids(&t, ab),
+                ids(&t, ba),
+                "{op} commutativity, seed {seed:#x}"
+            );
         }
 
         // De Morgan, both directions. Null semantics make this worth checking: `not` complements
@@ -158,7 +160,11 @@ fn filter_algebra_laws_hold_for_generated_trees() {
         let not_b = json!({"op":"not","args":[b.clone()]});
         let lhs = json!({"op":"not","args":[{"op":"and","args":[a.clone(), b.clone()]}]});
         let rhs = json!({"op":"or","args":[not_a.clone(), not_b.clone()]});
-        assert_eq!(ids(&t, lhs), ids(&t, rhs), "De Morgan (and), seed {seed:#x}");
+        assert_eq!(
+            ids(&t, lhs),
+            ids(&t, rhs),
+            "De Morgan (and), seed {seed:#x}"
+        );
         let lhs = json!({"op":"not","args":[{"op":"or","args":[a.clone(), b.clone()]}]});
         let rhs = json!({"op":"and","args":[not_a, not_b]});
         assert_eq!(ids(&t, lhs), ids(&t, rhs), "De Morgan (or), seed {seed:#x}");
@@ -365,7 +371,10 @@ fn group_counts_partition_the_matching_rows() {
         .unwrap();
         assert!(!g.truncated, "at most 5 groups cannot hit the 2000 cap");
         let summed: i64 = g.rows.iter().map(|r| r[1].as_i64().unwrap()).sum();
-        assert_eq!(summed as usize, matched, "groups must partition the selection");
+        assert_eq!(
+            summed as usize, matched,
+            "groups must partition the selection"
+        );
         assert_eq!(g.rows.len(), g.total_groups);
     }
 }
