@@ -1,8 +1,11 @@
-# Phase 1 standing report — 2026-11-06
+# Phase 1 standing report — 2026-11-06, updated 2026-11-07
 
 Written after task **1.2.5** went CI-green (run **42256267974**, commit **`fccec5c`**, all six
 jobs success). Every number below was read from the plan, the source tree, or a CI report —
 not from memory.
+
+**Update 2026-11-07:** task **1.3.1** (full plan execution) is done and CI-green. Tallies below
+reflect it; `docs/roadmap/m1.3-status.md` records the decisions and the measured evidence.
 
 ---
 
@@ -10,21 +13,21 @@ not from memory.
 
 | Question | Answer |
 |---|---|
-| Tasks finished | **12 of 41** (29%) |
-| Tasks not finished | **29** — 27 core + 2 stretch (◇) |
+| Tasks finished | **13 of 41** (32%) |
+| Tasks not finished | **28** — 26 core + 2 stretch (◇) |
 | Milestones code-complete | **2 of 7** (M1.1, M1.2) |
-| Milestones not started | **5** (M1.3 → M1.7) |
+| Milestones not started | **4** (M1.4 → M1.7); M1.3 in progress |
 | Milestone exits formally met | **0 of 7** |
 | Acceptance tests fully green | **4 of 19** (AT-02, AT-03, AT-05, AT-10) |
-| Acceptance tests partially evidenced | **7** |
-| Acceptance tests not yet started | **8** |
+| Acceptance tests partially evidenced | **9** |
+| Acceptance tests not yet started | **6** |
 | Evidence gaps no task row covers | **6** (see §6) |
-| Remaining core effort, by the plan's own S/M/L legend | **40–69 focused days** |
+| Remaining core effort, by the plan's own S/M/L legend | **37–64 focused days** |
 
 **The most important finding is the last row.** The plan estimates *all of Phase 1* at 30–40
-focused days. The 27 unfinished **core** tasks alone sum to 40–69 days using the plan's own
-legend (S ≈ ½ day, M ≈ 1–2, L ≈ 3–5). The estimate was optimistic before any work started; it
-is now provably short. §7 proposes a re-baseline.
+focused days. The 26 unfinished **core** tasks alone sum to 37–64 days using the plan's own
+legend (S ≈ ½ day, M ≈ 1–2, L ≈ 3–5), less the 3–5 days task 1.3.1 consumed. The estimate was
+optimistic before any work started; it is now provably short. §7 proposes a re-baseline.
 
 ---
 
@@ -34,7 +37,7 @@ is now provably short. §7 proposes a re-baseline.
 |---|---|---|---|---|
 | M1.1 Vertical slice | 7 | 7 | **complete** | **unmet** — needs a mid-class device; AT-02 unscored; 10 MB ≤ 3 s unmeasured |
 | M1.2 Format breadth | 5 | 5 | **complete** | **unmet** — AT-04's timeline clause depends on M1.4; device evidence pending (fuzz smoke now clean) |
-| M1.3 Interactivity | 5 | 0 | not started | — |
+| M1.3 Interactivity | 5 | 1 | in progress — query engine done | **unmet** — AT-06/07/08 need the command layer and UI; device latency unmeasured |
 | M1.4 Visualization + planner | 7 | 0 | not started | — |
 | M1.5 Lifecycle & layout | 6 | 0 | not started | — |
 | M1.6 Experience pass | 6 | 0 | not started | — |
@@ -81,9 +84,13 @@ templates, and sharing into Morphic.
 | 1.2.2 TXT / logs / JSONL | `f6008d3` | 42223638706 | 6/6 ✅ |
 | 1.2.3 Detection | `ac08894` | 42234638594 | 6/6 ✅ |
 | 1.2.4 Import UX + cancel | `a6dd398` | 42248008908 | 6/6 ✅ |
-| **1.2.5 Clipboard + share evaluation** | **`fccec5c`** | **42256267974** | **6/6 ✅** |
+| 1.2.5 Clipboard + share evaluation | `fccec5c` | 42256267974 | 6/6 ✅ |
+| AT-02 scoring + heuristics | `00c446e` | 42264783444 | 6/6 ✅ |
+| Parser fuzz smoke | `b9269be` | 42273176017 | 6/6 ✅ |
+| **1.3.1 Full plan execution** | **`976578a`** | **42335467607** | **6/6 ✅** |
 
-Current totals: **491 Rust tests** across 8 engine crates + the bridge, **188 Dart tests**.
+Current totals: **540 Rust tests** across 8 engine crates + the bridge, **188 Dart tests**.
+`morphic-query` alone went from 21 to 50 (23 example tests, 5 property tests, 1 measurement).
 Gates on the latest run: `PERMISSIONS_OK`, `ENGINE_FFI_OK`, `POC_OK`,
 `RUNTIME_OK: range 1-256 of 600`, `PAGING_OK`.
 
@@ -101,9 +108,9 @@ three ABIs.
 | AT-03 | JSON breadth | **green** | the 256 MiB refusal is proven with a lowered ceiling, not a real 256 MB file |
 | AT-04 | Logs & TXT | partial | extraction ✓; the **timeline** it requires is task 1.4.4 |
 | AT-05 | Malformed safety | **green** | 3,000-case mutation smoke clean; coverage-guided fuzzing still deferred to M1.7 |
-| AT-06 | Filtering | not started | M1.3 |
-| AT-07 | Sorting | not started | M1.3 |
-| AT-08 | Search | partial | works end-to-end; combining with filter/sort untestable until M1.3 |
+| AT-06 | Filtering | partial | engine intersection/null semantics ✓ and property-tested; chips, global+component composition and one-revision consistency are 1.3.2/1.3.4/1.3.5 |
+| AT-07 | Sorting | partial | correct, stable, nulls-last ✓; 36–70 ms on CI x86 for 100k×10, **not** the ≤150 ms mid-ARM figure; scroll reset and sort indicator are 1.3.3 |
+| AT-08 | Search | partial | case-insensitive, field-scoped, and combining with filter/sort now proven by a commutation property; debounce and as-you-type UI are 1.3.3 |
 | AT-09 | Save & reopen | partial | restore ✓; ≤ 500 ms unmeasured; filters/sort/overrides don't exist yet |
 | AT-10 | UI schema validity | **green** | gate-enforced on every run |
 | AT-11 | Component states | partial | **2 of 5** components paintable; **0 golden files** |
@@ -145,8 +152,10 @@ These will not be closed by working through the task list, because no task owns 
 
 ## 7. Recommended next moves
 
-**Next in dependency order is M1.3** (1.3.1 full plan execution → 1.3.5 cross-component
-consistency). It is the right next build: it turns a viewer into a tool, and M1.4's charts are
+**Next in dependency order is 1.3.2** — the filter/sort/search commands, atomic batches, and
+affected-component recomputation. 1.3.1 delivered the execution engine; nothing calls it from
+the UI yet, so the LRU cache is tested but not yet in the request path and no user can filter
+anything. M1.3 remains the right build: it turns a viewer into a tool, and M1.4's charts are
 meaningless without filters.
 
 But three cheap items should be slotted in **before** M1.3 gets deep, because each gets more
