@@ -5,6 +5,7 @@
 library;
 
 import 'dart:async';
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:morphic_flutter/engine/bridge.dart';
@@ -95,6 +96,14 @@ class ScriptedBridge implements MorphicBridge {
 
   /// Set to reject the next command batch, the way the engine rejects an invalid one.
   bool failCommands = false;
+
+  /// When true, `metricData` computes from the rows through the active filters instead of
+  /// returning the canned [metrics] value. Off by default so the many tests that assert a
+  /// scripted number keep their meaning; on for the filter tests, which need the number to
+  /// actually move when the selection changes.
+  bool computeMetrics = false;
+
+  List<Map<String, dynamic>> _globalFilters = [];
   String commandError = "filter references unknown field 'nope'";
 
   int _revision = 1;
@@ -122,6 +131,7 @@ class ScriptedBridge implements MorphicBridge {
           'title': 'Scripted',
           'revision': _revision,
           'layout': {'mode': 'adaptive', 'order': order},
+          'globalFilters': _globalFilters,
           'components': components,
         },
       };
@@ -252,8 +262,14 @@ class ScriptedBridge implements MorphicBridge {
           affected.add(c['id'] as String);
           changed = true;
         case 'setGlobalFilter':
-          affected.addAll(order);
-          changed = true;
+          final next = (cmd['filters'] as List? ?? const [])
+              .whereType<Map<String, dynamic>>()
+              .toList();
+          if (jsonEncode(next) != jsonEncode(_globalFilters)) {
+            _globalFilters = next;
+            affected.addAll(order);
+            changed = true;
+          }
         default:
           throw MorphicBridgeException('unknown command ${cmd['kind']}');
       }
@@ -300,7 +316,10 @@ class ScriptedBridge implements MorphicBridge {
       'filter': filter,
       'sort': sort,
     });
-    final matched = _matching(search).where((r) => _passes(r, filter)).toList();
+    final matched = _matching(search)
+        .where((r) => _globalFilters.every((g) => _passes(r, g)))
+        .where((r) => _passes(r, filter))
+        .toList();
     if (sort.isNotEmpty) {
       final rule = (sort.first as Map).cast<String, dynamic>();
       final idx = fields.indexOf(rule['field'] as String);
@@ -418,7 +437,49 @@ class ScriptedBridge implements MorphicBridge {
     if (sourceUnavailable) {
       throw const MorphicBridgeException("core: source data for workspace 'w1' is unavailable");
     }
-    return {'componentId': componentId, 'value': metrics[componentId], 'revision': 1};
+    final value = computeMetrics ? _computeMetric(componentId) : metrics[componentId];
+    return {'componentId': componentId, 'value': value, 'revision': _revision};
+  }
+
+  /// Global ∧ component-state ∧ binding, then the aggregation. The binding filter goes last
+  /// for the same reason the engine puts it last: a user filter may narrow what a card means,
+  /// never widen it.
+  Object? _computeMetric(String componentId) {
+    final c = _component(componentId);
+    final binding = (c?['binding'] as Map?)?.cast<String, dynamic>();
+    final agg = (binding?['aggregation'] as Map?)?.cast<String, dynamic>();
+    final op = agg?['op'] as String? ?? 'count';
+    final field = agg?['field'] as String?;
+    final bindingFilter = (agg?['filter'] as Map?)?.cast<String, dynamic>();
+    final stateFilter =
+        ((c?['state'] as Map?)?['filter'] as Map?)?.cast<String, dynamic>();
+    final selected = rows
+        .where((r) => _globalFilters.every((g) => _passes(r, g)))
+        .where((r) => _passes(r, stateFilter))
+        .where((r) => _passes(r, bindingFilter))
+        .toList();
+    if (op == 'count' && field == null) return selected.length;
+    final idx = fields.indexOf(field ?? '');
+    if (idx < 0) return null;
+    final cells = selected
+        .map((r) => idx < r.length ? r[idx] : null)
+        .where((v) => v != null)
+        .toList();
+    if (op == 'count') return cells.length;
+    if (op == 'distinct_count') return cells.map((v) => v.toString()).toSet().length;
+    final nums = cells.whereType<num>().toList();
+    if (nums.isEmpty) return null;
+    switch (op) {
+      case 'sum':
+        return nums.fold<num>(0, (a, b) => a + b);
+      case 'avg':
+        return nums.fold<num>(0, (a, b) => a + b) / nums.length;
+      case 'min':
+        return nums.reduce((a, b) => a < b ? a : b);
+      case 'max':
+        return nums.reduce((a, b) => a > b ? a : b);
+    }
+    return null;
   }
 
   /// What [cancelImport] reports, and every id it was asked to cancel.

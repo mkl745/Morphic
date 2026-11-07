@@ -13,6 +13,16 @@ import 'package:flutter/material.dart';
 import '../../design_system/tokens.dart';
 import '../../engine/interaction.dart';
 
+/// One field the workspace-wide menu can offer, with the type and suggestions that decide
+/// which operators make sense for it.
+class FilterField {
+  const FilterField(this.name, this.kind, {this.suggestions = const []});
+
+  final String name;
+  final FieldKind kind;
+  final List<String> suggestions;
+}
+
 /// What the user chose. Dismissing the sheet returns null, which is different from clearing:
 /// one leaves the filter alone, the other removes it.
 class FilterChoice {
@@ -31,6 +41,7 @@ Future<FilterChoice?> showColumnFilterMenu(
   required FieldKind kind,
   Map<String, dynamic>? current,
   List<String> suggestions = const [],
+  List<FilterField> fields = const [],
 }) =>
     showModalBottomSheet<FilterChoice>(
       context: context,
@@ -41,6 +52,7 @@ Future<FilterChoice?> showColumnFilterMenu(
         kind: kind,
         current: current,
         suggestions: suggestions,
+        fields: fields,
       ),
     );
 
@@ -50,6 +62,7 @@ class _FilterMenu extends StatefulWidget {
     required this.kind,
     required this.current,
     required this.suggestions,
+    required this.fields,
   });
 
   final String field;
@@ -57,18 +70,37 @@ class _FilterMenu extends StatefulWidget {
   final Map<String, dynamic>? current;
   final List<String> suggestions;
 
+  /// Non-empty only for a workspace filter, where the field is the user's choice rather than
+  /// the column they tapped. A column menu never shows a field picker.
+  final List<FilterField> fields;
+
   @override
   State<_FilterMenu> createState() => _FilterMenuState();
 }
 
 class _FilterMenuState extends State<_FilterMenu> {
-  late final List<FilterOperator> _ops = operatorsFor(widget.kind);
+  late String _field = widget.field;
+  late FieldKind _kind = widget.kind;
+  late List<String> _suggestions = widget.suggestions;
+  late List<FilterOperator> _ops = operatorsFor(widget.kind);
   late String _op;
   late final TextEditingController _value;
+
+  bool get _workspaceWide => widget.fields.isNotEmpty;
 
   @override
   void initState() {
     super.initState();
+    // Editing a chip whose field the profile no longer lists (a renamed column, or degraded
+    // mode) must still open. Resolve the field *before* choosing an operator, or the operator
+    // would be picked from the wrong type's list.
+    if (_workspaceWide && !widget.fields.any((f) => f.name == _field)) {
+      final first = widget.fields.first;
+      _field = first.name;
+      _kind = first.kind;
+      _suggestions = first.suggestions;
+      _ops = operatorsFor(first.kind);
+    }
     final existingOp = widget.current?['op'] as String?;
     // A filter the menu cannot express (an `or`, say) still opens, on the first operator,
     // rather than crashing on a dropdown value that is not in its items.
@@ -78,7 +110,7 @@ class _FilterMenuState extends State<_FilterMenu> {
     // A boolean choices widget always *shows* one of its two options, so the bound has to
     // start as that option. Leaving it empty would display "True" while Apply stayed disabled.
     _value = TextEditingController(
-      text: text.isEmpty && widget.kind == FieldKind.boolean ? 'true' : text,
+      text: text.isEmpty && _kind == FieldKind.boolean ? 'true' : text,
     );
   }
 
@@ -90,10 +122,26 @@ class _FilterMenuState extends State<_FilterMenu> {
 
   FilterOperator get _selected => _ops.firstWhere((o) => o.op == _op);
 
+  /// Changing the field changes what can be asked of it. An operator the new type cannot mean
+  /// falls back to its first, rather than leaving a dropdown value that is not in its items.
+  void _selectField(String name) {
+    final choice = widget.fields.firstWhere((f) => f.name == name);
+    setState(() {
+      _field = choice.name;
+      _kind = choice.kind;
+      _suggestions = choice.suggestions;
+      _ops = operatorsFor(choice.kind);
+      if (!_ops.any((o) => o.op == _op)) _op = _ops.first.op;
+      if (choice.kind == FieldKind.boolean && _value.text.trim().isEmpty) {
+        _value.text = 'true';
+      }
+    });
+  }
+
   bool get _canApply {
     if (!_selected.needsValue) return true;
     if (_op == 'in') return _splitValues().isNotEmpty;
-    return coerceBound(widget.kind, _value.text) != null;
+    return coerceBound(_kind, _value.text) != null;
   }
 
   List<String> _splitValues() => _value.text
@@ -106,14 +154,14 @@ class _FilterMenuState extends State<_FilterMenu> {
     if (!_canApply) return;
     final Map<String, dynamic> node;
     if (!_selected.needsValue) {
-      node = filterNode(_op, field: widget.field);
+      node = filterNode(_op, field: _field);
     } else if (_op == 'in') {
-      node = filterNode(_op, field: widget.field, value: _splitValues());
+      node = filterNode(_op, field: _field, value: _splitValues());
     } else {
       node = filterNode(
         _op,
-        field: widget.field,
-        value: coerceBound(widget.kind, _value.text),
+        field: _field,
+        value: coerceBound(_kind, _value.text),
       );
     }
     Navigator.of(context).pop(FilterChoice.set(node));
@@ -137,7 +185,7 @@ class _FilterMenuState extends State<_FilterMenu> {
   }
 
   String get _hint {
-    switch (widget.kind) {
+    switch (_kind) {
       case FieldKind.integer:
         return 'Whole number';
       case FieldKind.decimal:
@@ -166,7 +214,25 @@ class _FilterMenuState extends State<_FilterMenu> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Filter ${widget.field}', style: theme.textTheme.titleMedium),
+            Text(
+              _workspaceWide ? 'Filter the whole workspace' : 'Filter $_field',
+              style: theme.textTheme.titleMedium,
+            ),
+            if (_workspaceWide) ...[
+              const SizedBox(height: MorphicSpace.md),
+              DropdownButton<String>(
+                key: const Key('filter-field'),
+                value: _field,
+                isExpanded: true,
+                items: [
+                  for (final f in widget.fields)
+                    DropdownMenuItem<String>(value: f.name, child: Text(f.name)),
+                ],
+                onChanged: (v) {
+                  if (v != null) _selectField(v);
+                },
+              ),
+            ],
             const SizedBox(height: MorphicSpace.md),
             DropdownButton<String>(
               key: const Key('filter-operator'),
@@ -183,7 +249,7 @@ class _FilterMenuState extends State<_FilterMenu> {
             ),
             if (needsValue) ...[
               const SizedBox(height: MorphicSpace.md),
-              if (widget.kind == FieldKind.boolean)
+              if (_kind == FieldKind.boolean)
                 DropdownButton<String>(
                   key: const Key('filter-bool'),
                   value: _value.text.toLowerCase() == 'false' ? 'false' : 'true',
@@ -201,8 +267,8 @@ class _FilterMenuState extends State<_FilterMenu> {
                 TextField(
                   key: const Key('filter-value'),
                   controller: _value,
-                  keyboardType: widget.kind == FieldKind.integer ||
-                          widget.kind == FieldKind.decimal
+                  keyboardType: _kind == FieldKind.integer ||
+                          _kind == FieldKind.decimal
                       ? const TextInputType.numberWithOptions(
                           signed: true, decimal: true)
                       : TextInputType.text,
@@ -210,7 +276,7 @@ class _FilterMenuState extends State<_FilterMenu> {
                     isDense: true,
                     labelText: _hint,
                     border: const OutlineInputBorder(),
-                    suffixIcon: widget.kind == FieldKind.timestamp
+                    suffixIcon: _kind == FieldKind.timestamp
                         ? IconButton(
                             key: const Key('filter-date'),
                             onPressed: _pickDate,
@@ -222,7 +288,7 @@ class _FilterMenuState extends State<_FilterMenu> {
                   onChanged: (_) => setState(() {}),
                   onSubmitted: (_) => _apply(),
                 ),
-              if (widget.suggestions.isNotEmpty) ...[
+              if (_suggestions.isNotEmpty) ...[
                 const SizedBox(height: MorphicSpace.sm),
                 Text('Frequent values', style: theme.textTheme.labelSmall),
                 const SizedBox(height: MorphicSpace.xs),
@@ -230,7 +296,7 @@ class _FilterMenuState extends State<_FilterMenu> {
                   spacing: MorphicSpace.xs,
                   runSpacing: MorphicSpace.xs,
                   children: [
-                    for (final s in widget.suggestions.take(12))
+                    for (final s in _suggestions.take(12))
                       ActionChip(
                         label: Text(s),
                         onPressed: () {

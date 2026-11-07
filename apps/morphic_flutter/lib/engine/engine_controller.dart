@@ -73,6 +73,49 @@ class EngineController extends ChangeNotifier {
   String? _error;
   String? get error => _error;
 
+  /// The workspace-wide filters, as persisted by Rust. Every bound component's page and
+  /// metric is computed against these, so the bar renders this list and nothing else.
+  List<Map<String, dynamic>> get globalFilters {
+    final ws = _doc?['workspace'];
+    if (ws is! Map<String, dynamic>) return const [];
+    return (ws['globalFilters'] as List? ?? const [])
+        .whereType<Map<String, dynamic>>()
+        .toList();
+  }
+
+  /// Field names in profile order. Empty in degraded mode, where the data is gone and a
+  /// filter menu would have nothing honest to offer.
+  List<String> get fieldNames => _profileFields
+      .map((f) => f['name'] as String? ?? '')
+      .where((n) => n.isNotEmpty)
+      .toList();
+
+  List<Map<String, dynamic>> get _profileFields =>
+      ((_profile?['fields']) as List? ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .toList();
+
+  /// The engine's inferred type for a field, or null when the profile is unavailable.
+  String? dtypeOf(String field) {
+    for (final f in _profileFields) {
+      if (f['name'] == field) return f['dtype'] as String?;
+    }
+    return null;
+  }
+
+  /// Frequently occurring values, offered as choices by a text column's filter menu.
+  List<String> topValuesOf(String field) {
+    for (final f in _profileFields) {
+      if (f['name'] != field) continue;
+      return (f['topValues'] as List? ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .map((v) => v['value']?.toString() ?? '')
+          .where((s) => s.isNotEmpty)
+          .toList();
+    }
+    return const [];
+  }
+
   /// Components in layout order, as the runtime should render them.
   List<Map<String, dynamic>> get components {
     final ws = _doc?['workspace'];

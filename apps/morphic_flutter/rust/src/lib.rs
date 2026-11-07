@@ -1282,4 +1282,107 @@ mod tests {
         assert_eq!(table["state"]["sort"][0]["dir"], "desc");
         std::fs::remove_dir_all(&p).ok();
     }
+
+    // --- M1.3 task 1.3.4: one global filter, every component (AT-06) ----------------------
+
+    unsafe fn metric(rp: &CString, id: &CString, component: &str) -> serde_json::Value {
+        json(morphic_metric_data(
+            rp.as_ptr(),
+            id.as_ptr(),
+            c(component).as_ptr(),
+        ))["value"]
+            .clone()
+    }
+
+    #[test]
+    fn one_global_filter_moves_every_component_and_clearing_restores_the_aggregate() {
+        let (p, rp) = root("globalfilter");
+        let id = c("w1");
+        unsafe { import(&rp, &id, None) };
+
+        let count_before = unsafe { metric(&rp, &id, "total_records") };
+        let avg_before = unsafe { metric(&rp, &id, "metric_amount") };
+        let rows_before = unsafe { page(&rp, &id, "data_table", 0, 0) };
+        assert_eq!(count_before, 4);
+        assert_eq!(avg_before, 17.5);
+        assert_eq!(rows_before["totalRows"], 4);
+
+        // One command, one revision — the card and the table must agree afterwards.
+        let applied = unsafe {
+            apply(
+                &rp,
+                &id,
+                r#"[{"kind":"setGlobalFilter","filters":[
+                    {"op":"eq","field":"region","value":"eu"}]}]"#,
+            )
+        };
+        let affected = applied["affected"].as_array().unwrap();
+        for expected in ["total_records", "metric_amount", "data_table"] {
+            assert!(
+                affected.iter().any(|a| a == expected),
+                "{expected} is bound to the data and must be named affected"
+            );
+        }
+        assert_eq!(unsafe { metric(&rp, &id, "total_records") }, 2);
+        assert_eq!(unsafe { metric(&rp, &id, "metric_amount") }, 20.0);
+        assert_eq!(unsafe { page(&rp, &id, "data_table", 0, 0) }["totalRows"], 2);
+
+        // AT-06: clearing restores the *exact* prior aggregates, not merely a plausible count.
+        unsafe { apply(&rp, &id, r#"[{"kind":"setGlobalFilter","filters":[]}]"#) };
+        assert_eq!(unsafe { metric(&rp, &id, "total_records") }, count_before);
+        assert_eq!(unsafe { metric(&rp, &id, "metric_amount") }, avg_before);
+        assert_eq!(
+            unsafe { page(&rp, &id, "data_table", 0, 0) }["totalRows"],
+            rows_before["totalRows"]
+        );
+        std::fs::remove_dir_all(&p).ok();
+    }
+
+    #[test]
+    fn a_global_filter_intersects_a_component_filter_instead_of_replacing_it() {
+        let (p, rp) = root("intersect");
+        let id = c("w1");
+        unsafe { import(&rp, &id, None) };
+        unsafe {
+            apply(
+                &rp,
+                &id,
+                r#"[{"kind":"setComponentFilter","componentId":"data_table",
+                    "filter":{"op":"gt","field":"amount","value":10}}]"#,
+            )
+        };
+        assert_eq!(unsafe { page(&rp, &id, "data_table", 0, 0) }["totalRows"], 2);
+        unsafe {
+            apply(
+                &rp,
+                &id,
+                r#"[{"kind":"setGlobalFilter","filters":[
+                    {"op":"eq","field":"region","value":"eu"}]}]"#,
+            )
+        };
+        // eu rows are 10 and 30; only 30 is also greater than 10.
+        let v = unsafe { page(&rp, &id, "data_table", 0, 0) };
+        assert_eq!(v["totalRows"], 1);
+        assert_eq!(v["rows"][0][1], 30);
+        // The card has no component filter, so it sees both eu rows — different selections
+        // from the same global set, which is the point of composing per component.
+        assert_eq!(unsafe { metric(&rp, &id, "total_records") }, 2);
+        std::fs::remove_dir_all(&p).ok();
+    }
+
+    #[test]
+    fn setting_the_same_global_set_again_is_a_no_op() {
+        let (p, rp) = root("globalnoop");
+        let id = c("w1");
+        unsafe { import(&rp, &id, None) };
+        let cmds = r#"[{"kind":"setGlobalFilter","filters":[
+            {"op":"eq","field":"region","value":"eu"}]}]"#;
+        let first = unsafe { apply(&rp, &id, cmds) };
+        let again = unsafe { apply(&rp, &id, cmds) };
+        assert_eq!(first["changed"], true);
+        assert_eq!(again["changed"], false);
+        assert_eq!(again["revision"], first["revision"]);
+        std::fs::remove_dir_all(&p).ok();
+    }
+
 }

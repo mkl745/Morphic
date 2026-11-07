@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import '../design_system/tokens.dart';
 import '../engine/engine_controller.dart';
 import 'component_registry.dart';
+import 'global_filter_bar.dart';
 
 class WorkspaceView extends StatelessWidget {
   const WorkspaceView({
@@ -85,6 +86,11 @@ class WorkspaceView extends StatelessWidget {
         if (controller.degraded) {
           blocks.add(DegradedNotice(message: controller.notice));
         }
+
+        // The workspace filter bar sits above every component, because what it sets applies
+        // to every component. It is part of the scroll view rather than pinned: on a phone
+        // a pinned bar plus a table header would leave very little room for rows.
+        blocks.add(GlobalFilterBar(engine: controller));
 
         void flushMetrics() {
           if (metrics.isEmpty) return;

@@ -10,6 +10,8 @@
 /// drift silently.
 library;
 
+import 'dart:convert';
+
 /// Sort direction. Wire values are `asc` / `desc`.
 enum SortDir { asc, desc }
 
@@ -195,6 +197,66 @@ Map<String, dynamic>? withFieldFilter(
   }
   if (replacement != null) others.add(replacement);
   return combineFilters(others);
+}
+
+/// A canonical encoding of a filter node, for deciding whether two filters are *the same
+/// filter*. Map key order must not decide whether a card looks pressed or a chip looks active,
+/// and `jsonEncode` alone preserves insertion order.
+///
+/// Numbers keep their JSON spelling (`1` and `1.0` differ), which is the same distinction the
+/// wire makes; both sides of a comparison come from the same decoded document in practice.
+String filterKey(Map<String, dynamic> node) => _canonical(node);
+
+String _canonical(Object? value) {
+  if (value is Map) {
+    final keys = value.keys.map((k) => k.toString()).toList()..sort();
+    final parts = keys.map((k) => '${jsonEncode(k)}:${_canonical(value[k])}');
+    return '{${parts.join(',')}}';
+  }
+  if (value is List) return '[${value.map(_canonical).join(',')}]';
+  return jsonEncode(value);
+}
+
+/// True when two nodes would select the same rows, regardless of key order.
+bool sameFilter(Map<String, dynamic> a, Map<String, dynamic> b) =>
+    filterKey(a) == filterKey(b);
+
+/// Where [node] sits in a global filter set, or -1. Structural, not identity: a card's binding
+/// filter and the chip the engine echoed back are different map objects.
+int indexOfFilter(List<Map<String, dynamic>> set, Map<String, dynamic> node) {
+  for (var i = 0; i < set.length; i++) {
+    if (sameFilter(set[i], node)) return i;
+  }
+  return -1;
+}
+
+/// Tap-to-toggle: applied means removed, not applied means appended. Idempotent in the sense
+/// that matters — tapping twice returns the original set, in the original order.
+List<Map<String, dynamic>> toggledFilters(
+  List<Map<String, dynamic>> set,
+  Map<String, dynamic> node,
+) {
+  final at = indexOfFilter(set, node);
+  if (at < 0) return [...set, node];
+  return [...set]..removeAt(at);
+}
+
+/// Replace one entry, or remove it when [replacement] is null. The result is the whole set,
+/// because `SetGlobalFilter` replaces rather than patches — there is no index-based remove
+/// command whose index could go stale between the tap and the apply.
+List<Map<String, dynamic>> editedFilters(
+  List<Map<String, dynamic>> set,
+  int index,
+  Map<String, dynamic>? replacement,
+) {
+  if (index < 0 || index >= set.length) return [...set];
+  final next = [...set];
+  if (replacement == null) {
+    next.removeAt(index);
+  } else {
+    next[index] = replacement;
+  }
+  return next;
 }
 
 /// The column types the filter menu distinguishes. Mirrors `DataType::as_str()`.

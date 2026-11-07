@@ -303,6 +303,79 @@ void main() {
     });
   });
 
+  group('global filter sets', () {
+    final eu = filterNode('eq', field: 'region', value: 'eu');
+    final big = filterNode('gt', field: 'amount', value: 10);
+
+    test('key order does not decide whether two filters are the same', () {
+      final a = {'op': 'eq', 'field': 'region', 'value': 'eu'};
+      final b = {'value': 'eu', 'field': 'region', 'op': 'eq'};
+      expect(sameFilter(a, b), isTrue);
+      expect(filterKey(a), filterKey(b));
+    });
+
+    test('a different bound is a different filter', () {
+      expect(sameFilter(eu, filterNode('eq', field: 'region', value: 'us')), isFalse);
+    });
+
+    test('nested arguments are compared structurally, not by identity', () {
+      final a = filterNode('and', args: [eu, big]);
+      final b = filterNode('and', args: [
+        {'value': 'eu', 'op': 'eq', 'field': 'region'},
+        {'field': 'amount', 'op': 'gt', 'value': 10},
+      ]);
+      expect(sameFilter(a, b), isTrue);
+    });
+
+    test('argument order still matters, because the wire is a list', () {
+      expect(sameFilter(filterNode('and', args: [eu, big]),
+          filterNode('and', args: [big, eu])), isFalse);
+    });
+
+    test('indexOfFilter finds a structurally equal node from another map', () {
+      final set = [eu, big];
+      expect(indexOfFilter(set, {'field': 'amount', 'op': 'gt', 'value': 10}), 1);
+      expect(indexOfFilter(set, filterNode('eq', field: 'region', value: 'us')), -1);
+    });
+
+    test('toggling appends when absent and removes when present', () {
+      expect(toggledFilters(const [], eu), [eu]);
+      expect(toggledFilters([eu, big], eu), [big]);
+    });
+
+    test('toggling twice returns the original set in the original order', () {
+      final set = [eu, big];
+      final once = toggledFilters(set, big);
+      expect(toggledFilters(once, big), set);
+    });
+
+    test('toggling does not mutate the set it was given', () {
+      final set = [eu];
+      toggledFilters(set, big);
+      expect(set, [eu]);
+    });
+
+    test('editing replaces in place rather than moving the chip to the end', () {
+      final replacement = filterNode('eq', field: 'region', value: 'us');
+      expect(editedFilters([eu, big], 0, replacement), [replacement, big]);
+    });
+
+    test('editing to null removes just that entry', () {
+      expect(editedFilters([eu, big], 0, null), [big]);
+      expect(editedFilters([eu], 0, null), isEmpty);
+    });
+
+    test('an out-of-range index is a no-op, not a crash', () {
+      expect(editedFilters([eu], 5, big), [eu]);
+      expect(editedFilters([eu], -1, null), [eu]);
+    });
+
+    test('numbers keep their JSON spelling, as they do on the wire', () {
+      expect(sameFilter(filterNode('eq', field: 'n', value: 1),
+          filterNode('eq', field: 'n', value: 1.0)), isFalse);
+    });
+  });
+
   group('type-aware operators', () {
     test('an integer offers comparisons but not substring matching', () {
       final ops = operatorsFor(FieldKind.integer).map((o) => o.op).toSet();
