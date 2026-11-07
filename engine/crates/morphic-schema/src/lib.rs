@@ -399,7 +399,13 @@ pub fn validate(doc: &WorkspaceDoc) -> Vec<ValidationIssue> {
     // Pass 4: global filters obey the same ceilings as component filters.
     for (i, f) in ws.global_filters.iter().enumerate() {
         let mut nodes = 0usize;
-        validate_filter(f, &format!("/workspace/globalFilters/{i}"), 0, &mut nodes, &mut issues);
+        validate_filter(
+            f,
+            &format!("/workspace/globalFilters/{i}"),
+            0,
+            &mut nodes,
+            &mut issues,
+        );
     }
 
     // Layout order must reference exactly the component ids (no orphans, no missing).
@@ -566,13 +572,7 @@ fn check_agg_op(agg: &Aggregation, location: &str, issues: &mut Vec<ValidationIs
     }
     if let Some(f) = &agg.filter {
         let mut nodes = 0usize;
-        validate_filter(
-            f,
-            &format!("{location}/filter"),
-            0,
-            &mut nodes,
-            issues,
-        );
+        validate_filter(f, &format!("{location}/filter"), 0, &mut nodes, issues);
     }
 }
 
@@ -1288,7 +1288,10 @@ mod state_tests {
         };
         let doc = doc_with_state(state.clone(), table_interactions());
         let wire = serde_json::to_value(&doc).unwrap();
-        assert_eq!(wire["workspace"]["components"][0]["state"]["sort"][0]["dir"], "asc");
+        assert_eq!(
+            wire["workspace"]["components"][0]["state"]["sort"][0]["dir"],
+            "asc"
+        );
         assert_eq!(
             wire["workspace"]["components"][0]["state"]["sort"][0]["nulls"],
             "last"
@@ -1303,7 +1306,10 @@ mod state_tests {
         let mut doc = crate::tests::minimal_doc();
         doc.workspace.components[0].interactions = table_interactions();
         let mut wire = serde_json::to_value(&doc).unwrap();
-        wire["workspace"]["components"][0].as_object_mut().unwrap().remove("state");
+        wire["workspace"]["components"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("state");
         let back: WorkspaceDoc = serde_json::from_value(wire).unwrap();
         assert!(back.workspace.components[0].state.is_empty());
     }
@@ -1323,7 +1329,10 @@ mod state_tests {
             metric.clone(),
         );
         let issues = validate(&doc);
-        assert!(issues.iter().any(|i| i.pointer.ends_with("/state/sort")), "{issues:?}");
+        assert!(
+            issues.iter().any(|i| i.pointer.ends_with("/state/sort")),
+            "{issues:?}"
+        );
 
         let doc = doc_with_state(
             ComponentState {
@@ -1332,12 +1341,16 @@ mod state_tests {
             },
             metric,
         );
-        assert!(validate(&doc).iter().any(|i| i.pointer.ends_with("/state/search")));
+        assert!(validate(&doc)
+            .iter()
+            .any(|i| i.pointer.ends_with("/state/search")));
     }
 
     #[test]
     fn sort_keys_are_bounded_and_unique() {
-        let many: Vec<SortRule> = (0..MAX_SORT_KEYS + 1).map(|i| rule(&format!("f{i}"))).collect();
+        let many: Vec<SortRule> = (0..MAX_SORT_KEYS + 1)
+            .map(|i| rule(&format!("f{i}")))
+            .collect();
         let doc = doc_with_state(
             ComponentState {
                 sort: many,
@@ -1345,7 +1358,9 @@ mod state_tests {
             },
             table_interactions(),
         );
-        assert!(validate(&doc).iter().any(|i| i.rule.contains("too many sort keys")));
+        assert!(validate(&doc)
+            .iter()
+            .any(|i| i.rule.contains("too many sort keys")));
 
         let doc = doc_with_state(
             ComponentState {
@@ -1354,7 +1369,9 @@ mod state_tests {
             },
             table_interactions(),
         );
-        assert!(validate(&doc).iter().any(|i| i.rule.contains("duplicate sort field")));
+        assert!(validate(&doc)
+            .iter()
+            .any(|i| i.rule.contains("duplicate sort field")));
     }
 
     #[test]
@@ -1373,11 +1390,15 @@ mod state_tests {
             },
             table_interactions(),
         );
-        assert!(validate(&doc).iter().any(|i| i.rule.contains("unknown filter operator")));
+        assert!(validate(&doc)
+            .iter()
+            .any(|i| i.rule.contains("unknown filter operator")));
         // global filters
         let mut doc = crate::tests::minimal_doc();
         doc.workspace.global_filters = vec![bad];
-        assert!(validate(&doc).iter().any(|i| i.pointer.starts_with("/workspace/globalFilters")));
+        assert!(validate(&doc)
+            .iter()
+            .any(|i| i.pointer.starts_with("/workspace/globalFilters")));
     }
 
     #[test]
@@ -1426,37 +1447,59 @@ mod state_tests {
     fn leaf_and_connective_shapes_are_checked() {
         let cases = [
             (
-                FilterExpr { op: "and".into(), field: None, value: None, args: vec![] },
+                FilterExpr {
+                    op: "and".into(),
+                    field: None,
+                    value: None,
+                    args: vec![],
+                },
                 "at least one",
             ),
             (
-                FilterExpr { op: "not".into(), field: None, value: None, args: vec![] },
+                FilterExpr {
+                    op: "not".into(),
+                    field: None,
+                    value: None,
+                    args: vec![],
+                },
                 "exactly one",
             ),
-            (FilterExpr {
-                op: "eq".into(),
-                field: None,
-                value: Some(serde_json::json!(1)),
-                args: vec![],
-            }, "requires a field"),
-            (FilterExpr {
-                op: "eq".into(),
-                field: Some("x".into()),
-                value: None,
-                args: vec![],
-            }, "requires a value"),
-            (FilterExpr {
-                op: "in".into(),
-                field: Some("x".into()),
-                value: Some(serde_json::json!(3)),
-                args: vec![],
-            }, "array"),
+            (
+                FilterExpr {
+                    op: "eq".into(),
+                    field: None,
+                    value: Some(serde_json::json!(1)),
+                    args: vec![],
+                },
+                "requires a field",
+            ),
+            (
+                FilterExpr {
+                    op: "eq".into(),
+                    field: Some("x".into()),
+                    value: None,
+                    args: vec![],
+                },
+                "requires a value",
+            ),
+            (
+                FilterExpr {
+                    op: "in".into(),
+                    field: Some("x".into()),
+                    value: Some(serde_json::json!(3)),
+                    args: vec![],
+                },
+                "array",
+            ),
         ];
         for (f, want) in cases {
             let mut doc = crate::tests::minimal_doc();
             doc.workspace.global_filters = vec![f];
             let issues = validate(&doc);
-            assert!(issues.iter().any(|i| i.rule.contains(want)), "{want}: {issues:?}");
+            assert!(
+                issues.iter().any(|i| i.rule.contains(want)),
+                "{want}: {issues:?}"
+            );
         }
     }
 

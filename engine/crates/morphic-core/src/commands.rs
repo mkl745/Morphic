@@ -95,10 +95,13 @@ pub(crate) fn apply(
             } => {
                 let c = component(&mut next, component_id).map_err(|m| at(i, m))?;
                 if !c.interactions.filter {
-                    return Err(at(i, format!(
-                        "'{}' ({}) does not allow filtering",
-                        component_id, c.component_type
-                    )));
+                    return Err(at(
+                        i,
+                        format!(
+                            "'{}' ({}) does not allow filtering",
+                            component_id, c.component_type
+                        ),
+                    ));
                 }
                 if let Some(f) = filter {
                     check_fields(f, fields).map_err(|m| at(i, m))?;
@@ -111,10 +114,13 @@ pub(crate) fn apply(
             Command::SetComponentSort { component_id, sort } => {
                 let c = component(&mut next, component_id).map_err(|m| at(i, m))?;
                 if !c.interactions.sort {
-                    return Err(at(i, format!(
-                        "'{}' ({}) does not allow sorting",
-                        component_id, c.component_type
-                    )));
+                    return Err(at(
+                        i,
+                        format!(
+                            "'{}' ({}) does not allow sorting",
+                            component_id, c.component_type
+                        ),
+                    ));
                 }
                 if let Some(names) = fields {
                     for rule in sort {
@@ -131,10 +137,13 @@ pub(crate) fn apply(
             Command::SetSearch { component_id, text } => {
                 let c = component(&mut next, component_id).map_err(|m| at(i, m))?;
                 if !c.interactions.search {
-                    return Err(at(i, format!(
-                        "'{}' ({}) does not allow search",
-                        component_id, c.component_type
-                    )));
+                    return Err(at(
+                        i,
+                        format!(
+                            "'{}' ({}) does not allow search",
+                            component_id, c.component_type
+                        ),
+                    ));
                 }
                 // An empty or whitespace-only search is "no search", not a search for "".
                 let normalized = text

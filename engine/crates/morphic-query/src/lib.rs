@@ -1301,7 +1301,10 @@ mod selection_aggregate_tests {
     fn a_selection_narrows_every_operator() {
         let table = t();
         let rows = [0usize, 1];
-        assert_eq!(aggregate_over(&table, Some(&rows), &agg("count", None)).unwrap(), json!(2));
+        assert_eq!(
+            aggregate_over(&table, Some(&rows), &agg("count", None)).unwrap(),
+            json!(2)
+        );
         assert_eq!(
             aggregate_over(&table, Some(&rows), &agg("count", Some("v"))).unwrap(),
             json!(2)
@@ -1351,7 +1354,10 @@ mod selection_aggregate_tests {
         let table = t();
         // Row 2 has a null v; row 3 a null grp.
         let rows = [2usize, 3];
-        assert_eq!(aggregate_over(&table, Some(&rows), &agg("count", None)).unwrap(), json!(2));
+        assert_eq!(
+            aggregate_over(&table, Some(&rows), &agg("count", None)).unwrap(),
+            json!(2)
+        );
         assert_eq!(
             aggregate_over(&table, Some(&rows), &agg("count", Some("v"))).unwrap(),
             json!(1),

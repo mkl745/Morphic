@@ -555,11 +555,7 @@ impl Engine {
 
     /// How many times this component's data has actually been executed this session. A cache
     /// hit does not count. This is what the incremental-recomputation test asserts against.
-    pub fn compute_count(
-        &self,
-        workspace_id: &str,
-        component_id: &str,
-    ) -> Result<u64, CoreError> {
+    pub fn compute_count(&self, workspace_id: &str, component_id: &str) -> Result<u64, CoreError> {
         let sessions = self
             .sessions
             .lock()
@@ -1444,7 +1440,12 @@ mod tests {
         let reopened = Engine::new(&root).unwrap();
         let stored = reopened.snapshot("w1").unwrap();
         assert_eq!(stored.revision, before.revision);
-        assert!(stored.doc.workspace.components.iter().all(|c| c.state.is_empty()));
+        assert!(stored
+            .doc
+            .workspace
+            .components
+            .iter()
+            .all(|c| c.state.is_empty()));
         std::fs::remove_dir_all(&root).ok();
     }
 
@@ -1683,12 +1684,24 @@ mod tests {
                 NOW,
             )
             .unwrap();
-        assert_eq!(engine.component_page("w1", &table, 0, 0).unwrap().total_rows, 3);
+        assert_eq!(
+            engine
+                .component_page("w1", &table, 0, 0)
+                .unwrap()
+                .total_rows,
+            3
+        );
         // Clearing the global filter restores the original five.
         engine
             .apply("w1", &[Command::SetGlobalFilter { filters: vec![] }], NOW)
             .unwrap();
-        assert_eq!(engine.component_page("w1", &table, 0, 0).unwrap().total_rows, 5);
+        assert_eq!(
+            engine
+                .component_page("w1", &table, 0, 0)
+                .unwrap()
+                .total_rows,
+            5
+        );
         std::fs::remove_dir_all(&root).ok();
     }
 
@@ -1737,7 +1750,13 @@ mod tests {
                 NOW,
             )
             .unwrap();
-        assert_eq!(engine.component_page("w1", &table, 0, 0).unwrap().total_rows, 5);
+        assert_eq!(
+            engine
+                .component_page("w1", &table, 0, 0)
+                .unwrap()
+                .total_rows,
+            5
+        );
         std::fs::remove_dir_all(&root).ok();
     }
 
@@ -1788,7 +1807,11 @@ mod tests {
         drop(engine);
         let engine = Engine::new(&root).unwrap();
         let got = engine.metric_data("w1", &metric).unwrap();
-        assert_eq!(got.value, serde_json::json!(2), "the binding filter must count");
+        assert_eq!(
+            got.value,
+            serde_json::json!(2),
+            "the binding filter must count"
+        );
         std::fs::remove_dir_all(&root).ok();
     }
 
@@ -1858,7 +1881,10 @@ mod tests {
     fn the_duplicated_sort_and_filter_ceilings_agree() {
         // schema may not depend on query, so the constants are declared twice. This is the
         // guard that stops them drifting apart.
-        assert_eq!(morphic_schema::MAX_SORT_KEYS, morphic_query::sort::MAX_SORT_KEYS);
+        assert_eq!(
+            morphic_schema::MAX_SORT_KEYS,
+            morphic_query::sort::MAX_SORT_KEYS
+        );
         assert_eq!(
             morphic_schema::MAX_FILTER_DEPTH,
             morphic_query::filter::MAX_FILTER_DEPTH

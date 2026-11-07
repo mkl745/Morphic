@@ -18,8 +18,8 @@
 //! those components hit the cache. Keying by document revision would invalidate everything on
 //! every keystroke and make "affected-component recomputation only" impossible.
 
-use morphic_schema::{Binding, ComponentSpec, FilterExpr, NullsOrder, SortDir, WorkspaceDoc};
 use morphic_query::{Direction, Nulls, Plan, SortSpec};
+use morphic_schema::{Binding, ComponentSpec, FilterExpr, NullsOrder, SortDir, WorkspaceDoc};
 
 use crate::{commands, CoreError};
 
@@ -62,10 +62,7 @@ pub(crate) fn for_component(
 ///
 /// Sorting cannot change an aggregate, and including it in the plan would give the same value
 /// two cache keys — a miss that recomputes an identical answer.
-pub(crate) fn for_metric(
-    doc: &WorkspaceDoc,
-    component: &ComponentSpec,
-) -> Result<Plan, CoreError> {
+pub(crate) fn for_metric(doc: &WorkspaceDoc, component: &ComponentSpec) -> Result<Plan, CoreError> {
     Ok(Plan {
         search: component.state.search.clone(),
         filter: composed_filter(doc, component)?,

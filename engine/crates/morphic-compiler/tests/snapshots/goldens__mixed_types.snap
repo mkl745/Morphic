@@ -48,7 +48,7 @@ expression: doc
           }
         },
         "interactions": {
-          "filter": false,
+          "filter": true,
           "search": false,
           "sort": false,
           "select": false
@@ -77,7 +77,7 @@ expression: doc
           }
         },
         "interactions": {
-          "filter": false,
+          "filter": true,
           "search": false,
           "sort": false,
           "select": false
