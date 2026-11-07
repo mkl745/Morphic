@@ -131,7 +131,7 @@ impl Filter {
                 .map(str::to_string)
                 .ok_or_else(|| QueryError::InvalidPlan(format!("filter '{op}' requires a field")))
         };
-        let args = || -> Result<Vec<Filter>, QueryError> {
+        let mut args = || -> Result<Vec<Filter>, QueryError> {
             match node.get("args") {
                 None | Some(Value::Null) => Ok(Vec::new()),
                 Some(Value::Array(items)) => items
@@ -268,7 +268,7 @@ impl Filter {
                     k.check_bounds(col)?;
                 }
             }
-            Filter::Not(k) => k.check_bounds(col),
+            Filter::Not(k) => k.check_bounds(col)?,
             Filter::Compare { field, value, .. } => {
                 if field == &col.name {
                     Bound::coerce(col, value)?;
@@ -370,7 +370,7 @@ impl Bound {
                     .ok()
                     .filter(|x| x.is_finite())
                     .map(Bound::Float)
-                    .ok_or_else(bad()),
+                    .ok_or_else(bad),
                 _ => Err(bad()),
             },
             ColumnValues::Bool(_) => match value {

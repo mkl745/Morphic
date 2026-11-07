@@ -760,7 +760,7 @@ mod tests {
 mod plan_tests {
     use super::*;
     use morphic_model::{DataType, Table};
-    use serde_json::json;
+    use serde_json::{json, Value};
 
     /// id, region (with a null), amount (with a null), when. Enough shape to exercise every
     /// operator, both null policies, and multi-key stability.
@@ -1180,7 +1180,7 @@ mod plan_tests {
         let k = |n| cache::CacheKey::new(1, n);
         c.insert(k(1), 1);
         c.insert(k(2), 2);
-        c.get(k(1)); // 1 is now most recent
+        assert!(c.get(k(1)).is_some(), "1 is now most recently used");
         c.insert(k(3), 3);
         assert!(c.get(k(2)).is_none(), "2 was least recently used");
         assert!(c.get(k(1)).is_some());
