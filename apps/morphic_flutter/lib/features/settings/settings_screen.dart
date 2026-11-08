@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../build_info.dart';
 import '../../design_system/tokens.dart';
 import '../../engine/bridge_scope.dart';
 
@@ -54,7 +55,28 @@ class SettingsScreen extends StatelessWidget {
                 children: [
                   Text('About', style: Theme.of(context).textTheme.titleSmall),
                   const SizedBox(height: MorphicSpace.sm),
-                  const Text('MORPHIC 0.1.0 · Phase 0 proof of concept'),
+                  const Text('MORPHIC $kAppVersion · $kPhaseLabel'),
+                  const SizedBox(height: MorphicSpace.xs),
+                  // Selectable so a tester can copy the exact build into a bug report instead
+                  // of retyping a SHA.
+                  SelectableText(
+                    BuildInfo.fromEnvironment.label,
+                    key: const Key('about-build'),
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                  const SizedBox(height: MorphicSpace.xs),
+                  Text(
+                    BuildInfo.fromEnvironment.explanation,
+                    key: const Key('about-build-explanation'),
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Theme.of(context)
+                              .textTheme
+                              .bodySmall
+                              ?.color
+                              ?.withValues(alpha: 0.7),
+                        ),
+                  ),
+                  const SizedBox(height: MorphicSpace.sm),
                   const Text('Your Data. Your Interface.'),
                 ],
               ),

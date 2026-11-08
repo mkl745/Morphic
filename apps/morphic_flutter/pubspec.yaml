@@ -1,7 +1,9 @@
 name: morphic_flutter
 description: "MORPHIC — Your Data. Your Interface. A local-first adaptive workspace engine."
 publish_to: "none"
-version: 0.1.0+1
+# Bumped from 0.1.0+1: the versionCode had never changed, so Android could not tell one CI
+# artifact from another and some installers treat an equal versionCode as "already installed".
+version: 0.2.0+2
 
 environment:
   sdk: ">=3.5.0 <4.0.0"

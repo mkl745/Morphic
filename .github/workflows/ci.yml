@@ -408,9 +408,17 @@ jobs:
         continue-on-error: true
         working-directory: apps/morphic_flutter
         run: |
+          # Stamp the artifact so a tester can match an installed APK to a commit. Without this
+          # every build reported the same static version and a fresh download was indistinguishable
+          # from a weeks-old one. Computed once, outside the retry loop, so a retry cannot claim a
+          # different build time for the same artifact.
+          BUILT_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           code=0
           for attempt in 1 2 3; do
-            if flutter build apk --debug > /tmp/apk-build.log 2>&1; then
+            if flutter build apk --debug \
+              --dart-define=MORPHIC_GIT_SHA=${{ github.sha }} \
+              --dart-define=MORPHIC_BUILD_TIME="$BUILT_AT" \
+              > /tmp/apk-build.log 2>&1; then
               code=0
               break
             else
