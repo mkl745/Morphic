@@ -114,11 +114,12 @@ templates, and sharing into Morphic.
 | Gradle distribution cache + retry | `2940a0a` | 42479675870 | 6/6 ✅ |
 | 1.4.2 bar_chart painter + goldens | `8d3f650` | 42492997637 | 6/6 ✅ |
 | 1.4.3 line_chart + frame harness | `d6f2143` | 42500967870 | 6/6 ✅ |
-| **1.4.4 timeline painter** | **`f8cb419`** | **42507161800** | **6/6 ✅** |
+| 1.4.4 timeline painter | `f8cb419` | 42507161800 | 6/6 ✅ |
+| **Build stamp + stamp gate** | **`ac98dad`** | **42520442345** | **6/6 ✅** |
 
 Current totals: **627 Rust tests** across 8 engine crates + the bridge (counted as `#[test]`
 functions: ingest 310, query 82, core 61, schema 33, compiler 30, semantic 27, workspace 22,
-model 11, bridge 51), **428 Dart tests** plus **54 golden images**, and **20 Python cases** for
+model 11, bridge 51), **435 Dart tests** plus **54 golden images**, and **20 Python cases** for
 the device-evidence gate.
 M1.3 added 72 Rust tests: `morphic-query` 21 → 56, `morphic-core` 35 → 52, `morphic-schema`
 24 → 33, bridge 32 → 48; and 119 Dart tests, the first substantial UI test suite.
