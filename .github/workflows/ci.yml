@@ -458,6 +458,48 @@ jobs:
       - name: Enforce Android build
         if: steps.apkbuild.outcome != 'success'
         run: exit 1
+      # A --dart-define that silently failed to apply would put the old, unidentifiable build back
+      # in testers' hands while CI stayed green. Grep the artifact itself for the stamp, and publish
+      # the result, because the artifact blob host is unreachable from a review sandbox.
+      - name: Verify the build stamp is inside the APK
+        id: stamp
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          APK=apps/morphic_flutter/build/app/outputs/flutter-apk/app-debug.apk
+          # -p with no member streams every entry, so this works whether the constants landed in
+          # the debug kernel blob or an AOT library. `grep -c` rather than `-q`: -q exits on the
+          # first match, unzip then dies of SIGPIPE, and GitHub's `pipefail` would turn a successful
+          # match into a failed pipeline. -c consumes the whole stream.
+          set +e
+          count=$(unzip -p "$APK" 2>/dev/null | grep -ac "${{ github.sha }}")
+          set -e
+          count=${count:-0}
+          if [ "$count" -gt 0 ]; then found=0; else found=1; fi
+          {
+            echo "## Android build stamp"
+            echo '```'
+            echo "commit: ${{ github.sha }}"
+            if [ "$found" -eq 0 ]; then
+              echo "STAMP_OK: the commit SHA is present in the APK ($count match(es))."
+              echo "Settings -> About will show ${GITHUB_SHA:0:7}."
+            else
+              echo "STAMP_MISSING: the SHA is not in the APK; --dart-define did not take effect."
+            fi
+            echo '```'
+          } > /tmp/stamp-report.md
+          cat /tmp/stamp-report.md
+          jq -Rs '{body: .}' < /tmp/stamp-report.md > /tmp/stamp-payload.json
+          curl -sS -X POST \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/commits/${{ github.sha }}/comments" \
+            -d @/tmp/stamp-payload.json
+          exit "$found"
+      - name: Enforce build stamp
+        if: always() && steps.stamp.outcome != 'success'
+        run: exit 1
       - name: Verify 16 KB alignment
         run: python3 tools/check_alignment.py apps/morphic_flutter/android/app/src/main/jniLibs
       # Task 1.1.7 adds the first Flutter plugin (file_picker), so the permission surface is
