@@ -209,6 +209,11 @@ void main() {
     final box = tester.getRect(find.byKey(const Key('line-plot')));
     final gesture = await tester.startGesture(Offset(box.left + 50, box.center.dy));
     await tester.pump();
+    // A pan is only recognised once the pointer clears Flutter's touch slop (~18dp), so a bare
+    // press has not started a scrub yet. Move past it, still inside the first bucket. Tap to
+    // inspect is covered separately; this test is about dragging.
+    await gesture.moveTo(Offset(box.left + 80, box.center.dy));
+    await tester.pump();
     final first = _overlayPainter(tester).bucketIndex;
     await gesture.moveTo(Offset(box.right - 2, box.center.dy));
     await tester.pump();
@@ -400,6 +405,39 @@ void main() {
     expect(hi, greaterThan(42));
     final plot = geo.plotIn(const Size(300, 200));
     expect(geo.yToPixel(42, plot), closeTo(plot.center.dy, 0.01));
+  });
+
+  group('a lone point between gaps', () {
+    LineSeriesDatum datum(List<double?> ys) => LineSeriesDatum(
+          name: 's',
+          points: [
+            for (var i = 0; i < ys.length; i++) SeriesPoint(x: i * 60000.0, y: ys[i]),
+          ],
+          color: const Color(0xFF000000),
+        );
+
+    test('is marked, because a line needs two points to exist', () {
+      // The bug the golden caught: web had a real measurement in the last bucket with gaps on
+      // both sides, so no segment was drawn and the value silently vanished from the chart.
+      expect(datum([1, null, 5, null, 9]).isolatedIndices, [2]);
+    });
+
+    test('includes the ends when they stand alone', () {
+      expect(datum([1, null, null]).isolatedIndices, [0]);
+      expect(datum([null, null, 9]).isolatedIndices, [2]);
+      expect(datum([1, null, 9]).isolatedIndices, [0, 2]);
+    });
+
+    test('excludes points that a segment already draws', () {
+      expect(datum([1, 2, 3]).isolatedIndices, isEmpty);
+      expect(datum([null, 2, 3, null]).isolatedIndices, isEmpty);
+    });
+
+    test('is the degenerate case of a single-point series', () {
+      expect(datum([7]).isolatedIndices, [0]);
+      expect(datum([null]).isolatedIndices, isEmpty);
+      expect(datum(<double?>[]).isolatedIndices, isEmpty);
+    });
   });
 
   test('an all-null series has no extent and is not drawn as zeros', () {

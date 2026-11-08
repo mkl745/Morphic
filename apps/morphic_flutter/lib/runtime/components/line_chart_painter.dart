@@ -42,6 +42,20 @@ class LineSeriesDatum {
   final String name;
   final List<SeriesPoint> points;
   final Color color;
+
+  /// Indices of defined points with no defined neighbour on either side.
+  ///
+  /// A line is drawn between two points, so a lone measurement sitting between gaps has no
+  /// segment to render it and would vanish from the chart entirely. The painter marks these
+  /// with a dot instead. A single-point series is the degenerate case of the same rule.
+  Iterable<int> get isolatedIndices sync* {
+    for (var i = 0; i < points.length; i++) {
+      if (points[i].y == null) continue;
+      final before = i > 0 && points[i - 1].y != null;
+      final after = i + 1 < points.length && points[i + 1].y != null;
+      if (!before && !after) yield i;
+    }
+  }
 }
 
 /// The x/y extent and pixel mapping shared by both painters, computed once per scene so the
@@ -165,6 +179,7 @@ class LineChartPainter extends CustomPainter {
   /// same size reuses them, and `shouldRepaint` means an unchanged chart is not painted at all.
   Size? _pathSize;
   List<Path> _paths = const [];
+  List<List<Offset>> _isolated = const [];
 
   static List<TextPainter> _buildYTicks(
     LineGeometry g,
@@ -220,6 +235,16 @@ class LineChartPainter extends CustomPainter {
     final plot = geometry.plotIn(size);
     _paths = [
       for (final s in geometry.series) _pathFor(s, plot),
+    ];
+    _isolated = [
+      for (final s in geometry.series)
+        [
+          for (final i in s.isolatedIndices)
+            Offset(
+              geometry.xToPixel(s.points[i].x, plot),
+              geometry.yToPixel(s.points[i].y!, plot),
+            ),
+        ],
     ];
   }
 
@@ -287,7 +312,15 @@ class LineChartPainter extends CustomPainter {
     for (var i = 0; i < _paths.length; i++) {
       canvas.drawPath(_paths[i], _paint..color = geometry.series[i].color);
     }
+    // A lone point between gaps has no segment, so it gets a dot rather than disappearing.
     _paint.style = PaintingStyle.fill;
+    for (var i = 0; i < _isolated.length; i++) {
+      if (_isolated[i].isEmpty) continue;
+      _paint.color = geometry.series[i].color;
+      for (final o in _isolated[i]) {
+        canvas.drawCircle(o, 2.5, _paint);
+      }
+    }
   }
 
   @override

@@ -46,7 +46,9 @@ jobs:
           # legitimate behaviour change cannot be re-snapshotted on a laptop; without this the
           # only options are hand-editing snapshots or weakening the gate. The commit message
           # must ask for it, and the bot's pushed diff is the review artifact.
-          if git log -1 --pretty=%B | grep -q '\[regenerate-goldens\]'; then
+          # Subject only (%s), not the whole body (%B): a commit that merely *discusses* the
+          # marker must not silently switch the comparison gate into regeneration mode.
+          if git log -1 --pretty=%s | grep -q '\[regenerate-goldens\]'; then
             echo "golden regeneration requested by the commit message"
             echo "bootstrapped=true" >> "$GITHUB_OUTPUT"
             INSTA_UPDATE=always cargo test -p morphic-compiler --test goldens > /tmp/goldens.log 2>&1
@@ -214,14 +216,16 @@ jobs:
       # Same bootstrap contract as the Rust `insta` snapshots: the first run generates the
       # images and the bot pushes them for review; every later run compares against what is
       # committed. This repo has no local Flutter, so a legitimate visual change cannot be
-      # re-rendered on a laptop — `[regenerate-goldens]` in the commit message is the reviewable
+      # re-rendered on a laptop — the marker in the commit *subject* is the reviewable
       # escape hatch, and the bot's pushed PNG diff is the review artifact.
       - name: Golden image gate
         id: goldens
         continue-on-error: true
         run: |
           DIR=test/runtime/goldens
-          if git log -1 --pretty=%B | grep -q '\[regenerate-goldens\]'; then
+          # Subject only (%s), not the whole body (%B): a commit that merely *discusses* the
+          # marker must not silently switch the comparison gate into regeneration mode.
+          if git log -1 --pretty=%s | grep -q '\[regenerate-goldens\]'; then
             echo "golden regeneration requested by the commit message"
             echo "bootstrapped=true" >> "$GITHUB_OUTPUT"
             flutter test --tags golden --update-goldens > /tmp/goldens.log 2>&1
