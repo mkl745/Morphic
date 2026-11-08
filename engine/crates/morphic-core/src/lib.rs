@@ -53,6 +53,10 @@ pub enum CoreError {
     UnknownComponent(String),
     #[error("component '{0}' is a {1}, which has no metric value")]
     NotAMetric(String, String),
+    #[error("component '{0}' is a {1}, not a chart")]
+    NotAChart(String, String),
+    #[error("unsupported binding: {0}")]
+    UnsupportedBinding(String),
     #[error("session state was poisoned by an earlier panic")]
     SessionPoisoned,
     #[error("source data for workspace '{0}' is unavailable")]
@@ -146,6 +150,18 @@ pub struct MetricResult {
     pub revision: u64,
 }
 
+/// A chart's pre-aggregated scene, at the revision that produced it.
+///
+/// The revision travels with the scene for the same reason it travels with a metric: the reader
+/// must be able to tell which selection it is looking at (M1.3 task 1.3.5).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChartResult {
+    pub component_id: String,
+    pub scene: morphic_query::ChartScene,
+    pub revision: u64,
+}
+
 /// What one committed command batch changed.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -170,6 +186,7 @@ struct Session {
     data_revision: u64,
     pages: morphic_query::cache::ResultCache<morphic_query::Page>,
     metrics: morphic_query::cache::ResultCache<serde_json::Value>,
+    charts: morphic_query::cache::ResultCache<morphic_query::ChartScene>,
     /// Actual engine executions per component. The evidence that a command recomputed only
     /// what it affected, rather than a claim that it did.
     computes: HashMap<String, u64>,
@@ -190,6 +207,7 @@ impl Session {
             data_revision: 1,
             pages: morphic_query::cache::ResultCache::default(),
             metrics: morphic_query::cache::ResultCache::default(),
+            charts: morphic_query::cache::ResultCache::default(),
             computes: HashMap::new(),
         }
     }
@@ -647,6 +665,147 @@ impl Engine {
         Ok(MetricResult {
             component_id: component_id.into(),
             value,
+            revision,
+        })
+    }
+
+    /// The pre-aggregated scene for a chart component.
+    ///
+    /// Rust does the grouping and bucketing; Dart receives buckets and totals and never rows
+    /// (docs/architecture/02 §2.5). The same composed filter a table would use applies here, so a
+    /// workspace filter moves the charts and the table together.
+    pub fn chart_data(
+        &self,
+        workspace_id: &str,
+        component_id: &str,
+    ) -> Result<ChartResult, CoreError> {
+        if !self.has_session(workspace_id) {
+            self.open_session(workspace_id)?;
+        }
+        let mut sessions = self
+            .sessions
+            .lock()
+            .map_err(|_| CoreError::SessionPoisoned)?;
+        let s = sessions
+            .get_mut(workspace_id)
+            .ok_or_else(|| CoreError::SessionNotFound(workspace_id.into()))?;
+        let component = s
+            .doc
+            .workspace
+            .components
+            .iter()
+            .find(|c| c.id == component_id)
+            .ok_or_else(|| CoreError::UnknownComponent(component_id.into()))?;
+        if !matches!(
+            component.binding,
+            morphic_schema::Binding::BarChart { .. }
+                | morphic_schema::Binding::LineChart { .. }
+                | morphic_schema::Binding::Timeline { .. }
+        ) {
+            return Err(CoreError::NotAChart(
+                component_id.into(),
+                component.binding.kind().to_string(),
+            ));
+        }
+
+        let plan = plans::for_metric(&s.doc, component)?;
+        let revision = s.doc.workspace.revision;
+        let table = s
+            .table
+            .as_ref()
+            .ok_or_else(|| CoreError::SourceUnavailable(workspace_id.into()))?;
+        // The binding is the scene's identity: two charts over one selection with different
+        // dimensions or measures produce different scenes from an identical plan.
+        let fingerprint = serde_json::json!({
+            "plan": plan,
+            "binding": component.binding,
+        });
+        let key = morphic_query::cache::CacheKey::new(
+            s.data_revision,
+            morphic_query::cache::hash_json(&fingerprint),
+        );
+        if let Some(scene) = s.charts.get(key) {
+            return Ok(ChartResult {
+                component_id: component_id.into(),
+                scene: scene.clone(),
+                revision,
+            });
+        }
+
+        let rows = morphic_query::select_rows(table, &plan)?;
+        let scene = match &component.binding {
+            morphic_schema::Binding::BarChart {
+                dimension,
+                measure,
+                limit,
+            } => {
+                let agg = morphic_query::Aggregate {
+                    op: &measure.op,
+                    field: measure.field.as_deref(),
+                };
+                morphic_query::ChartScene::Category(morphic_query::category_scene(
+                    table,
+                    &rows,
+                    dimension,
+                    &agg,
+                    *limit as usize,
+                )?)
+            }
+            morphic_schema::Binding::LineChart { x, y, group_by } => {
+                // The compiler emits exactly one measure. A hand-authored document asking for
+                // several is rejected rather than silently charting the first: dropping a
+                // requested series without saying so is the failure mode this project avoids.
+                let measure = match y.as_slice() {
+                    [one] => one,
+                    [] => {
+                        return Err(CoreError::UnsupportedBinding(
+                            "line chart has no y aggregation".into(),
+                        ))
+                    }
+                    _ => {
+                        return Err(CoreError::UnsupportedBinding(format!(
+                            "line chart has {} y aggregations; MVP charts one measure per chart",
+                            y.len()
+                        )))
+                    }
+                };
+                morphic_query::ChartScene::Series(morphic_query::series_scene(
+                    table,
+                    &rows,
+                    &morphic_query::SeriesSpec {
+                        x,
+                        agg: morphic_query::Aggregate {
+                            op: &measure.op,
+                            field: measure.field.as_deref(),
+                        },
+                        group_by: group_by.as_deref(),
+                    },
+                )?)
+            }
+            morphic_schema::Binding::Timeline {
+                time_field,
+                group_by,
+                severity_field,
+            } => {
+                // Severity lanes when a severity field is named; otherwise the group field is
+                // the lane, which is what a timeline grouped by service should show.
+                let lane = severity_field.as_deref().or(group_by.as_deref());
+                morphic_query::ChartScene::Timeline(morphic_query::timeline_scene(
+                    table,
+                    &rows,
+                    &morphic_query::TimelineSpec {
+                        time_field,
+                        severity_field: lane,
+                    },
+                )?)
+            }
+            _ => unreachable!("binding kind was checked above"),
+        };
+        s.bump_compute(component_id);
+        s.charts.insert(key, scene.clone());
+        Ok(ChartResult {
+            component_id: component_id.into(),
+            scene,
             revision,
         })
     }

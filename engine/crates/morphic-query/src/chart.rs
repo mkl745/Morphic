@@ -106,7 +106,8 @@ pub fn auto_bucket(span_ms: i64, max_points: usize) -> Bucketing {
     let cap = max_points.clamp(2, MAX_CHART_POINTS) as i64;
     let span = span_ms.max(0);
     for (ms, label) in LADDER {
-        if span / ms + 1 <= cap {
+        let buckets = span / ms + 1;
+        if buckets <= cap {
             return Bucketing {
                 bucket_ms: *ms,
                 label: (*label).to_string(),

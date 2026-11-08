@@ -80,6 +80,10 @@ fn composed_filter(
     }
     let binding_filter = match &component.binding {
         Binding::MetricCard { aggregation } => aggregation.filter.as_ref(),
+        // A chart's measure carries the same optional binding filter a card's does, and it must
+        // compose the same way: global AND state AND binding.
+        Binding::BarChart { measure, .. } => measure.filter.as_ref(),
+        Binding::LineChart { y, .. } => y.first().and_then(|a| a.filter.as_ref()),
         _ => None,
     };
     if let Some(f) = binding_filter {
