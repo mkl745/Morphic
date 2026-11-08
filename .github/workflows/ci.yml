@@ -318,7 +318,7 @@ jobs:
               echo "no golden changes to push"
               exit 0
             fi
-            git commit -m "test: bootstrap bar-chart golden images [skip ci]"
+            git commit -m "test: bootstrap chart golden images [skip ci]"
             BRANCH="${{ github.ref_name }}"
             git fetch --unshallow origin "$BRANCH" || git fetch origin "$BRANCH" || true
             pushed=false

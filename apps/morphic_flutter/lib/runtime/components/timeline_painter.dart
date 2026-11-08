@@ -18,7 +18,6 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../design_system/tokens.dart';
-import '../../engine/chart_scene.dart';
 import 'chart_format.dart';
 
 /// Plot height, matching the line chart so a workspace of mixed charts has one rhythm.
