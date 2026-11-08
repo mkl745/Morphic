@@ -20,7 +20,11 @@ pub const MAX_COMPONENTS: usize = 64;
 /// Resource ceilings (docs/architecture/03 §4, quality-and-performance budgets).
 /// A document that exceeds these is rejected rather than allowed to stall the runtime.
 pub const MAX_PAGE_SIZE: u32 = 1024;
-pub const MAX_BAR_LIMIT: u32 = 2000;
+/// Bars a `bar_chart` may keep. `04-component-registry.md` §2 specifies top-N <= 50; the old
+/// 2000 let a document ask for a chart 96,000 dp tall. Mirrors `morphic_query::MAX_BAR_POINTS`;
+/// the two are pinned equal by a test in morphic-core, because this crate may not depend on the
+/// query crate.
+pub const MAX_BAR_LIMIT: u32 = 50;
 pub const MAX_LINE_SERIES: usize = 8;
 /// Sort keys per component. Mirrors `morphic_query::sort::MAX_SORT_KEYS`; the two are pinned
 /// equal by a test in morphic-core, because this crate may not depend on the query crate.

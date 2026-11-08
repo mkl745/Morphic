@@ -27,8 +27,8 @@ pub use budget::{CHECK_ROWS, DEFAULT_BUDGET_MS};
 pub use chart::{
     auto_bucket, category_scene, category_scene_ordered, series_scene, timeline_scene, Bucketing,
     CategoryOrder, CategoryPoint, CategoryScene, ChartScene, LaneCount, Series, SeriesPoint,
-    SeriesScene, SeriesSpec, TimelineBucket, TimelineScene, TimelineSpec, MAX_CATEGORY_GROUPS,
-    MAX_CHART_POINTS, MAX_SERIES, OTHER_LABEL,
+    SeriesScene, SeriesSpec, TimelineBucket, TimelineScene, TimelineSpec, MAX_BAR_POINTS,
+    MAX_CATEGORY_GROUPS, MAX_CHART_POINTS, MAX_SERIES, OTHER_LABEL,
 };
 pub use filter::{Compare, Filter};
 pub use group::{AggSpec, GroupedRows, MAX_GROUPS};

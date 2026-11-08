@@ -50,6 +50,11 @@ pub const MAX_CHART_POINTS: usize = 2000;
 /// Legend ceiling for a multi-series line chart (docs/architecture/04 §2).
 pub const MAX_SERIES: usize = 8;
 
+/// Bars a category scene may keep (`04-component-registry.md` §2: top-N <= 50). Mirrors
+/// `morphic_schema::MAX_BAR_LIMIT`; pinned equal by a test in morphic-core, since the query
+/// crate may not depend on the schema crate.
+pub const MAX_BAR_POINTS: usize = 50;
+
 /// Distinct categories accumulated before a top-N is chosen.
 ///
 /// This is deliberately larger than [`crate::MAX_GROUPS`]: the *output* of a bar chart is a few
@@ -383,7 +388,7 @@ pub fn category_scene_ordered(
         .then_with(|| a.1.label.cmp(&b.1.label))
     });
 
-    let keep = limit.clamp(1, crate::MAX_GROUPS);
+    let keep = limit.clamp(1, MAX_BAR_POINTS);
     let total_categories = grouped.total_groups;
     let kept: HashSet<String> = points.iter().take(keep).map(|(k, _)| k.clone()).collect();
     let remainder = points.len() > keep;
@@ -861,6 +866,32 @@ mod tests {
         );
         // 7 rows total; b (1) and a (2) survive the cut, so c (2) + d (1) + null (1) = 4 remain.
         assert_eq!(a.other.as_ref().unwrap().row_count, 4);
+    }
+
+    #[test]
+    fn an_oversized_limit_is_clamped_to_the_documented_ceiling() {
+        // The validator rejects a binding above the ceiling, but the scene builder is also
+        // called directly (benches, future component conversion). It must not hand a phone
+        // more bars than the registry allows.
+        let labels: Vec<String> = (0..60).map(|i| format!("c{i:02}")).collect();
+        let refs: Vec<&str> = labels.iter().map(String::as_str).collect();
+        let t = Table {
+            columns: vec![
+                col("region", strings(&refs), vec![false; 60]),
+                col(
+                    "amount",
+                    ColumnValues::Float64((0..60).map(|i| i as f64).collect()),
+                    vec![false; 60],
+                ),
+            ],
+            row_count: 60,
+        };
+        let s = ordered(&t, 500, CategoryOrder::MeasureDesc);
+        assert_eq!(s.points.len(), MAX_BAR_POINTS);
+        assert_eq!(s.total_categories, 60);
+        assert_eq!(s.other.as_ref().unwrap().row_count, 60 - MAX_BAR_POINTS);
+        // The biggest bar survives the clamp; the ten smallest fold into Other.
+        assert_eq!(s.points[0].label.as_deref(), Some("c59"));
     }
 
     #[test]

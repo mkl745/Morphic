@@ -295,6 +295,7 @@ jobs:
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
             git status --porcelain
+            git diff --stat
             git add -A "$DIR"
             if git diff --cached --quiet; then
               echo "no golden changes to push"
@@ -305,7 +306,12 @@ jobs:
             git fetch --unshallow origin "$BRANCH" || git fetch origin "$BRANCH" || true
             pushed=false
             for attempt in 1 2 3; do
-              if git rebase FETCH_HEAD && git push origin HEAD:"$BRANCH"; then
+              # Flutter's tooling dirties tracked files in this checkout (analysis_options.yaml
+              # was modified on the first two runs), and a plain rebase refuses to run with a
+              # dirty tree. Autostash sets that noise aside and restores it, without discarding
+              # anything, so only the golden commit is ever rebased.
+              if git -c rebase.autostash=true rebase FETCH_HEAD \
+                && git push origin HEAD:"$BRANCH"; then
                 pushed=true
                 break
               fi

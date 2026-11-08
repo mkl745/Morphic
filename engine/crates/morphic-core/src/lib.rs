@@ -1078,6 +1078,17 @@ mod tests {
     }
 
     #[test]
+    fn the_bar_ceiling_is_the_same_on_both_sides_of_the_contract() {
+        // Neither crate may depend on the other, so the constant is declared twice. This is
+        // the only thing stopping the validator and the scene builder from drifting apart.
+        assert_eq!(
+            morphic_schema::MAX_BAR_LIMIT as usize,
+            morphic_query::MAX_BAR_POINTS,
+            "the validator and the scene builder must agree on the documented top-N cap"
+        );
+    }
+
+    #[test]
     fn a_sort_on_the_dimension_orders_bars_by_label_and_busts_the_cache() {
         let (engine, root) = imported("chart_sort_label");
         let id = breakdown_id(&engine.snapshot("w1").unwrap().doc);
