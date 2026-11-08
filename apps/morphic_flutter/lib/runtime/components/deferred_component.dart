@@ -1,8 +1,10 @@
 /// Explicit placeholder for a component the runtime cannot draw yet (M1.1 task 1.1.5).
 ///
-/// The compiler already emits `line_chart`, `bar_chart`, and `timeline`; their painters land
-/// in M1.4. Rather than dropping them — which would make a generated workspace look emptier
-/// than it is — each is labelled with what it is and when it renders.
+/// As of 1.4.4 every type schema v1.0 accepts has a painter, so this widget no longer appears for
+/// a valid document. It stays because the runtime must never silently drop a component: a reserved
+/// id means the document failed validation, and an unknown one may come from a newer MORPHIC.
+/// Either way the component is labelled with what it is, rather than making the workspace look
+/// emptier than it is.
 ///
 /// Deliberately **compact**: a generated workspace can contain several of these above the
 /// data table, and a wall of "not implemented" cards would push the actual data off screen.

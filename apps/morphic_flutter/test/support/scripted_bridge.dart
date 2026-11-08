@@ -473,15 +473,29 @@ class ScriptedBridge implements MorphicBridge {
     final c = _component(componentId);
     if (c == null) throw const MorphicBridgeException('core: unknown component');
     final type = c['type'] as String?;
-    if (type != 'bar_chart' && type != 'line_chart') {
+    if (type != 'bar_chart' && type != 'line_chart' && type != 'timeline') {
       throw MorphicBridgeException("core: component '$componentId' is a $type, not a chart");
+    }
+    final Map<String, dynamic> scene;
+    switch (type) {
+      case 'line_chart':
+        scene = _seriesScene(c);
+        break;
+      case 'timeline':
+        scene = _timelineScene(c);
+        break;
+      default:
+        scene = _categoryScene(c);
     }
     return {
       'componentId': componentId,
       'revision': _revision,
-      'scene': type == 'line_chart' ? _seriesScene(c) : _categoryScene(c),
+      'scene': scene,
     };
   }
+
+  /// Forces the timeline's lane-truncation flag, the way [chartExtraSeries] does for lines.
+  int chartExtraLanes = 0;
 
   /// Knobs for the line scene's partial paths. The fake buckets in memory and will never
   /// overflow the engine's point or series ceilings on a test fixture.
@@ -598,6 +612,93 @@ class ScriptedBridge implements MorphicBridge {
   /// Only bar charts, and only the operators the compiler emits. The Rust FFI tests are the
   /// authority on aggregation; this exists so a painter test can see a filter actually move the
   /// bars, which a canned scene would hide.
+  /// Density buckets with severity lanes, filtered the same way the other scenes are.
+  ///
+  /// Mirrors `morphic_query::timeline_scene`: lanes come from `severity_field` or, failing that,
+  /// `group_by` (morphic-core falls back exactly this way); lanes are ordered by frequency then
+  /// key; only non-empty buckets are emitted; and rows with no usable time are counted rather
+  /// than dropped. The step is [chartBucketMs] so a test can choose it deterministically.
+  Map<String, dynamic> _timelineScene(Map<String, dynamic> c) {
+    final binding = (c['binding'] as Map?)?.cast<String, dynamic>() ?? {};
+    // Bindings are snake_case on the wire: serde renames the variant, not its fields.
+    final timeField = binding['time_field'] as String? ?? '';
+    final laneField = (binding['severity_field'] as String?) ??
+        (binding['group_by'] as String?);
+    final step = chartBucketMs;
+    final stateFilter =
+        ((c['state'] as Map?)?['filter'] as Map?)?.cast<String, dynamic>();
+    final selected = rows
+        .where((r) => _globalFilters.every((g) => _passes(r, g)))
+        .where((r) => _passes(r, stateFilter))
+        .toList();
+
+    final tIdx = fields.indexOf(timeField);
+    final lIdx = laneField == null ? -1 : fields.indexOf(laneField);
+    final dated = <(int, List<dynamic>)>[];
+    for (final r in selected) {
+      final cell = tIdx >= 0 && tIdx < r.length ? r[tIdx] : null;
+      if (cell is! num) continue;
+      dated.add(((cell.toInt() ~/ step) * step, r));
+    }
+    final unbucketed = selected.length - dated.length;
+
+    // Lane identity is the cell text (null groups as the empty key), its label is null or text.
+    final counts = <String, int>{};
+    final labels = <String, String?>{};
+    for (final (_, r) in dated) {
+      if (lIdx < 0) continue;
+      final cell = lIdx < r.length ? r[lIdx] : null;
+      final key = cell?.toString() ?? '';
+      counts[key] = (counts[key] ?? 0) + 1;
+      labels.putIfAbsent(key, () => cell?.toString());
+    }
+    final order = counts.keys.toList()
+      ..sort((a, b) {
+        final byCount = counts[b]!.compareTo(counts[a]!);
+        return byCount != 0 ? byCount : a.compareTo(b);
+      });
+    final totalLanes = order.length;
+    final kept = order.take(8).toList();
+    final lanes = [for (final k in kept) labels[k]];
+    final lanePos = <String, int>{
+      for (var i = 0; i < kept.length; i++) kept[i]: i,
+    };
+
+    final perBucket = <int, List<int>>{};
+    final totals = <int, int>{};
+    for (final (at, r) in dated) {
+      final slots = perBucket.putIfAbsent(at, () => List<int>.filled(kept.length, 0));
+      totals[at] = (totals[at] ?? 0) + 1;
+      if (lIdx < 0) continue;
+      final cell = lIdx < r.length ? r[lIdx] : null;
+      final pos = lanePos[cell?.toString() ?? ''];
+      if (pos != null) slots[pos] += 1;
+    }
+    final starts = perBucket.keys.toList()..sort();
+    return {
+      'kind': 'timeline',
+      'timeField': timeField,
+      'bucketing': {'bucketMs': step, 'label': '1m', 'downsampled': false},
+      'lanes': lanes,
+      'buckets': [
+        for (final at in starts)
+          {
+            'startMs': at,
+            'count': totals[at],
+            'lanes': [
+              for (var i = 0; i < kept.length; i++)
+                if (perBucket[at]![i] > 0)
+                  {'lane': lanes[i], 'count': perBucket[at]![i]},
+            ],
+          },
+      ],
+      'totalBuckets': starts.length,
+      'totalLanes': totalLanes + chartExtraLanes,
+      'truncatedLanes': totalLanes > 8 || chartExtraLanes > 0,
+      'unbucketedRows': unbucketed,
+    };
+  }
+
   Map<String, dynamic> _categoryScene(Map<String, dynamic> c) {
     final binding = (c['binding'] as Map?)?.cast<String, dynamic>() ?? {};
     final dimension = binding['dimension'] as String? ?? '';

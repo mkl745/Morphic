@@ -6,6 +6,7 @@ import 'package:morphic_flutter/engine/engine_controller.dart';
 import 'package:morphic_flutter/runtime/component_registry.dart';
 import 'package:morphic_flutter/runtime/components/data_table_view.dart';
 import 'package:morphic_flutter/runtime/components/deferred_component.dart';
+import 'package:morphic_flutter/runtime/components/timeline_view.dart';
 import 'package:morphic_flutter/runtime/components/metric_card_view.dart';
 import 'package:morphic_flutter/runtime/workspace_view.dart';
 
@@ -52,7 +53,7 @@ void main() {
     )));
     await tester.pumpAndSettle();
 
-    final chartY = tester.getTopLeft(find.byType(DeferredComponent)).dy;
+    final chartY = tester.getTopLeft(find.byType(TimelineView)).dy;
     final metricY = tester.getTopLeft(find.byType(MetricCardView)).dy;
     expect(chartY, lessThan(metricY),
         reason: 'the engine chose the order; the runtime must not re-sort it');
@@ -97,9 +98,12 @@ void main() {
     expect(b.dy, greaterThan(a.dy), reason: 'stacked on a narrow viewport');
   });
 
-  testWidgets('a chart the runtime cannot draw is labelled, not dropped', (tester) async {
+  // Every active type has a painter as of 1.4.4, so the fallback is exercised with a reserved id
+  // instead of a deferred one. That is the stronger claim anyway: the runtime must label a
+  // component it cannot draw even when the document should never have contained it.
+  testWidgets('a component the runtime cannot draw is labelled, not dropped', (tester) async {
     final bridge = ScriptedBridge(
-      components: [_chart('c1', 'timeline')],
+      components: [_chart('c1', 'pie_chart')],
       order: ['c1'],
     );
     final engine = EngineController(bridge: bridge, storageRoot: '/tmp/m');
@@ -112,7 +116,7 @@ void main() {
 
     expect(find.byType(DeferredComponent), findsOneWidget);
     // The headline is visible while collapsed, so the component is never silent.
-    expect(find.text('timeline renders in M1.4'), findsOneWidget);
+    expect(find.text('pie_chart is reserved'), findsOneWidget);
     // The long rationale is behind a tap, keeping the data table above the fold.
     expect(find.textContaining('Why this was generated:'), findsNothing);
     await tester.tap(find.byType(ExpansionTile));

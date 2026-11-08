@@ -17,6 +17,7 @@ import 'components/data_table_view.dart';
 import 'components/line_chart_view.dart';
 import 'components/deferred_component.dart';
 import 'components/metric_card_view.dart';
+import 'components/timeline_view.dart';
 
 /// The five types schema v1.0 accepts. Mirrors `ACTIVE_COMPONENTS` in morphic-schema.
 const Set<String> activeComponentTypes = {
@@ -46,12 +47,15 @@ const Set<String> runtimeRenderableTypes = {
   'data_table',
   'bar_chart',
   'line_chart',
+  'timeline',
 };
 
 /// Where a deferred type is scheduled, so the placeholder states a real plan.
-const Map<String, String> deferredUntil = {
-  'timeline': 'M1.4',
-};
+///
+/// Empty as of 1.4.4: every type schema v1.0 accepts now has a painter. The map and the
+/// placeholder stay because the runtime must still label a reserved or unknown type rather than
+/// silently dropping it, and a future schema version may defer something again.
+const Map<String, String> deferredUntil = {};
 
 /// Everything a component needs to draw itself. Components receive data *only* by asking
 /// the engine — they never aggregate, sort, or page on their own.
@@ -100,6 +104,7 @@ class ComponentRegistry {
           'data_table': (ctx) => DataTableView(ctx: ctx),
           'bar_chart': (ctx) => BarChartView(ctx: ctx),
           'line_chart': (ctx) => LineChartView(ctx: ctx),
+          'timeline': (ctx) => TimelineView(ctx: ctx),
           ...?overrides,
         };
 

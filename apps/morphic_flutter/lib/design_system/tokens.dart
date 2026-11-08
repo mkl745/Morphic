@@ -64,6 +64,25 @@ abstract final class MorphicColors {
     Color(0xFFC2410C), // orange
     Color(0xFF047857), // green
   ];
+
+  /// Severity lanes for the timeline. Unlike an arbitrary series, `ERROR` should look like an
+  /// error in every workspace, so recognised levels get a fixed semantic hue and only unrecognised
+  /// labels fall back to [seriesDark]/[seriesLight] by lane order.
+  ///
+  /// All ten clear 3:1 on their own card surface (dark on #12151C, light on #FFFFFF), measured
+  /// the same way as the series palette. `muted` is for debug/trace: present and legible, but
+  /// deliberately the least loud thing on the chart.
+  static const severityErrorDark = error;
+  static const severityWarningDark = warning;
+  static const severityInfoDark = info;
+  static const severityOkDark = success;
+  static const severityMutedDark = textSecondaryDark;
+
+  static const severityErrorLight = Color(0xFFB91C1C);
+  static const severityWarningLight = Color(0xFFB45309);
+  static const severityInfoLight = infoDark;
+  static const severityOkLight = Color(0xFF047857);
+  static const severityMutedLight = textSecondaryLight;
 }
 
 abstract final class MorphicSpace {
