@@ -473,13 +473,123 @@ class ScriptedBridge implements MorphicBridge {
     final c = _component(componentId);
     if (c == null) throw const MorphicBridgeException('core: unknown component');
     final type = c['type'] as String?;
-    if (type != 'bar_chart') {
+    if (type != 'bar_chart' && type != 'line_chart') {
       throw MorphicBridgeException("core: component '$componentId' is a $type, not a chart");
     }
     return {
       'componentId': componentId,
       'revision': _revision,
-      'scene': _categoryScene(c),
+      'scene': type == 'line_chart' ? _seriesScene(c) : _categoryScene(c),
+    };
+  }
+
+  /// Knobs for the line scene's partial paths. The fake buckets in memory and will never
+  /// overflow the engine's point or series ceilings on a test fixture.
+  bool chartDownsampled = false;
+  int chartExtraSeries = 0;
+
+  /// Bucket step for the fake's line scenes. Not a binding field — the real engine derives the
+  /// step from the data, and a test needs to choose one deterministically.
+  int chartBucketMs = 60000;
+
+  /// A bucketed series scene, grouped and filtered the same way the category scene is.
+  ///
+  /// The engine owns bucketing and downsampling; this exists so a painter test can watch a
+  /// filter move the line and a legend toggle hide a series. Buckets are a fixed step on the
+  /// x column, which is all a painter needs to be exercised against.
+  Map<String, dynamic> _seriesScene(Map<String, dynamic> c) {
+    final binding = (c['binding'] as Map?)?.cast<String, dynamic>() ?? {};
+    final x = binding['x'] as String? ?? '';
+    final ys = (binding['y'] as List? ?? const [])
+        .whereType<Map<String, dynamic>>()
+        .toList();
+    final measure = ys.isEmpty ? <String, dynamic>{} : ys.first;
+    // Bindings are snake_case on the wire (serde renames the variant, not its fields).
+    final groupBy = binding['group_by'] as String?;
+    final step = chartBucketMs;
+    final op = measure['op'] as String? ?? 'count';
+    final field = measure['field'] as String?;
+    final stateFilter = ((c['state'] as Map?)?['filter'] as Map?)?.cast<String, dynamic>();
+    final bindingFilter = (measure['filter'] as Map?)?.cast<String, dynamic>();
+    final selected = rows
+        .where((r) => _globalFilters.every((g) => _passes(r, g)))
+        .where((r) => _passes(r, stateFilter))
+        .where((r) => _passes(r, bindingFilter))
+        .toList();
+
+    final xIdx = fields.indexOf(x);
+    final gIdx = groupBy == null ? -1 : fields.indexOf(groupBy);
+    final vIdx = fields.indexOf(field ?? '');
+    // group -> bucket -> members
+    final groups = <String?, Map<int, List<List<dynamic>>>>{};
+    for (final r in selected) {
+      final cell = xIdx >= 0 && xIdx < r.length ? r[xIdx] : null;
+      if (cell is! num) continue; // an unbucketable x belongs to the timeline, not here
+      final bucket = (cell.toInt() ~/ step) * step;
+      final g = gIdx >= 0 && gIdx < r.length ? r[gIdx]?.toString() : null;
+      groups.putIfAbsent(g, () => {}).putIfAbsent(bucket, () => []).add(r);
+    }
+    final buckets = <int>{
+      for (final byBucket in groups.values) ...byBucket.keys,
+    }.toList()
+      ..sort();
+
+    double? aggOf(List<List<dynamic>> members) {
+      if (op == 'count' && field == null) return members.length.toDouble();
+      if (vIdx < 0) return null;
+      final nums = members
+          .map((r) => vIdx < r.length ? r[vIdx] : null)
+          .whereType<num>()
+          .toList();
+      if (nums.isEmpty) return null;
+      switch (op) {
+        case 'count':
+          return nums.length.toDouble();
+        case 'sum':
+          return nums.fold<num>(0, (a, b) => a + b).toDouble();
+        case 'avg':
+          return nums.fold<num>(0, (a, b) => a + b) / nums.length;
+        case 'min':
+          return nums.reduce((a, b) => a < b ? a : b).toDouble();
+        case 'max':
+          return nums.reduce((a, b) => a > b ? a : b).toDouble();
+      }
+      return null;
+    }
+
+    // Series order: most rows first, so a legend is stable — the engine's rule.
+    final names = groups.keys.toList()
+      ..sort((a, b) {
+        int count(String? k) => groups[k]!.values.fold(0, (n, m) => n + m.length);
+        final cmp = count(b).compareTo(count(a));
+        return cmp != 0 ? cmp : (a ?? '').compareTo(b ?? '');
+      });
+    final kept = names.take(8).toList();
+    final measureName = field == null ? op : '${op}_$field';
+    return {
+      'kind': 'series',
+      'xField': x,
+      'temporal': dtypes[x] == 'timestamp',
+      'bucketing': {
+        'bucketMs': step,
+        'label': step >= 60000 ? '${step ~/ 60000}m' : '${step}ms',
+        'downsampled': chartDownsampled,
+      },
+      'series': [
+        for (final name in kept)
+          {
+            'name': name ?? (groups.length == 1 ? measureName : null),
+            // Every series carries every bucket, with a null y where it has no rows: a gap,
+            // not a zero. That is what lets a painter test prove gaps are drawn as gaps.
+            'points': [
+              for (final b in buckets)
+                {'x': b, 'y': aggOf(groups[name]![b] ?? const [])},
+            ],
+          },
+      ],
+      'totalSeries': names.length + chartExtraSeries,
+      'truncatedSeries': names.length > 8 || chartExtraSeries > 0,
+      'totalPoints': buckets.length * kept.length,
     };
   }
 

@@ -22,6 +22,8 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import 'chart_format.dart';
+
 /// One bar's row height. 48 dp is the accessibility contract's minimum tap target, and the
 /// gesture layer uses the same constant so paint and hit-testing cannot drift apart.
 const double kBarRowHeight = 48;
@@ -185,23 +187,9 @@ class BarChartPainter extends CustomPainter {
   bool shouldRebuildSemantics(BarChartPainter oldDelegate) => false;
 }
 
-/// Compact, locale-independent value formatting for a bar's end label.
+/// A bar's end label: compact, locale-independent, an em dash for a null measure rather than a
+/// zero, and 23.33 rather than a rounded 23.
 ///
-/// Keeps the axis honest: an average of 23.333333 is shown as 23.33, not rounded to 23, and a
-/// null measure is an em dash rather than a zero.
-String formatBarValue(double? value) {
-  if (value == null) return '—';
-  final abs = value.abs();
-  if (abs >= 1000000) return '${_trim(value / 1000000)}M';
-  if (abs >= 10000) return '${_trim(value / 1000)}k';
-  if (abs >= 100) return value.toStringAsFixed(0);
-  if (abs >= 1) return _trim(value);
-  if (abs == 0) return '0';
-  return value.toStringAsFixed(2);
-}
-
-String _trim(double v) {
-  final s = v.toStringAsFixed(2);
-  if (!s.contains('.')) return s;
-  return s.replaceFirst(RegExp(r'0+$'), '').replaceFirst(RegExp(r'\.$'), '');
-}
+/// The implementation lives in `chart_format.dart` so the line chart's axis and tooltip read
+/// the same numbers the same way; this name is kept for the bar chart's callers and tests.
+String formatBarValue(double? value) => formatChartValue(value);

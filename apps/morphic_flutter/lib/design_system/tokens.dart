@@ -33,6 +33,37 @@ abstract final class MorphicColors {
   static const success = Color(0xFF34D399);
   static const warning = Color(0xFFFBBF24);
   static const error = Color(0xFFF87171);
+
+  /// Series colours for multi-line charts, in engine order (most frequent series first).
+  ///
+  /// Eight entries because `MAX_SERIES` is eight. Every entry clears 3:1 against its theme's
+  /// card surface — the WCAG 1.4.11 floor for a graphic that carries meaning — and the order
+  /// alternates hue families so neighbouring series are not two blues. Colour is never the
+  /// only channel: the legend names each series and the scrub tooltip and table repeat the
+  /// names beside the numbers.
+  static const List<Color> seriesDark = [
+    Color(0xFF4FD1C5), // teal
+    Color(0xFFC084FC), // purple
+    Color(0xFFFBBF24), // amber
+    Color(0xFF60A5FA), // blue
+    Color(0xFFF87171), // red
+    Color(0xFF22D3EE), // cyan
+    Color(0xFFFB923C), // orange
+    Color(0xFF34D399), // green
+  ];
+
+  /// Light-surface counterparts. The bright dark-theme hues fall to ~1.9:1 on white, so these
+  /// are deeper tones of the same families rather than the same values.
+  static const List<Color> seriesLight = [
+    Color(0xFF0D9488), // teal
+    Color(0xFF7E22CE), // purple
+    Color(0xFFB45309), // amber
+    Color(0xFF2563EB), // blue
+    Color(0xFFB91C1C), // red
+    Color(0xFF0E7490), // cyan
+    Color(0xFFC2410C), // orange
+    Color(0xFF047857), // green
+  ];
 }
 
 abstract final class MorphicSpace {

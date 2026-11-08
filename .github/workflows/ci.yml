@@ -263,6 +263,10 @@ jobs:
             echo '```'
             tail -n 30 /tmp/darttest.log
             echo '```'
+            echo '### line-chart frame harness (host runner, not a phone)'
+            echo '```'
+            grep -E "MORPHIC_FRAME" /tmp/darttest.log | head -n 10 || echo "frame harness did not run"
+            echo '```'
             echo "### golden images (gate: ${{ steps.goldens.outcome }}, bootstrapped: ${{ steps.goldens.outputs.bootstrapped }})"
             echo '```'
             grep -vE "^✅|::group::✅|^::endgroup" /tmp/goldens.log 2>/dev/null | head -n 120 || echo "golden step did not run"

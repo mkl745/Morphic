@@ -18,7 +18,7 @@ records the decisions, the measured evidence, and why the milestone's **exit is 
 
 | Question | Answer |
 |---|---|
-| Tasks finished | **19 of 41** (46%) |
+| Tasks finished | **19 of 41** (46%); 1.4.3 implemented, CI verification pending |
 | Tasks not finished | **22** — 20 core + 2 stretch (◇) |
 | Milestones code-complete | **3 of 7** (M1.1, M1.2, M1.3) |
 | Milestones not started | **3** (M1.5 → M1.7); M1.4 in progress |
@@ -142,7 +142,7 @@ three ABIs.
 | AT-08 | Search | **green** | case-insensitive, field-scoped, commutes with filter/sort (property test), debounced as-you-type UI. The test itself specifies no latency bound |
 | AT-09 | Save & reopen | partial | restore ✓; filters/sort/search now persist and survive reopen (tested); ≤ 500 ms unmeasured; field overrides are M1.5 |
 | AT-10 | UI schema validity | **green** | gate-enforced on every run |
-| AT-11 | Component states | partial | **3 of 5** components paintable; **18 golden images** committed and gated. They pin geometry, colour and layout — with no font asset the test font draws boxes, so wording is asserted behaviourally instead |
+| AT-11 | Component states | partial | **4 of 5** components paintable; **18 golden images** committed and gated. They pin geometry, colour and layout — with no font asset the test font draws boxes, so wording is asserted behaviourally instead |
 | AT-12 | Selection quality | not started | M1.4; needs `fixtures/expected/` |
 | AT-13 | Undo/redo | not started | M1.5 |
 | AT-14 | Layout adjustment | not started | M1.5 |
@@ -197,10 +197,11 @@ AT-01 (10 MB ≤ 3 s) and AT-09 (reopen ≤ 500 ms), and it has been listed as a
 M1.1. Starting M1.4's charts first would put a second milestone behind the same afternoon of
 device time.
 
-**1.4.1 and 1.4.2 are done and CI-green** — the bar chart paints, filters, sorts and offers a
-table fallback, and the golden-image harness the plan asked for is committed and gated.
-**Next is 1.4.3**, the line-chart painter with its scrub tooltip and legend toggles; it inherits
-the harness rather than needing a new one. See [m1.4-status.md](m1.4-status.md).
+**1.4.1 and 1.4.2 are done and CI-green**, and **1.4.3 is implemented** — the line chart paints
+on two layers so scrubbing never repaints the lines, with legend toggles, a table fallback, its
+own goldens and a frame-time harness. Its verification is pending the run that regenerates the
+images. **Next is 1.4.4**, the timeline painter, the last unpaintable active type. See
+[m1.4-status.md](m1.4-status.md).
 
 "No Dart-side data logic" is now enforced by tests rather than by absence: the table sends
 commands and renders pages, and the interaction suite asserts that no query plan was ever

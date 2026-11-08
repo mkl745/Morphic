@@ -40,7 +40,7 @@ void main() {
   testWidgets('renders in layout.order, not document order', (tester) async {
     final bridge = ScriptedBridge(
       metrics: {'m1': 1},
-      components: [_metric('m1', 'First'), _chart('c1', 'line_chart')],
+      components: [_metric('m1', 'First'), _chart('c1', 'timeline')],
       // Document order is m1 then c1; layout deliberately reverses them.
       order: ['c1', 'm1'],
     );
@@ -99,7 +99,7 @@ void main() {
 
   testWidgets('a chart the runtime cannot draw is labelled, not dropped', (tester) async {
     final bridge = ScriptedBridge(
-      components: [_chart('c1', 'line_chart')],
+      components: [_chart('c1', 'timeline')],
       order: ['c1'],
     );
     final engine = EngineController(bridge: bridge, storageRoot: '/tmp/m');
@@ -112,7 +112,7 @@ void main() {
 
     expect(find.byType(DeferredComponent), findsOneWidget);
     // The headline is visible while collapsed, so the component is never silent.
-    expect(find.text('line_chart renders in M1.4'), findsOneWidget);
+    expect(find.text('timeline renders in M1.4'), findsOneWidget);
     // The long rationale is behind a tap, keeping the data table above the fold.
     expect(find.textContaining('Why this was generated:'), findsNothing);
     await tester.tap(find.byType(ExpansionTile));
@@ -216,6 +216,8 @@ void main() {
     expect(find.text('eu'), findsOneWidget);
   });
 
+  // Deliberately a renderable type: an override must beat the real painter, not just a
+  // placeholder. Until 1.4.3 this only proved the weaker case.
   testWidgets('an injected registry override is honoured', (tester) async {
     final bridge = ScriptedBridge(
       components: [_chart('c1', 'line_chart')],

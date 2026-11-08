@@ -14,6 +14,7 @@ import '../engine/engine_controller.dart';
 import '../engine/interaction.dart';
 import 'components/bar_chart_view.dart';
 import 'components/data_table_view.dart';
+import 'components/line_chart_view.dart';
 import 'components/deferred_component.dart';
 import 'components/metric_card_view.dart';
 
@@ -40,11 +41,15 @@ const Set<String> reservedComponentTypes = {
 };
 
 /// Types this runtime can actually draw today. The rest get an explicit placeholder.
-const Set<String> runtimeRenderableTypes = {'metric_card', 'data_table', 'bar_chart'};
+const Set<String> runtimeRenderableTypes = {
+  'metric_card',
+  'data_table',
+  'bar_chart',
+  'line_chart',
+};
 
 /// Where a deferred type is scheduled, so the placeholder states a real plan.
 const Map<String, String> deferredUntil = {
-  'line_chart': 'M1.4',
   'timeline': 'M1.4',
 };
 
@@ -70,6 +75,10 @@ class ComponentContext {
   bool get canSort => interactions['sort'] == true;
   bool get canFilter => interactions['filter'] == true;
 
+  /// Series selection. The line chart's legend uses it; visibility itself is view state, but
+  /// whether the component offers selection at all is the document's declaration.
+  bool get canSelect => interactions['select'] == true;
+
   /// What the user has already applied to this component, as persisted by Rust.
   ComponentInteraction get state => ComponentInteraction.fromSpec(spec);
 
@@ -90,6 +99,7 @@ class ComponentRegistry {
           'metric_card': (ctx) => MetricCardView(ctx: ctx),
           'data_table': (ctx) => DataTableView(ctx: ctx),
           'bar_chart': (ctx) => BarChartView(ctx: ctx),
+          'line_chart': (ctx) => LineChartView(ctx: ctx),
           ...?overrides,
         };
 
