@@ -18,7 +18,7 @@ records the decisions, the measured evidence, and why the milestone's **exit is 
 
 | Question | Answer |
 |---|---|
-| Tasks finished | **20 of 41** (49%) |
+| Tasks finished | **21 of 41** (51%) |
 | Tasks not finished | **22** — 20 core + 2 stretch (◇) |
 | Milestones code-complete | **3 of 7** (M1.1, M1.2, M1.3) |
 | Milestones not started | **3** (M1.5 → M1.7); M1.4 in progress |
@@ -27,20 +27,20 @@ records the decisions, the measured evidence, and why the milestone's **exit is 
 | Acceptance tests partially evidenced | **7** |
 | Acceptance tests not yet started | **6** |
 | Evidence gaps no task row covers | **6** (see §6) |
-| Remaining core effort, by the plan's own S/M/L legend | **26½–47½ focused days** |
+| Remaining core effort, by the plan's own S/M/L legend | **23½–42½ focused days** |
 
 **The most important finding is the last row.** The plan estimates *all of Phase 1* at 30–40
-focused days. With M1.3 and tasks 1.4.1–1.4.3 finished, the **19 unfinished core tasks sum to
-26½–47½ days**
+focused days. With M1.3 and tasks 1.4.1–1.4.4 finished, the **18 unfinished core tasks sum to
+23½–42½ days**
 under the plan's own legend (S ≈ ½ day, M ≈ 1–2, L ≈ 3–5), excluding the two ◇ stretch items:
 
 | Remaining milestone | Core tasks | Focused days |
 |---|---|---|
-| M1.4 Visualization + planner | 4 | 5½–9½ |
+| M1.4 Visualization + planner | 3 | 2½–4½ |
 | M1.5 Lifecycle & layout | 5 | 7–13 |
 | M1.6 Experience pass | 5 | 8–14 |
 | M1.7 Hardening & release | 5 | 6–11 |
-| **Total** | **19** | **26½–47½** |
+| **Total** | **18** | **23½–42½** |
 
 The figure is recomputed from the plan's rows on every update rather than decremented by hand.
 The estimate was optimistic before any work started and 19 finished tasks have not made it less
@@ -113,11 +113,12 @@ templates, and sharing into Morphic.
 | 1.4.1 Scene contracts + chartData | `cf3427c` | 42478388255 | 6/6 ✅ |
 | Gradle distribution cache + retry | `2940a0a` | 42479675870 | 6/6 ✅ |
 | 1.4.2 bar_chart painter + goldens | `8d3f650` | 42492997637 | 6/6 ✅ |
-| **1.4.3 line_chart + frame harness** | **`d6f2143`** | **42500967870** | **6/6 ✅** |
+| 1.4.3 line_chart + frame harness | `d6f2143` | 42500967870 | 6/6 ✅ |
+| **1.4.4 timeline painter** | **`f8cb419`** | **42507161800** | **6/6 ✅** |
 
 Current totals: **627 Rust tests** across 8 engine crates + the bridge (counted as `#[test]`
 functions: ingest 310, query 82, core 61, schema 33, compiler 30, semantic 27, workspace 22,
-model 11, bridge 51), **398 Dart tests** plus **36 golden images**, and **20 Python cases** for
+model 11, bridge 51), **428 Dart tests** plus **54 golden images**, and **20 Python cases** for
 the device-evidence gate.
 M1.3 added 72 Rust tests: `morphic-query` 21 → 56, `morphic-core` 35 → 52, `morphic-schema`
 24 → 33, bridge 32 → 48; and 119 Dart tests, the first substantial UI test suite.
@@ -143,7 +144,7 @@ three ABIs.
 | AT-08 | Search | **green** | case-insensitive, field-scoped, commutes with filter/sort (property test), debounced as-you-type UI. The test itself specifies no latency bound |
 | AT-09 | Save & reopen | partial | restore ✓; filters/sort/search now persist and survive reopen (tested); ≤ 500 ms unmeasured; field overrides are M1.5 |
 | AT-10 | UI schema validity | **green** | gate-enforced on every run |
-| AT-11 | Component states | partial | **4 of 5** components paintable; **36 golden images** committed and gated. They pin geometry, colour and layout — with no font asset the test font draws boxes, so wording is asserted behaviourally instead |
+| AT-11 | Component states | partial | **5 of 5** components paintable; **54 golden images** committed and gated. They pin geometry, colour and layout — with no font asset the test font draws boxes, so wording is asserted behaviourally instead |
 | AT-12 | Selection quality | not started | M1.4; needs `fixtures/expected/` |
 | AT-13 | Undo/redo | not started | M1.5 |
 | AT-14 | Layout adjustment | not started | M1.5 |
@@ -179,12 +180,12 @@ These will not be closed by working through the task list, because no task owns 
    dataset generator and the phone harness now exist, so this is one import away rather than
    needing new tooling.
 4. **Golden images exist but cannot check text.** Task 1.1.5 promised them and 1.4.2 built the
-   harness: now 36 images — bar and line charts, each across two themes and nine states —
+   harness: now 54 images — bar, line and timeline, each across two themes and nine states —
    committed and gated in CI on the same generate-then-compare contract as the Rust snapshots.
    But the repo ships no font asset, so Flutter's test font draws glyph boxes — the images pin
-   geometry, colour and layout, not wording. A bundled font is still owed, and the timeline is
-   not yet covered. Reviewing them does pay: the line-chart images exposed a lone measurement
-   between gaps rendering as nothing at all, which no behavioural test had caught.
+   geometry, colour and layout, not wording. A bundled font is still owed. Reviewing them does
+   pay: the line-chart images exposed a lone measurement between gaps rendering as nothing at all,
+   which no behavioural test had caught.
 5. **The report sheet shows caveat counts, not the quarantined rows themselves.** Users can
    see *that* 12 rows were set aside but not *which* — the honest-reporting promise is half kept.
 6. **Release size and signing.** ~48 MB fat APK against a ≤ 40 MB per-ABI target; signing
@@ -200,12 +201,12 @@ AT-01 (10 MB ≤ 3 s) and AT-09 (reopen ≤ 500 ms), and it has been listed as a
 M1.1. Starting M1.4's charts first would put a second milestone behind the same afternoon of
 device time.
 
-**1.4.1, 1.4.2 and 1.4.3 are done and CI-green.** The line chart paints on two layers, and a
-frame-time harness proves the split does what it claims: across 60 scrub steps over a
-2000-point, 8-series chart the base layer repainted **zero** times and the geometry was never
-rebuilt, while the overlay repainted exactly on each of the 56 bucket changes. **Next is
-1.4.4**, the timeline painter, the last unpaintable active type. See
-[m1.4-status.md](m1.4-status.md).
+**Every component type schema v1.0 accepts now paints.** Tasks 1.4.1–1.4.4 are done and CI-green,
+and the deferred-placeholder map is empty. The line chart's frame-time harness proves its two-layer
+split does what it claims: across 60 scrub steps over a 2000-point, 8-series chart the base layer
+repainted **zero** times and the geometry was never rebuilt, while the overlay repainted exactly on
+each of the 56 bucket changes. **Next is 1.4.5**, the planner's full rule table — the largest
+remaining item in M1.4. See [m1.4-status.md](m1.4-status.md).
 
 "No Dart-side data logic" is now enforced by tests rather than by absence: the table sends
 commands and renders pages, and the interaction suite asserts that no query plan was ever
