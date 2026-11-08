@@ -257,13 +257,37 @@ jobs:
         working-directory: apps/morphic_flutter
       - name: Build native libraries (3 ABIs)
         run: bash tools/build_android_native.sh
+      # The Android scaffolding is regenerated every run, so without this the Gradle wrapper
+      # re-downloads its ~200 MB distribution each time. A transient 504 from GitHub's release
+      # CDN failed the whole job on 0b3993e for a docs-only commit.
+      - name: Cache Gradle wrapper distribution
+        uses: actions/cache@v4
+        with:
+          path: ~/.gradle/wrapper/dists
+          key: gradle-wrapper-${{ runner.os }}-${{ hashFiles('apps/morphic_flutter/android/gradle/wrapper/gradle-wrapper.properties') }}
       - name: Build debug APK
         id: apkbuild
         continue-on-error: true
         working-directory: apps/morphic_flutter
         run: |
-          flutter build apk --debug > /tmp/apk-build.log 2>&1
-          code=$?
+          code=0
+          for attempt in 1 2 3; do
+            if flutter build apk --debug > /tmp/apk-build.log 2>&1; then
+              code=0
+              break
+            else
+              code=$?
+            fi
+            # Retry ONLY a distribution download failure. Retrying a compile error would burn
+            # two minutes per attempt and still fail, and would blur a real defect into a flake.
+            if grep -qE "HTTP response code: 5[0-9][0-9]|Could not (install|download) Gradle|gradle-distributions" /tmp/apk-build.log \
+               && [ "$attempt" -lt 3 ]; then
+              echo "Gradle distribution download failed (attempt $attempt of 3); retrying in 20s"
+              sleep 20
+              continue
+            fi
+            break
+          done
           tail -n 40 /tmp/apk-build.log
           exit $code
       # Without this the Android job reports only an exit code, which is not diagnosable
