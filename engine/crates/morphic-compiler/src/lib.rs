@@ -539,8 +539,14 @@ mod tests {
             .iter_mut()
             .find(|c| c.component_type == "bar_chart")
             .unwrap();
-        assert!(bar.interactions.filter, "tap-to-filter is part of the contract");
-        assert!(bar.interactions.sort, "the renderer's sort toggle needs this");
+        assert!(
+            bar.interactions.filter,
+            "tap-to-filter is part of the contract"
+        );
+        assert!(
+            bar.interactions.sort,
+            "the renderer's sort toggle needs this"
+        );
         // Pass 5 rejects state that exceeds the declared interactions, so the line above is
         // not cosmetic: without it, tapping the toggle is a rejected command and the feature
         // is unreachable in the app even though the painter works.

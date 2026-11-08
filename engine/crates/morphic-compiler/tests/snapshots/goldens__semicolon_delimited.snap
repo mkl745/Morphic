@@ -109,7 +109,7 @@ expression: doc
         "interactions": {
           "filter": true,
           "search": false,
-          "sort": false,
+          "sort": true,
           "select": true
         },
         "explanation": {

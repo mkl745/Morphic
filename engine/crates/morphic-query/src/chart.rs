@@ -399,20 +399,18 @@ pub fn category_scene_ordered(
         let primary = match order {
             CategoryOrder::LabelAsc => a.label.cmp(&b.label),
             CategoryOrder::LabelDesc => b.label.cmp(&a.label),
-            CategoryOrder::MeasureDesc | CategoryOrder::MeasureAsc => {
-                match (&a.value, &b.value) {
-                    (Some(x), Some(y)) => {
-                        if order == CategoryOrder::MeasureAsc {
-                            x.total_cmp(y)
-                        } else {
-                            y.total_cmp(x)
-                        }
+            CategoryOrder::MeasureDesc | CategoryOrder::MeasureAsc => match (&a.value, &b.value) {
+                (Some(x), Some(y)) => {
+                    if order == CategoryOrder::MeasureAsc {
+                        x.total_cmp(y)
+                    } else {
+                        y.total_cmp(x)
                     }
-                    (Some(_), None) => std::cmp::Ordering::Less,
-                    (None, Some(_)) => std::cmp::Ordering::Greater,
-                    (None, None) => std::cmp::Ordering::Equal,
                 }
-            }
+                (Some(_), None) => std::cmp::Ordering::Less,
+                (None, Some(_)) => std::cmp::Ordering::Greater,
+                (None, None) => std::cmp::Ordering::Equal,
+            },
         };
         // A stable tiebreak keeps bars from swapping between revisions when values are equal.
         primary.then_with(|| a.label.cmp(&b.label))
@@ -805,7 +803,10 @@ mod tests {
         let t = cats();
         let by_measure = ordered(&t, 2, CategoryOrder::MeasureDesc);
         let by_label = ordered(&t, 2, CategoryOrder::LabelAsc);
-        assert_eq!(labels(&by_measure), vec![Some("b".into()), Some("a".into())]);
+        assert_eq!(
+            labels(&by_measure),
+            vec![Some("b".into()), Some("a".into())]
+        );
         assert_eq!(labels(&by_label), vec![Some("a".into()), Some("b".into())]);
         let mut m: Vec<_> = labels(&by_measure);
         let mut l: Vec<_> = labels(&by_label);
@@ -841,7 +842,11 @@ mod tests {
             CategoryOrder::LabelDesc,
         ] {
             let s = ordered(&t, 5, order);
-            assert_eq!(s.points.last().unwrap().label, None, "{order:?} floated the null");
+            assert_eq!(
+                s.points.last().unwrap().label,
+                None,
+                "{order:?} floated the null"
+            );
         }
     }
 
@@ -850,7 +855,10 @@ mod tests {
         let t = cats();
         let a = ordered(&t, 2, CategoryOrder::MeasureDesc);
         let b = ordered(&t, 2, CategoryOrder::LabelAsc);
-        assert_eq!(a.other, b.other, "the remainder is the same rows either way");
+        assert_eq!(
+            a.other, b.other,
+            "the remainder is the same rows either way"
+        );
         assert_eq!(a.other.as_ref().unwrap().row_count, 5);
     }
 
