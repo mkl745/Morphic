@@ -419,7 +419,12 @@ void main() {
     test('is marked, because a line needs two points to exist', () {
       // The bug the golden caught: web had a real measurement in the last bucket with gaps on
       // both sides, so no segment was drawn and the value silently vanished from the chart.
-      expect(datum([1, null, 5, null, 9]).isolatedIndices, [2]);
+      // Points 0,1 and 5,6 are joined by segments; only index 3 stands alone.
+      expect(datum([1, 2, null, 5, null, 9, 10]).isolatedIndices, [3]);
+    });
+
+    test('marks every point when the whole series is gaps between readings', () {
+      expect(datum([1, null, 5, null, 9]).isolatedIndices, [0, 2, 4]);
     });
 
     test('includes the ends when they stand alone', () {
