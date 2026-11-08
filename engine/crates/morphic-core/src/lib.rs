@@ -1155,7 +1155,8 @@ mod tests {
         drop(engine);
         let engine = Engine::new(&root).unwrap();
         // amount > 10 leaves us 20, us 40, eu 50 -> eu avg 50 (1 row), us avg 30 (2 rows).
-        let morphic_query::ChartScene::Category(scene) = engine.chart_data("w1", &id).unwrap().scene
+        let morphic_query::ChartScene::Category(scene) =
+            engine.chart_data("w1", &id).unwrap().scene
         else {
             panic!("category scene");
         };

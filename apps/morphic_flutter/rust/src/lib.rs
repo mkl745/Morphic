@@ -1587,10 +1587,12 @@ mod tests {
         let id = c("w1");
         unsafe { import(&rp, &id, None) };
         let got = unsafe { chart(&rp, &id, "data_table") };
-        assert!(got["error"].as_str().unwrap().contains("not a chart"), "{got}");
+        assert!(
+            got["error"].as_str().unwrap().contains("not a chart"),
+            "{got}"
+        );
         let ghost = unsafe { chart(&rp, &id, "ghost") };
         assert!(ghost["error"].is_string());
         std::fs::remove_dir_all(&p).ok();
     }
-
 }
