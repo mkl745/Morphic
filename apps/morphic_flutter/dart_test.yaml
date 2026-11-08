@@ -1,0 +1,9 @@
+# Declares the tags the suites use so `flutter test --tags/--exclude-tags` is explicit rather
+# than relying on package:test's unknown-tag warning.
+#
+# `golden` — pixel comparisons under test/runtime/bar_chart_golden_test.dart. CI runs these as
+# a separate gate so a missing image on the bootstrap run does not also fail the behavioural
+# suite. The images are generated on the Linux CI runner; that runner is the reference platform.
+tags:
+  golden:
+    timeout: 2x

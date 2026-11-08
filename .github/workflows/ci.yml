@@ -121,7 +121,24 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add -A
           git commit -m "style: rustfmt + bootstrap compiler goldens [skip ci]"
-          git push origin HEAD:${{ github.ref_name }}
+          # Both this job and the Dart golden gate can push generated artifacts from the same
+          # run. Without a rebase the second push is a non-fast-forward and turns a successful
+          # regeneration into a red job. The paths are disjoint, so the rebase is clean.
+          BRANCH="${{ github.ref_name }}"
+          git fetch --unshallow origin "$BRANCH" 2>/dev/null || git fetch origin "$BRANCH"
+          pushed=false
+          for attempt in 1 2 3; do
+            if git pull --rebase origin "$BRANCH" && git push origin HEAD:"$BRANCH"; then
+              pushed=true
+              break
+            fi
+            echo "push attempt $attempt failed; another job may have pushed first"
+            sleep 5
+          done
+          if [ "$pushed" != true ]; then
+            echo "::error::could not push generated artifacts after 3 attempts"
+            exit 1
+          fi
       - name: Enforce checks
         if: steps.fmt.outcome != 'success' || steps.clippy.outcome != 'success' || steps.test.outcome != 'success' || steps.goldens.outcome != 'success'
         run: exit 1
@@ -185,17 +202,44 @@ jobs:
         id: analyze
         continue-on-error: true
         run: flutter analyze > /tmp/analyze.log 2>&1
+      # Same bootstrap contract as the Rust `insta` snapshots: the first run generates the
+      # images and the bot pushes them for review; every later run compares against what is
+      # committed. This repo has no local Flutter, so a legitimate visual change cannot be
+      # re-rendered on a laptop — `[regenerate-goldens]` in the commit message is the reviewable
+      # escape hatch, and the bot's pushed PNG diff is the review artifact.
+      - name: Golden image gate
+        id: goldens
+        continue-on-error: true
+        run: |
+          DIR=test/runtime/goldens
+          if git log -1 --pretty=%B | grep -q '\[regenerate-goldens\]'; then
+            echo "golden regeneration requested by the commit message"
+            echo "bootstrapped=true" >> "$GITHUB_OUTPUT"
+            flutter test --tags golden --update-goldens > /tmp/goldens.log 2>&1
+            exit 0
+          fi
+          if [ -d "$DIR" ] && [ -n "$(ls -A "$DIR" 2>/dev/null)" ]; then
+            echo "goldens committed; image gate is LIVE"
+            echo "bootstrapped=false" >> "$GITHUB_OUTPUT"
+            flutter test --tags golden > /tmp/goldens.log 2>&1
+            exit 0
+          fi
+          echo "goldens missing; generating once for first-commit bootstrap"
+          echo "bootstrapped=true" >> "$GITHUB_OUTPUT"
+          flutter test --tags golden --update-goldens > /tmp/goldens.log 2>&1
       - name: Test
         id: darttest
         continue-on-error: true
-        run: flutter test > /tmp/darttest.log 2>&1
+        # The image gate runs separately above; without the exclusion a missing golden would
+        # fail the behavioural suite too and report the same problem twice.
+        run: flutter test --exclude-tags golden > /tmp/darttest.log 2>&1
       - name: Report output as commit comment
         if: always()
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           {
-            echo "## Dart CI — analyze: ${{ steps.analyze.outcome }} · test: ${{ steps.darttest.outcome }}"
+            echo "## Dart CI — analyze: ${{ steps.analyze.outcome }} · test: ${{ steps.darttest.outcome }} · goldens: ${{ steps.goldens.outcome }}"
             echo '### analyze'
             echo '```'
             cat /tmp/analyze.log
@@ -219,6 +263,10 @@ jobs:
             echo '```'
             tail -n 30 /tmp/darttest.log
             echo '```'
+            echo "### golden images (gate: ${{ steps.goldens.outcome }}, bootstrapped: ${{ steps.goldens.outputs.bootstrapped }})"
+            echo '```'
+            grep -vE "^✅|::group::✅|^::endgroup" /tmp/goldens.log 2>/dev/null | head -n 120 || echo "golden step did not run"
+            echo '```'
           } > /tmp/report.md
           jq -Rs '{body: .}' < /tmp/report.md > /tmp/payload.json
           curl -sS -X POST \
@@ -226,8 +274,37 @@ jobs:
             -H "Accept: application/vnd.github+json" \
             "https://api.github.com/repos/${{ github.repository }}/commits/${{ github.sha }}/comments" \
             -d @/tmp/payload.json
+      - name: Commit bootstrapped golden images and push back
+        if: steps.goldens.outputs.bootstrapped == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A test/runtime/goldens
+          if git diff --cached --quiet; then
+            echo "no golden changes to push"
+            exit 0
+          fi
+          git commit -m "test: bootstrap bar-chart golden images [skip ci]"
+          # Both this job and the Dart golden gate can push generated artifacts from the same
+          # run. Without a rebase the second push is a non-fast-forward and turns a successful
+          # regeneration into a red job. The paths are disjoint, so the rebase is clean.
+          BRANCH="${{ github.ref_name }}"
+          git fetch --unshallow origin "$BRANCH" 2>/dev/null || git fetch origin "$BRANCH"
+          pushed=false
+          for attempt in 1 2 3; do
+            if git pull --rebase origin "$BRANCH" && git push origin HEAD:"$BRANCH"; then
+              pushed=true
+              break
+            fi
+            echo "push attempt $attempt failed; another job may have pushed first"
+            sleep 5
+          done
+          if [ "$pushed" != true ]; then
+            echo "::error::could not push generated artifacts after 3 attempts"
+            exit 1
+          fi
       - name: Enforce checks
-        if: steps.analyze.outcome != 'success' || steps.darttest.outcome != 'success'
+        if: steps.analyze.outcome != 'success' || steps.darttest.outcome != 'success' || steps.goldens.outcome != 'success'
         run: exit 1
 
   android-build:

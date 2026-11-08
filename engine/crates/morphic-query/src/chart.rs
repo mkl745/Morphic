@@ -292,6 +292,22 @@ fn extent(col: &Column, rows: &[usize]) -> Option<(f64, f64)> {
 
 // --- category (bar) ------------------------------------------------------------------------
 
+/// Display order of the bars a chart keeps (M1.4 task 1.4.2's sort toggle).
+///
+/// This orders the bars **after** the top-N cut. Selection is always by measure magnitude:
+/// "the twelve biggest, alphabetically" must still be the twelve biggest. Letting a label sort
+/// choose which categories survive would quietly drop the largest bars, which is the opposite
+/// of what the chart is for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum CategoryOrder {
+    #[default]
+    MeasureDesc,
+    MeasureAsc,
+    LabelAsc,
+    LabelDesc,
+}
+
 /// Top-N categories by measure, descending, with the remainder re-aggregated into `Other`.
 ///
 /// Ties break on the label so the same data always produces the same bars — a chart whose bars
@@ -302,6 +318,18 @@ pub fn category_scene(
     dimension: &str,
     agg: &Aggregate<'_>,
     limit: usize,
+) -> Result<CategoryScene, QueryError> {
+    category_scene_ordered(table, rows, dimension, agg, limit, CategoryOrder::default())
+}
+
+/// [`category_scene`] with an explicit display order for the kept bars.
+pub fn category_scene_ordered(
+    table: &Table,
+    rows: &[usize],
+    dimension: &str,
+    agg: &Aggregate<'_>,
+    limit: usize,
+    order: CategoryOrder,
 ) -> Result<CategoryScene, QueryError> {
     let dim = crate::find_column(table, dimension)?;
     let spec = AggSpec::new(agg.op, agg.field);
@@ -359,7 +387,36 @@ pub fn category_scene(
     let total_categories = grouped.total_groups;
     let kept: HashSet<String> = points.iter().take(keep).map(|(k, _)| k.clone()).collect();
     let remainder = points.len() > keep;
-    let points: Vec<CategoryPoint> = points.into_iter().take(keep).map(|(_, p)| p).collect();
+    let mut points: Vec<CategoryPoint> = points.into_iter().take(keep).map(|(_, p)| p).collect();
+    // Re-order only what survived the cut. Nulls stay last under every order: an absent
+    // category is not the smallest one, whichever axis the user sorted by.
+    points.sort_by(|a, b| {
+        match (a.label.is_none(), b.label.is_none()) {
+            (true, false) => return std::cmp::Ordering::Greater,
+            (false, true) => return std::cmp::Ordering::Less,
+            _ => {}
+        }
+        let primary = match order {
+            CategoryOrder::LabelAsc => a.label.cmp(&b.label),
+            CategoryOrder::LabelDesc => b.label.cmp(&a.label),
+            CategoryOrder::MeasureDesc | CategoryOrder::MeasureAsc => {
+                match (&a.value, &b.value) {
+                    (Some(x), Some(y)) => {
+                        if order == CategoryOrder::MeasureAsc {
+                            x.total_cmp(y)
+                        } else {
+                            y.total_cmp(x)
+                        }
+                    }
+                    (Some(_), None) => std::cmp::Ordering::Less,
+                    (None, Some(_)) => std::cmp::Ordering::Greater,
+                    (None, None) => std::cmp::Ordering::Equal,
+                }
+            }
+        };
+        // A stable tiebreak keeps bars from swapping between revisions when values are equal.
+        primary.then_with(|| a.label.cmp(&b.label))
+    });
 
     let other = if remainder {
         // Re-aggregated from the rows, never subtracted from a total: an average of averages is
@@ -721,6 +778,80 @@ mod tests {
 
     fn labels(s: &CategoryScene) -> Vec<Option<String>> {
         s.points.iter().map(|p| p.label.clone()).collect()
+    }
+
+    // --- display order (M1.4 task 1.4.2) -------------------------------------------------
+
+    fn ordered(t: &Table, limit: usize, order: CategoryOrder) -> CategoryScene {
+        category_scene_ordered(
+            t,
+            &all(t),
+            "region",
+            &Aggregate {
+                op: "avg",
+                field: Some("amount"),
+            },
+            limit,
+            order,
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn label_order_does_not_change_which_bars_survive_the_cut() {
+        // cats(): b=100, a=20, d=8, c=4, null=50. The two biggest are b and a. Sorting by
+        // label must reorder those two, NOT promote a and c because they sort first
+        // alphabetically — that would silently drop the largest bar.
+        let t = cats();
+        let by_measure = ordered(&t, 2, CategoryOrder::MeasureDesc);
+        let by_label = ordered(&t, 2, CategoryOrder::LabelAsc);
+        assert_eq!(labels(&by_measure), vec![Some("b".into()), Some("a".into())]);
+        assert_eq!(labels(&by_label), vec![Some("a".into()), Some("b".into())]);
+        let mut m: Vec<_> = labels(&by_measure);
+        let mut l: Vec<_> = labels(&by_label);
+        m.sort();
+        l.sort();
+        assert_eq!(m, l, "the same categories must survive under every order");
+        assert_eq!(by_label.total_categories, by_measure.total_categories);
+    }
+
+    #[test]
+    fn label_desc_reverses_the_kept_bars() {
+        assert_eq!(
+            labels(&ordered(&cats(), 2, CategoryOrder::LabelDesc)),
+            vec![Some("b".into()), Some("a".into())]
+        );
+    }
+
+    #[test]
+    fn measure_asc_orders_smallest_first_within_the_cut() {
+        let s = ordered(&cats(), 2, CategoryOrder::MeasureAsc);
+        assert_eq!(labels(&s), vec![Some("a".into()), Some("b".into())]);
+        assert_eq!(s.points[0].value, Some(20.0));
+        assert_eq!(s.points[1].value, Some(100.0));
+    }
+
+    #[test]
+    fn nulls_stay_last_under_every_order() {
+        let t = cats();
+        for order in [
+            CategoryOrder::MeasureDesc,
+            CategoryOrder::MeasureAsc,
+            CategoryOrder::LabelAsc,
+            CategoryOrder::LabelDesc,
+        ] {
+            let s = ordered(&t, 5, order);
+            assert_eq!(s.points.last().unwrap().label, None, "{order:?} floated the null");
+        }
+    }
+
+    #[test]
+    fn the_other_bucket_does_not_depend_on_display_order() {
+        let t = cats();
+        let a = ordered(&t, 2, CategoryOrder::MeasureDesc);
+        let b = ordered(&t, 2, CategoryOrder::LabelAsc);
+        assert_eq!(a.other, b.other, "the remainder is the same rows either way");
+        assert_eq!(a.other.as_ref().unwrap().row_count, 5);
     }
 
     #[test]

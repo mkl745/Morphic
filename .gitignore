@@ -54,3 +54,8 @@ Thumbs.db
 /toolchains/
 /vendor/
 .cargo-vendor-config.toml
+
+# Flutter golden-test failure output: diff images written when a comparison fails. These are
+# diagnostics for the CI report, never reference images. The references in test/**/goldens/
+# ARE committed — they are the gate.
+apps/morphic_flutter/test/**/failures/

@@ -18,7 +18,7 @@ records the decisions, the measured evidence, and why the milestone's **exit is 
 
 | Question | Answer |
 |---|---|
-| Tasks finished | **18 of 41** (44%) |
+| Tasks finished | **18 of 41** (44%); 1.4.2 implemented, CI verification pending |
 | Tasks not finished | **23** — 21 core + 2 stretch (◇) |
 | Milestones code-complete | **3 of 7** (M1.1, M1.2, M1.3) |
 | Milestones not started | **3** (M1.5 → M1.7); M1.4 in progress |
@@ -138,7 +138,7 @@ three ABIs.
 | AT-08 | Search | **green** | case-insensitive, field-scoped, commutes with filter/sort (property test), debounced as-you-type UI. The test itself specifies no latency bound |
 | AT-09 | Save & reopen | partial | restore ✓; filters/sort/search now persist and survive reopen (tested); ≤ 500 ms unmeasured; field overrides are M1.5 |
 | AT-10 | UI schema validity | **green** | gate-enforced on every run |
-| AT-11 | Component states | partial | **2 of 5** components paintable; **0 golden files** |
+| AT-11 | Component states | partial | **3 of 5** components paintable; golden harness built, 18 images pending CI bootstrap |
 | AT-12 | Selection quality | not started | M1.4; needs `fixtures/expected/` |
 | AT-13 | Undo/redo | not started | M1.5 |
 | AT-14 | Layout adjustment | not started | M1.5 |
@@ -173,7 +173,11 @@ These will not be closed by working through the task list, because no task owns 
 3. **The 10 MB → ≤ 3 s hypothesis is unmeasured.** It is the product's central claim. The
    dataset generator and the phone harness now exist, so this is one import away rather than
    needing new tooling.
-4. **Zero golden images.** Task 1.1.5 promised them; M1.4 and M1.6 both assume they exist.
+4. **Golden images are bootstrapping, and cannot check text.** Task 1.1.5 promised them and
+   1.4.2 built the harness: 18 images across two themes and nine states, gated in CI on the same
+   generate-then-compare contract as the Rust snapshots. But the repo ships no font asset, so
+   Flutter's test font draws glyph boxes — the images pin geometry, colour and layout, not
+   wording. A bundled font is still owed.
 5. **The report sheet shows caveat counts, not the quarantined rows themselves.** Users can
    see *that* 12 rows were set aside but not *which* — the honest-reporting promise is half kept.
 6. **Release size and signing.** ~48 MB fat APK against a ≤ 40 MB per-ABI target; signing
@@ -189,11 +193,10 @@ AT-01 (10 MB ≤ 3 s) and AT-09 (reopen ≤ 500 ms), and it has been listed as a
 M1.1. Starting M1.4's charts first would put a second milestone behind the same afternoon of
 device time.
 
-**1.4.1 is done** — the scene contract and its aggregation paths are shipped and CI-green, so
-three painters can now be built against a fixed shape. **Next is 1.4.2**, the bar-chart painter,
-which is also where the golden-image harness has to be built: its verification is
-"goldens × themes × states" and no such harness exists yet. See
-[m1.4-status.md](m1.4-status.md).
+**1.4.1 is done** and **1.4.2 is implemented** — the bar chart paints, filters, sorts and offers
+a table fallback, and the golden-image harness the plan asked for now exists and is gated in CI.
+Its verification is pending the run that bootstraps the images. **Next is 1.4.3**, the line-chart
+painter with its scrub tooltip and legend toggles. See [m1.4-status.md](m1.4-status.md).
 
 "No Dart-side data logic" is now enforced by tests rather than by absence: the table sends
 commands and renders pages, and the interaction suite asserts that no query plan was ever

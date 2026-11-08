@@ -106,3 +106,33 @@ pub(crate) fn page_size(component: &ComponentSpec) -> usize {
         _ => morphic_query::DEFAULT_PAGE_SIZE,
     }
 }
+
+/// The bar display order a component's persisted sort asks for (M1.4 task 1.4.2).
+///
+/// A sort on the **dimension** orders bars by label; anything else orders them by measure.
+/// Only the first rule counts: a chart has one axis to order, and inventing a tiebreak from a
+/// second rule would be a behaviour nobody asked for. No sort means the engine's default —
+/// largest first, which is what a breakdown is for.
+pub(crate) fn category_order(
+    component: &morphic_schema::ComponentSpec,
+) -> morphic_query::CategoryOrder {
+    use morphic_query::CategoryOrder;
+    let morphic_schema::Binding::BarChart { dimension, .. } = &component.binding else {
+        return CategoryOrder::default();
+    };
+    let Some(rule) = component.state.sort.first() else {
+        return CategoryOrder::default();
+    };
+    let desc = rule.dir == morphic_schema::SortDir::Desc;
+    if &rule.field == dimension {
+        if desc {
+            CategoryOrder::LabelDesc
+        } else {
+            CategoryOrder::LabelAsc
+        }
+    } else if desc {
+        CategoryOrder::MeasureDesc
+    } else {
+        CategoryOrder::MeasureAsc
+    }
+}

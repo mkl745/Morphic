@@ -26,6 +26,10 @@ abstract final class MorphicColors {
   static const accent = Color(0xFF4FD1C5);
   static const accentDark = Color(0xFF0D9488);
   static const info = Color(0xFF60A5FA);
+
+  /// Deeper blue for light surfaces, the way [accentDark] pairs with [accent]. `info` itself
+  /// only reaches 2.5:1 on white, below the 3:1 WCAG 1.4.11 floor for a meaningful graphic.
+  static const infoDark = Color(0xFF2563EB);
   static const success = Color(0xFF34D399);
   static const warning = Color(0xFFFBBF24);
   static const error = Color(0xFFF87171);

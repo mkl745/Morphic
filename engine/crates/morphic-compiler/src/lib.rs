@@ -356,8 +356,12 @@ pub fn compile(
                 measure: agg,
                 limit,
             },
+            // `sort` is part of the bar chart's contract (04-component-registry §2): the
+            // renderer's toggle persists a SetComponentSort, and pass 5 rejects state that
+            // exceeds the declared interactions — without this the toggle would be refused.
             interactions: Interactions {
                 filter: true,
+                sort: true,
                 select: true,
                 ..Default::default()
             },
@@ -519,6 +523,32 @@ mod tests {
             }
             other => panic!("wrong binding: {other:?}"),
         }
+        assert!(morphic_schema::validate_with_profile(&doc, &p).is_empty());
+    }
+
+    #[test]
+    fn a_bar_chart_allows_the_sort_its_renderer_offers() {
+        let p = profile(vec![
+            field("region", DataType::Utf8, FieldRole::Dimension, 4),
+            field("sales", DataType::Float64, FieldRole::Measure, 90),
+        ]);
+        let mut doc = build(&p);
+        let bar = doc
+            .workspace
+            .components
+            .iter_mut()
+            .find(|c| c.component_type == "bar_chart")
+            .unwrap();
+        assert!(bar.interactions.filter, "tap-to-filter is part of the contract");
+        assert!(bar.interactions.sort, "the renderer's sort toggle needs this");
+        // Pass 5 rejects state that exceeds the declared interactions, so the line above is
+        // not cosmetic: without it, tapping the toggle is a rejected command and the feature
+        // is unreachable in the app even though the painter works.
+        bar.state.sort = vec![morphic_schema::SortRule {
+            field: "region".into(),
+            dir: morphic_schema::SortDir::Asc,
+            nulls: morphic_schema::NullsOrder::Last,
+        }];
         assert!(morphic_schema::validate_with_profile(&doc, &p).is_empty());
     }
 

@@ -716,9 +716,14 @@ impl Engine {
             .ok_or_else(|| CoreError::SourceUnavailable(workspace_id.into()))?;
         // The binding is the scene's identity: two charts over one selection with different
         // dimensions or measures produce different scenes from an identical plan.
+        // The order is part of the scene's identity. `for_metric` carries no sort (a chart
+        // groups rather than orders rows), so without this a sort toggle would hash to the
+        // same key and be served the previous scene from cache.
+        let order = plans::category_order(component);
         let fingerprint = serde_json::json!({
             "plan": plan,
             "binding": component.binding,
+            "order": order,
         });
         let key = morphic_query::cache::CacheKey::new(
             s.data_revision,
@@ -743,12 +748,13 @@ impl Engine {
                     op: &measure.op,
                     field: measure.field.as_deref(),
                 };
-                morphic_query::ChartScene::Category(morphic_query::category_scene(
+                morphic_query::ChartScene::Category(morphic_query::category_scene_ordered(
                     table,
                     &rows,
                     dimension,
                     &agg,
                     *limit as usize,
+                    order,
                 )?)
             }
             morphic_schema::Binding::LineChart { x, y, group_by } => {
@@ -1068,6 +1074,72 @@ mod tests {
         assert_eq!(engine.compute_count("w1", &id).unwrap(), once);
         assert_eq!(first.scene, second.scene);
         assert_eq!(once, 1, "the scene must be computed exactly once");
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn a_sort_on_the_dimension_orders_bars_by_label_and_busts_the_cache() {
+        let (engine, root) = imported("chart_sort_label");
+        let id = breakdown_id(&engine.snapshot("w1").unwrap().doc);
+        let before = engine.chart_data("w1", &id).unwrap();
+        let morphic_query::ChartScene::Category(c) = &before.scene else {
+            panic!("category scene");
+        };
+        // SALES: us avg 30 above eu avg 23.33.
+        assert_eq!(c.points[0].label.as_deref(), Some("us"));
+
+        engine
+            .apply(
+                "w1",
+                &[Command::SetComponentSort {
+                    component_id: id.clone(),
+                    sort: vec![morphic_schema::SortRule {
+                        field: "region".into(),
+                        dir: morphic_schema::SortDir::Asc,
+                        nulls: morphic_schema::NullsOrder::Last,
+                    }],
+                }],
+                "2026-11-05T00:00:00Z",
+            )
+            .unwrap();
+        let after = engine.chart_data("w1", &id).unwrap();
+        let morphic_query::ChartScene::Category(c) = &after.scene else {
+            panic!("category scene");
+        };
+        assert_eq!(
+            c.points[0].label.as_deref(),
+            Some("eu"),
+            "a label sort must reach the scene, not be served from cache"
+        );
+        assert_eq!(c.points[1].label.as_deref(), Some("us"));
+        assert_ne!(after.revision, before.revision);
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn a_sort_on_the_measure_orders_bars_by_value() {
+        let (engine, root) = imported("chart_sort_measure");
+        let id = breakdown_id(&engine.snapshot("w1").unwrap().doc);
+        engine
+            .apply(
+                "w1",
+                &[Command::SetComponentSort {
+                    component_id: id.clone(),
+                    sort: vec![morphic_schema::SortRule {
+                        field: "amount".into(),
+                        dir: morphic_schema::SortDir::Asc,
+                        nulls: morphic_schema::NullsOrder::Last,
+                    }],
+                }],
+                "2026-11-05T00:00:00Z",
+            )
+            .unwrap();
+        let morphic_query::ChartScene::Category(c) = engine.chart_data("w1", &id).unwrap().scene
+        else {
+            panic!("category scene");
+        };
+        assert_eq!(c.points[0].label.as_deref(), Some("eu"), "smallest first");
+        assert_eq!(c.points[1].label.as_deref(), Some("us"));
         std::fs::remove_dir_all(&root).ok();
     }
 

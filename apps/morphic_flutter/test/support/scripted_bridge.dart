@@ -362,6 +362,12 @@ class ScriptedBridge implements MorphicBridge {
           .whereType<Map<String, dynamic>>()
           .every((f) => _passes(row, f));
     }
+    if (op == 'not') {
+      final args = (filter['args'] as List? ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .toList();
+      return args.length == 1 && !_passes(row, args.single);
+    }
     final idx = fields.indexOf(filter['field'] as String? ?? '');
     if (idx < 0 || idx >= row.length) return true;
     final cell = row[idx];
@@ -447,6 +453,11 @@ class ScriptedBridge implements MorphicBridge {
 
   /// Set to make `chartData` throw, for the degraded/error paths.
   bool failChart = false;
+
+  /// Forces the category scene's accumulation-cap flag. The fake groups rows in memory and
+  /// will never breach the engine's 100k cap, so a painter's partial-scene path needs a switch.
+  /// This is NOT the same as a `limit` cutting categories — that is the Other bucket.
+  bool chartTruncated = false;
 
   @override
   Map<String, dynamic> chartData({
@@ -541,8 +552,23 @@ class ScriptedBridge implements MorphicBridge {
       return (labels[a.key] ?? '').compareTo(labels[b.key] ?? '');
     });
 
+    // Selection is always top-N by measure; a label sort reorders only the survivors. Cutting
+    // after a label sort would drop the largest bar, which is why the engine works this way.
     final kept = entries.take(limit).toList();
     final rest = entries.skip(limit).expand((e) => e.value).toList();
+    final sort = ((c['state'] as Map?)?['sort'] as List? ?? const [])
+        .whereType<Map<String, dynamic>>()
+        .toList();
+    if (sort.isNotEmpty && sort.first['field'] == dimension) {
+      final asc = sort.first['dir'] != 'desc';
+      kept.sort((a, b) {
+        final an = labels[a.key] == null;
+        final bn = labels[b.key] == null;
+        if (an != bn) return an ? 1 : -1; // nulls last under every order
+        final cmp = (labels[a.key] ?? '').compareTo(labels[b.key] ?? '');
+        return asc ? cmp : -cmp;
+      });
+    }
     return {
       'kind': 'category',
       'dimension': dimension,
@@ -555,7 +581,7 @@ class ScriptedBridge implements MorphicBridge {
           ? null
           : {'label': 'Other', 'value': aggOf(rest), 'rowCount': rest.length},
       'totalCategories': entries.length,
-      'truncated': false,
+      'truncated': chartTruncated,
     };
   }
 
