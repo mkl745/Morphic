@@ -124,6 +124,26 @@ class FakeBridge implements MorphicBridge {
       {'componentId': componentId, 'value': 12, 'revision': 1};
 
   @override
+  Map<String, dynamic> chartData({
+    required String storageRoot,
+    required String workspaceId,
+    required String componentId,
+  }) =>
+      {
+        'componentId': componentId,
+        'revision': 1,
+        'scene': {
+          'kind': 'category',
+          'dimension': 'region',
+          'measure': 'count',
+          'points': <Map<String, dynamic>>[],
+          'other': null,
+          'totalCategories': 0,
+          'truncated': false,
+        },
+      };
+
+  @override
   bool cancelImport({required String workspaceId}) => false;
 
   @override

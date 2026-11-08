@@ -8,6 +8,7 @@ library;
 import 'package:flutter/foundation.dart';
 
 import 'bridge.dart';
+import 'chart_scene.dart';
 
 /// One page of rows plus the metadata a pager needs.
 class PageResult {
@@ -239,6 +240,32 @@ class EngineController extends ChangeNotifier {
         limit: limit,
       );
       return PageResult.fromJson(res);
+    } catch (e) {
+      _error = e.toString();
+      notifyListeners();
+      return null;
+    }
+  }
+
+  /// The pre-aggregated scene for a chart component.
+  ///
+  /// Rust does the grouping, bucketing and downsampling; this returns points and totals, never
+  /// rows. Returns null (and sets [error]) on failure, matching [componentPage]'s convention.
+  Future<ChartResult?> chartData(String componentId) async {
+    await _afterBuildPhase();
+    final id = _workspaceId;
+    if (id == null) {
+      _error = 'no workspace open';
+      notifyListeners();
+      return null;
+    }
+    try {
+      final res = bridge.chartData(
+        storageRoot: storageRoot,
+        workspaceId: id,
+        componentId: componentId,
+      );
+      return ChartResult.fromJson(res);
     } catch (e) {
       _error = e.toString();
       notifyListeners();

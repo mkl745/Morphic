@@ -108,6 +108,14 @@ abstract interface class MorphicBridge {
     required String componentId,
   });
 
+  /// The pre-aggregated scene behind a chart. Rust groups and buckets; the response carries
+  /// points and totals, never rows (docs/architecture/02 §2.5).
+  Map<String, dynamic> chartData({
+    required String storageRoot,
+    required String workspaceId,
+    required String componentId,
+  });
+
   /// Ask an in-flight import to stop. Returns true when a running import was signalled.
   ///
   /// False is a normal answer, not a failure: the import may have finished between the user
@@ -228,6 +236,8 @@ class FfiBridge implements MorphicBridge {
       _lib.lookupFunction<_ThreeStringNative, _ThreeStringDart>('morphic_query_page');
   late final _metricData =
       _lib.lookupFunction<_ThreeStringNative, _ThreeStringDart>('morphic_metric_data');
+  late final _chartData =
+      _lib.lookupFunction<_ThreeStringNative, _ThreeStringDart>('morphic_chart_data');
   late final _applyCommands = _lib
       .lookupFunction<_FourStringNative, _FourStringDart>('morphic_apply_commands');
   late final _componentPage = _lib
@@ -479,6 +489,24 @@ class FfiBridge implements MorphicBridge {
     final comp = componentId.toNativeUtf8();
     try {
       return _withResponse(() => _metricData(root, id, comp), _decodeMap);
+    } finally {
+      calloc.free(root);
+      calloc.free(id);
+      calloc.free(comp);
+    }
+  }
+
+  @override
+  Map<String, dynamic> chartData({
+    required String storageRoot,
+    required String workspaceId,
+    required String componentId,
+  }) {
+    final root = storageRoot.toNativeUtf8();
+    final id = workspaceId.toNativeUtf8();
+    final comp = componentId.toNativeUtf8();
+    try {
+      return _withResponse(() => _chartData(root, id, comp), _decodeMap);
     } finally {
       calloc.free(root);
       calloc.free(id);

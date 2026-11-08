@@ -198,6 +198,35 @@ class RecordingBridge implements MorphicBridge {
     return {'componentId': componentId, 'value': metricValue, 'revision': 7};
   }
 
+  bool failChart = false;
+
+  @override
+  Map<String, dynamic> chartData({
+    required String storageRoot,
+    required String workspaceId,
+    required String componentId,
+  }) {
+    calls.add('chart:$componentId');
+    if (failChart) {
+      throw const MorphicBridgeException("core: component 'x' is a data_table, not a chart");
+    }
+    return {
+      'componentId': componentId,
+      'revision': 7,
+      'scene': {
+        'kind': 'category',
+        'dimension': 'region',
+        'measure': 'count',
+        'points': [
+          {'label': 'eu', 'value': 2, 'rowCount': 2},
+        ],
+        'other': null,
+        'totalCategories': 1,
+        'truncated': false,
+      },
+    };
+  }
+
   bool cancelResult = false;
 
   @override

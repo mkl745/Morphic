@@ -441,6 +441,124 @@ class ScriptedBridge implements MorphicBridge {
     return {'componentId': componentId, 'value': value, 'revision': _revision};
   }
 
+  /// Chart scenes requested, in order. The evidence that a painter asked the engine instead
+  /// of aggregating the rows it was handed.
+  final List<String> chartCalls = [];
+
+  /// Set to make `chartData` throw, for the degraded/error paths.
+  bool failChart = false;
+
+  @override
+  Map<String, dynamic> chartData({
+    required String storageRoot,
+    required String workspaceId,
+    required String componentId,
+  }) {
+    chartCalls.add(componentId);
+    if (failChart) throw const MorphicBridgeException('core: not a chart');
+    if (sourceUnavailable) {
+      throw const MorphicBridgeException("core: source data for workspace 'w1' is unavailable");
+    }
+    final c = _component(componentId);
+    if (c == null) throw const MorphicBridgeException('core: unknown component');
+    final type = c['type'] as String?;
+    if (type != 'bar_chart') {
+      throw MorphicBridgeException("core: component '$componentId' is a $type, not a chart");
+    }
+    return {
+      'componentId': componentId,
+      'revision': _revision,
+      'scene': _categoryScene(c),
+    };
+  }
+
+  /// A category scene computed from the rows through the active filters.
+  ///
+  /// Only bar charts, and only the operators the compiler emits. The Rust FFI tests are the
+  /// authority on aggregation; this exists so a painter test can see a filter actually move the
+  /// bars, which a canned scene would hide.
+  Map<String, dynamic> _categoryScene(Map<String, dynamic> c) {
+    final binding = (c['binding'] as Map?)?.cast<String, dynamic>() ?? {};
+    final dimension = binding['dimension'] as String? ?? '';
+    final measure = (binding['measure'] as Map?)?.cast<String, dynamic>() ?? {};
+    final limit = (binding['limit'] as num?)?.toInt() ?? 12;
+    final op = measure['op'] as String? ?? 'count';
+    final field = measure['field'] as String?;
+    final bindingFilter = (measure['filter'] as Map?)?.cast<String, dynamic>();
+    final stateFilter = ((c['state'] as Map?)?['filter'] as Map?)?.cast<String, dynamic>();
+    final selected = rows
+        .where((r) => _globalFilters.every((g) => _passes(r, g)))
+        .where((r) => _passes(r, stateFilter))
+        .where((r) => _passes(r, bindingFilter))
+        .toList();
+
+    final dimIdx = fields.indexOf(dimension);
+    final groups = <String, List<List<dynamic>>>{};
+    final labels = <String, String?>{};
+    for (final r in selected) {
+      final cell = dimIdx >= 0 && dimIdx < r.length ? r[dimIdx] : null;
+      final key = cell?.toString() ?? '\u0000null';
+      labels[key] = cell?.toString();
+      groups.putIfAbsent(key, () => []).add(r);
+    }
+
+    double? aggOf(List<List<dynamic>> members) {
+      if (op == 'count' && field == null) return members.length.toDouble();
+      final idx = fields.indexOf(field ?? '');
+      if (idx < 0) return null;
+      final nums = members
+          .map((r) => idx < r.length ? r[idx] : null)
+          .whereType<num>()
+          .toList();
+      if (nums.isEmpty) return null;
+      switch (op) {
+        case 'count':
+          return nums.length.toDouble();
+        case 'sum':
+          return nums.fold<num>(0, (a, b) => a + b).toDouble();
+        case 'avg':
+          return nums.fold<num>(0, (a, b) => a + b) / nums.length;
+        case 'min':
+          return nums.reduce((a, b) => a < b ? a : b).toDouble();
+        case 'max':
+          return nums.reduce((a, b) => a > b ? a : b).toDouble();
+      }
+      return null;
+    }
+
+    final entries = groups.entries.toList();
+    // Nulls last regardless of the measure, then descending by value, then by label: the same
+    // order the engine promises, so a painter test is not asserting a different contract.
+    entries.sort((a, b) {
+      final an = labels[a.key] == null;
+      final bn = labels[b.key] == null;
+      if (an != bn) return an ? 1 : -1;
+      final av = aggOf(a.value);
+      final bv = aggOf(b.value);
+      if (av != null && bv != null && av != bv) return bv.compareTo(av);
+      if (av == null && bv != null) return 1;
+      if (av != null && bv == null) return -1;
+      return (labels[a.key] ?? '').compareTo(labels[b.key] ?? '');
+    });
+
+    final kept = entries.take(limit).toList();
+    final rest = entries.skip(limit).expand((e) => e.value).toList();
+    return {
+      'kind': 'category',
+      'dimension': dimension,
+      'measure': field == null ? op : '${op}_$field',
+      'points': [
+        for (final e in kept)
+          {'label': labels[e.key], 'value': aggOf(e.value), 'rowCount': e.value.length},
+      ],
+      'other': rest.isEmpty
+          ? null
+          : {'label': 'Other', 'value': aggOf(rest), 'rowCount': rest.length},
+      'totalCategories': entries.length,
+      'truncated': false,
+    };
+  }
+
   /// Global ∧ component-state ∧ binding, then the aggregation. The binding filter goes last
   /// for the same reason the engine puts it last: a user filter may narrow what a card means,
   /// never widen it.
