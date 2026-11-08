@@ -165,7 +165,7 @@ void main() {
       'passes': baseRepaints == 0 && geometryRebuilds == 0 && bucketChanges > 0,
     };
     // ignore: avoid_print
-    print('$kFrameLogTag_JSON ${jsonEncode(report)}');
+    print('${kFrameLogTag}_JSON ${jsonEncode(report)}');
     // ignore: avoid_print
     print('$kFrameLogTag ${baseRepaints == 0 ? "OVERLAY_ONLY" : "BASE_REPAINTED"}: '
         '$baseRepaints base repaints over $_scrubSteps scrub steps at 2000 points; '

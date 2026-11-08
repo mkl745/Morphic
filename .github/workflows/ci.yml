@@ -120,6 +120,12 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add -A
+          # `[regenerate-goldens]` can be requested when nothing actually changed. Without this
+          # guard `git commit` exits 1 on an empty index and turns a clean run red.
+          if git diff --cached --quiet; then
+            echo "nothing to format or regenerate; no push needed"
+            exit 0
+          fi
           git commit -m "style: rustfmt + bootstrap compiler goldens [skip ci]"
           # Both this job and the Dart golden gate can push generated artifacts from the same
           # run. Without a rebase the second push is a non-fast-forward and turns a successful
@@ -128,10 +134,13 @@ jobs:
           git fetch --unshallow origin "$BRANCH" 2>/dev/null || git fetch origin "$BRANCH"
           pushed=false
           for attempt in 1 2 3; do
-            if git pull --rebase origin "$BRANCH" && git push origin HEAD:"$BRANCH"; then
+            if git -c rebase.autostash=true rebase FETCH_HEAD \
+              && git push origin HEAD:"$BRANCH"; then
               pushed=true
               break
             fi
+            git rebase --abort 2>/dev/null || true
+            git fetch origin "$BRANCH" || true
             echo "push attempt $attempt failed; another job may have pushed first"
             sleep 5
           done
