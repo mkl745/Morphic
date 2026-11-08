@@ -275,36 +275,74 @@ jobs:
             "https://api.github.com/repos/${{ github.repository }}/commits/${{ github.sha }}/comments" \
             -d @/tmp/payload.json
       - name: Commit bootstrapped golden images and push back
+        id: goldpush
         if: steps.goldens.outputs.bootstrapped == 'true'
+        continue-on-error: true
+        # Repo root, like the Rust push-back. The first attempt ran in apps/morphic_flutter and
+        # failed without saying why; a subshell captures the output so the report below can.
+        working-directory: ${{ github.workspace }}
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add -A test/runtime/goldens
-          if git diff --cached --quiet; then
-            echo "no golden changes to push"
-            exit 0
-          fi
-          git commit -m "test: bootstrap bar-chart golden images [skip ci]"
-          # Both this job and the Dart golden gate can push generated artifacts from the same
-          # run. Without a rebase the second push is a non-fast-forward and turns a successful
-          # regeneration into a red job. The paths are disjoint, so the rebase is clean.
-          BRANCH="${{ github.ref_name }}"
-          git fetch --unshallow origin "$BRANCH" 2>/dev/null || git fetch origin "$BRANCH"
-          pushed=false
-          for attempt in 1 2 3; do
-            if git pull --rebase origin "$BRANCH" && git push origin HEAD:"$BRANCH"; then
-              pushed=true
-              break
+          # GitHub runs this with -e; disable it so a failing subshell still reaches the cat.
+          set +e
+          (
+            set -eo pipefail
+            set -x
+            DIR=apps/morphic_flutter/test/runtime/goldens
+            if [ ! -d "$DIR" ] || [ -z "$(ls -A "$DIR" 2>/dev/null)" ]; then
+              echo "::error::golden run passed but wrote no images to $DIR"
+              exit 1
             fi
-            echo "push attempt $attempt failed; another job may have pushed first"
-            sleep 5
-          done
-          if [ "$pushed" != true ]; then
-            echo "::error::could not push generated artifacts after 3 attempts"
-            exit 1
-          fi
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git status --porcelain
+            git add -A "$DIR"
+            if git diff --cached --quiet; then
+              echo "no golden changes to push"
+              exit 0
+            fi
+            git commit -m "test: bootstrap bar-chart golden images [skip ci]"
+            BRANCH="${{ github.ref_name }}"
+            git fetch --unshallow origin "$BRANCH" || git fetch origin "$BRANCH" || true
+            pushed=false
+            for attempt in 1 2 3; do
+              if git rebase FETCH_HEAD && git push origin HEAD:"$BRANCH"; then
+                pushed=true
+                break
+              fi
+              git rebase --abort 2>/dev/null || true
+              git fetch origin "$BRANCH" || true
+              echo "push attempt $attempt failed; another job may have pushed first"
+              sleep 5
+            done
+            if [ "$pushed" != true ]; then
+              echo "::error::could not push golden images after 3 attempts"
+              exit 1
+            fi
+          ) > /tmp/goldpush.log 2>&1
+          rc=$?
+          set -e
+          cat /tmp/goldpush.log
+          exit $rc
+      - name: Report golden bootstrap push
+        if: always() && steps.goldens.outputs.bootstrapped == 'true'
+        working-directory: ${{ github.workspace }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo "## Golden bootstrap push — ${{ steps.goldpush.outcome }}"
+            echo '```'
+            tail -n 80 /tmp/goldpush.log 2>/dev/null || echo "push step produced no log"
+            echo '```'
+          } > /tmp/pushreport.md
+          jq -Rs '{body: .}' < /tmp/pushreport.md > /tmp/pushpayload.json
+          curl -sS -X POST \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/commits/${{ github.sha }}/comments" \
+            -d @/tmp/pushpayload.json
       - name: Enforce checks
-        if: steps.analyze.outcome != 'success' || steps.darttest.outcome != 'success' || steps.goldens.outcome != 'success'
+        if: steps.analyze.outcome != 'success' || steps.darttest.outcome != 'success' || steps.goldens.outcome != 'success' || (steps.goldens.outputs.bootstrapped == 'true' && steps.goldpush.outcome != 'success')
         run: exit 1
 
   android-build:

@@ -859,7 +859,8 @@ mod tests {
             a.other, b.other,
             "the remainder is the same rows either way"
         );
-        assert_eq!(a.other.as_ref().unwrap().row_count, 5);
+        // 7 rows total; b (1) and a (2) survive the cut, so c (2) + d (1) + null (1) = 4 remain.
+        assert_eq!(a.other.as_ref().unwrap().row_count, 4);
     }
 
     #[test]

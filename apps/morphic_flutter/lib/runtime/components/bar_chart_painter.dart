@@ -168,21 +168,21 @@ class BarChartPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(BarChartPainter old) =>
+  bool shouldRepaint(BarChartPainter oldDelegate) =>
       // Identity, not deep equality: the scene is immutable and a new one is only built when
       // the engine returns new data, so comparing the list identity is both correct and cheap.
-      !identical(old.bars, bars) ||
-      old.barColor != barColor ||
-      old.otherColor != otherColor ||
-      old.trackColor != trackColor ||
-      old.textColor != textColor ||
-      old.mutedColor != mutedColor ||
-      old.textScaler != textScaler ||
-      old.textStyle != textStyle ||
-      old.valueStyle != valueStyle;
+      !identical(oldDelegate.bars, bars) ||
+      oldDelegate.barColor != barColor ||
+      oldDelegate.otherColor != otherColor ||
+      oldDelegate.trackColor != trackColor ||
+      oldDelegate.textColor != textColor ||
+      oldDelegate.mutedColor != mutedColor ||
+      oldDelegate.textScaler != textScaler ||
+      oldDelegate.textStyle != textStyle ||
+      oldDelegate.valueStyle != valueStyle;
 
   @override
-  bool shouldRebuildSemantics(BarChartPainter old) => false;
+  bool shouldRebuildSemantics(BarChartPainter oldDelegate) => false;
 }
 
 /// Compact, locale-independent value formatting for a bar's end label.
