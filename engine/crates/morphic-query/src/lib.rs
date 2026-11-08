@@ -18,12 +18,19 @@
 
 mod budget;
 pub mod cache;
+pub mod chart;
 pub mod filter;
 pub mod group;
 pub mod sort;
 
 pub use budget::{CHECK_ROWS, DEFAULT_BUDGET_MS};
 pub use filter::{Compare, Filter};
+pub use chart::{
+    auto_bucket, category_scene, series_scene, timeline_scene, Bucketing, CategoryPoint,
+    CategoryScene, ChartScene, LaneCount, Series, SeriesPoint, SeriesScene, SeriesSpec,
+    TimelineBucket, TimelineScene, TimelineSpec, MAX_CATEGORY_GROUPS, MAX_CHART_POINTS, MAX_SERIES,
+    OTHER_LABEL,
+};
 pub use group::{AggSpec, GroupedRows, MAX_GROUPS};
 pub use sort::{Direction, Nulls, SortSpec};
 

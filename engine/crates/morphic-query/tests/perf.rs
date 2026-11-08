@@ -14,7 +14,10 @@
 use std::time::Instant;
 
 use morphic_model::{Column, ColumnValues, DataType, Table};
-use morphic_query::{query_page, AggSpec, Plan, SortSpec};
+use morphic_query::{
+    category_scene, query_page, series_scene, timeline_scene, AggSpec, Aggregate, Plan, SeriesSpec,
+    SortSpec, TimelineSpec,
+};
 use serde_json::json;
 
 const ROOT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../..");
@@ -49,7 +52,7 @@ fn wide_table() -> Table {
         values: ColumnValues::Float64((0..ROWS).map(|i| ((i * 37) % 1000) as f64 / 7.0).collect()),
         nulls: (0..ROWS).map(|i| i % 97 == 0).collect(),
     });
-    for c in 3..10 {
+    for c in 3..9 {
         cols.push(Column {
             name: format!("metric_{c}"),
             dtype: DataType::Int64,
@@ -61,6 +64,18 @@ fn wide_table() -> Table {
             nulls: vec![false; ROWS],
         });
     }
+    // A temporal axis, so the chart paths can be measured on the same table: ~3.5 days of
+    // 3-second samples, enough that auto-granularity must choose a coarser named step.
+    cols.push(Column {
+        name: "ts".into(),
+        dtype: DataType::Timestamp,
+        values: ColumnValues::Timestamp(
+            (0..ROWS)
+                .map(|i| 1_700_000_000_000 + i as i64 * 3_000)
+                .collect(),
+        ),
+        nulls: (0..ROWS).map(|i| i % 103 == 0).collect(),
+    });
     Table {
         columns: cols,
         row_count: ROWS,
@@ -132,6 +147,79 @@ fn filter_and_sort_100k_by_10() {
         scan_elapsed.as_secs_f64() * 1000.0,
         unfiltered.total_rows
     ));
+    // --- M1.4 task 1.4.1: chart aggregation paths ---------------------------------------
+    // Charts take a different path from the table: no sort, but a grouping or a bucketing pass
+    // over the whole selection. Measured separately so a regression in one is not hidden by
+    // the other.
+    let all: Vec<usize> = (0..ROWS).collect();
+    let bar_start = Instant::now();
+    let bar = category_scene(
+        &table,
+        &all,
+        "region",
+        &Aggregate {
+            op: "avg",
+            field: Some("amount"),
+        },
+        12,
+    )
+    .expect("bar scene must build");
+    let bar_elapsed = bar_start.elapsed();
+
+    let line_start = Instant::now();
+    let line = series_scene(
+        &table,
+        &all,
+        &SeriesSpec {
+            x: "ts",
+            agg: Aggregate {
+                op: "avg",
+                field: Some("amount"),
+            },
+            group_by: Some("region"),
+        },
+    )
+    .expect("series scene must build");
+    let line_elapsed = line_start.elapsed();
+
+    let tl_start = Instant::now();
+    let tl = timeline_scene(
+        &table,
+        &all,
+        &TimelineSpec {
+            time_field: "ts",
+            severity_field: Some("region"),
+        },
+    )
+    .expect("timeline scene must build");
+    let tl_elapsed = tl_start.elapsed();
+
+    card.push_str("\n## M1.4 chart aggregation (task 1.4.1)\n\n");
+    card.push_str("| path | measured | output |\n|---|---|---|\n");
+    card.push_str(&format!(
+        "| top-N categories + Other (avg) | {:.1} ms | {} bars of {} categories |\n",
+        bar_elapsed.as_secs_f64() * 1000.0,
+        bar.points.len(),
+        bar.total_categories
+    ));
+    card.push_str(&format!(
+        "| time bucketing + 5 series (avg) | {:.1} ms | {} points, {} buckets |\n",
+        line_elapsed.as_secs_f64() * 1000.0,
+        line.total_points,
+        line.bucketing.label
+    ));
+    card.push_str(&format!(
+        "| timeline density + 5 lanes | {:.1} ms | {} buckets |\n",
+        tl_elapsed.as_secs_f64() * 1000.0,
+        tl.total_buckets
+    ));
+    card.push_str(&format!(
+        "\nPoint ceiling {} respected: line {} pts, timeline {} buckets.\n",
+        morphic_query::MAX_CHART_POINTS,
+        line.total_points,
+        tl.total_buckets
+    ));
+
     card.push_str(
         "\n**This is a CI x86 runner, not a phone.** The M1.3 exit target is ≤150 ms on a\n",
     );
@@ -157,4 +245,23 @@ fn filter_and_sort_100k_by_10() {
         "group path took {} ms",
         gelapsed.as_millis()
     );
+    for (name, ms) in [
+        ("category scene", bar_elapsed.as_millis()),
+        ("series scene", line_elapsed.as_millis()),
+        ("timeline scene", tl_elapsed.as_millis()),
+    ] {
+        assert!(
+            ms < CEILING_MS,
+            "{name} took {ms} ms, over the {CEILING_MS} ms regression ceiling"
+        );
+    }
+    // The ceilings are contracts, not aspirations: a scene that exceeds them is a bug even if
+    // it is fast.
+    assert!(
+        line.total_points <= morphic_query::MAX_CHART_POINTS,
+        "the ceiling is total points across series, not per series"
+    );
+    assert!(tl.buckets.len() <= morphic_query::MAX_CHART_POINTS);
+    assert!(line.series.len() <= morphic_query::MAX_SERIES);
+    assert!(bar.points.len() <= 12);
 }

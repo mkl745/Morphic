@@ -47,6 +47,12 @@ impl AggSpec {
         }
     }
 
+    /// Output column name for this aggregation. Public because a chart scene names its measure
+    /// with the same string the group path uses, so the two cannot drift.
+    pub fn label_public(&self) -> String {
+        self.label()
+    }
+
     fn label(&self) -> String {
         if let Some(a) = &self.alias {
             return a.clone();
@@ -129,8 +135,32 @@ pub(crate) fn execute(
     max_groups: usize,
     budget_ms: Option<u64>,
 ) -> Result<GroupedRows, QueryError> {
+    execute_capped(
+        table,
+        selection,
+        group_by,
+        aggs,
+        max_groups.clamp(1, MAX_GROUPS),
+        budget_ms,
+    )
+}
+
+/// Grouping with an explicit accumulation cap.
+///
+/// [`execute`] clamps to [`MAX_GROUPS`] because its callers materialize groups for display. A
+/// top-N chart is different: it *displays* a few dozen bars but must *see* every category to know
+/// which few dozen are largest. Clamping the intermediate groups to the output ceiling would
+/// silently choose the top N from whichever categories appeared first.
+pub(crate) fn execute_capped(
+    table: &Table,
+    selection: &[usize],
+    group_by: &[String],
+    aggs: &[AggSpec],
+    cap: usize,
+    budget_ms: Option<u64>,
+) -> Result<GroupedRows, QueryError> {
     let deadline = crate::budget::Deadline::new(budget_ms);
-    let cap = max_groups.clamp(1, MAX_GROUPS);
+    let cap = cap.max(1);
     let key_cols: Vec<&morphic_model::Column> = group_by
         .iter()
         .map(|g| crate::find_column(table, g))
