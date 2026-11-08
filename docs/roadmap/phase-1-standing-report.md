@@ -4,6 +4,9 @@ Written after task **1.2.5** went CI-green (run **42256267974**, commit **`fccec
 jobs success). Every number below was read from the plan, the source tree, or a CI report —
 not from memory.
 
+**Update 2026-11-08:** **M1.4 task 1.4.1** (scene contracts + `chartData` aggregation) is done and
+CI-green; see [m1.4-status.md](m1.4-status.md).
+
 **Update 2026-11-07:** **M1.3 is code-complete** — all five tasks (plan execution, interaction
 commands, the interactive table, global filters with tap-to-filter, and cross-component
 consistency) are done and CI-green. Tallies below reflect them; `docs/roadmap/m1.3-status.md`
@@ -15,32 +18,33 @@ records the decisions, the measured evidence, and why the milestone's **exit is 
 
 | Question | Answer |
 |---|---|
-| Tasks finished | **17 of 41** (41%) |
-| Tasks not finished | **24** — 22 core + 2 stretch (◇) |
+| Tasks finished | **18 of 41** (44%) |
+| Tasks not finished | **23** — 21 core + 2 stretch (◇) |
 | Milestones code-complete | **3 of 7** (M1.1, M1.2, M1.3) |
-| Milestones not started | **4** (M1.4 → M1.7) |
+| Milestones not started | **3** (M1.5 → M1.7); M1.4 in progress |
 | Milestone exits formally met | **0 of 7** |
 | Acceptance tests fully green | **6 of 19** (AT-02, AT-03, AT-05, AT-06, AT-08, AT-10) |
 | Acceptance tests partially evidenced | **7** |
 | Acceptance tests not yet started | **6** |
 | Evidence gaps no task row covers | **6** (see §6) |
-| Remaining core effort, by the plan's own S/M/L legend | **31½–57 focused days** |
+| Remaining core effort, by the plan's own S/M/L legend | **30½–55 focused days** |
 
 **The most important finding is the last row.** The plan estimates *all of Phase 1* at 30–40
-focused days. With M1.3 now finished, the **22 unfinished core tasks alone sum to 31½–57 days**
+focused days. With M1.3 and task 1.4.1 finished, the **21 unfinished core tasks sum to 30½–55 days**
 under the plan's own legend (S ≈ ½ day, M ≈ 1–2, L ≈ 3–5), excluding the two ◇ stretch items:
 
 | Remaining milestone | Core tasks | Focused days |
 |---|---|---|
-| M1.4 Visualization + planner | 7 | 10½–19 |
+| M1.4 Visualization + planner | 6 | 9½–17 |
 | M1.5 Lifecycle & layout | 5 | 7–13 |
 | M1.6 Experience pass | 5 | 8–14 |
 | M1.7 Hardening & release | 5 | 6–11 |
-| **Total** | **22** | **31½–57** |
+| **Total** | **21** | **30½–55** |
 
 This corrects the 32–55 reported before M1.3 closed: recomputing straight from the plan's rows
-puts the upper bound three days higher. The estimate was optimistic before any work started and
-17 finished tasks have not made it less so. §7 proposes a re-baseline.
+put that upper bound three days higher. The figure is recomputed from the plan on every update
+rather than decremented by hand. The estimate was optimistic before any work started and
+18 finished tasks have not made it less so. §7 proposes a re-baseline.
 
 ---
 
@@ -51,7 +55,7 @@ puts the upper bound three days higher. The estimate was optimistic before any w
 | M1.1 Vertical slice | 7 | 7 | **complete** | **unmet** — needs a mid-class device; AT-02 unscored; 10 MB ≤ 3 s unmeasured |
 | M1.2 Format breadth | 5 | 5 | **complete** | **unmet** — AT-04's timeline clause depends on M1.4; device evidence pending (fuzz smoke now clean) |
 | M1.3 Interactivity | 5 | 5 | **complete** | **unmet** — AT-06 ✓ AT-08 ✓; AT-07 blocked only on mid-class ARM latency |
-| M1.4 Visualization + planner | 7 | 0 | not started | — |
+| M1.4 Visualization + planner | 7 | 1 | in progress — scene contract shipped, painters next | — |
 | M1.5 Lifecycle & layout | 6 | 0 | not started | — |
 | M1.6 Experience pass | 6 | 0 | not started | — |
 | M1.7 Hardening & release | 5 | 0 | not started | — |
@@ -105,9 +109,10 @@ templates, and sharing into Morphic.
 | 1.3.3 Table interactions | `97d20cb` | 42380094459 | 6/6 ✅ |
 | 1.3.4 Global filters + tap-to-filter | `44221b1` | 42388218245 | 6/6 ✅ |
 | 1.3.5 Cross-component consistency | `50b0f3b` | 42393527394 | 6/6 ✅ |
-| **AT-07 device instrument** | **`74c22f2`** | **42399189793** | **6/6 ✅** |
+| AT-07 device instrument | `74c22f2` | 42399189793 | 6/6 ✅ |
+| **1.4.1 Scene contracts + chartData** | **`cf3427c`** | **42478388255** | **6/6 ✅** |
 
-Current totals: **588 Rust tests** across 8 engine crates + the bridge, **324 Dart tests**, and
+Current totals: **614 Rust tests** across 8 engine crates + the bridge, **345 Dart tests**, and
 **20 Python cases** for the device-evidence gate.
 M1.3 added 72 Rust tests: `morphic-query` 21 → 56, `morphic-core` 35 → 52, `morphic-schema`
 24 → 33, bridge 32 → 48; and 119 Dart tests, the first substantial UI test suite.
@@ -184,9 +189,11 @@ AT-01 (10 MB ≤ 3 s) and AT-09 (reopen ≤ 500 ms), and it has been listed as a
 M1.1. Starting M1.4's charts first would put a second milestone behind the same afternoon of
 device time.
 
-**Then 1.4.1** — the visualization milestone is the next in dependency order, and it inherits a
-runtime that can now filter, sort, search and stay consistent, plus the AT-02 scoring harness for
-the planner work.
+**1.4.1 is done** — the scene contract and its aggregation paths are shipped and CI-green, so
+three painters can now be built against a fixed shape. **Next is 1.4.2**, the bar-chart painter,
+which is also where the golden-image harness has to be built: its verification is
+"goldens × themes × states" and no such harness exists yet. See
+[m1.4-status.md](m1.4-status.md).
 
 "No Dart-side data logic" is now enforced by tests rather than by absence: the table sends
 commands and renders pages, and the interaction suite asserts that no query plan was ever
@@ -204,8 +211,8 @@ expensive later:
    found no panic, no invariant violation and a 16 ms worst case. Running the *nightly* is still
    blocked, but on the merge to `main`, not on missing work.
 
-**Re-baseline the estimate.** State plainly that the remaining 22 core tasks are 31½–57 focused
-days — more than the 30–40 the plan allowed for *all* of Phase 1, with 17 tasks already spent.
+**Re-baseline the estimate.** State plainly that the remaining 21 core tasks are 30½–55 focused
+days — more than the 30–40 the plan allowed for *all* of Phase 1, with 18 tasks already spent.
 If the calendar cannot absorb that, the honest lever is scope: the two remaining ◇ stretch items (`.morphic` bundles, templates)
 are already optional, and M1.6's design sweep can be narrowed without touching correctness.
 
