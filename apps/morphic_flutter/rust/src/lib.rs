@@ -380,6 +380,40 @@ pub unsafe extern "C" fn morphic_query_page(
     })
 }
 
+/// The pre-aggregated scene behind a chart. Rust groups, buckets and downsamples; Dart
+/// receives buckets and totals and never rows (docs/architecture/02 §2.5).
+///
+/// # Safety
+/// All pointers must be valid C strings.
+#[no_mangle]
+pub unsafe extern "C" fn morphic_chart_data(
+    storage_root: *const c_char,
+    workspace_id: *const c_char,
+    component_id: *const c_char,
+) -> *mut c_char {
+    guarded(|| {
+        let root = match unsafe { cstr(storage_root) } {
+            Some(r) => r,
+            None => return err("invalid storage_root"),
+        };
+        let id = match unsafe { cstr(workspace_id) } {
+            Some(i) => i,
+            None => return err("invalid workspace_id"),
+        };
+        let component = match unsafe { cstr(component_id) } {
+            Some(c) => c,
+            None => return err("invalid component_id"),
+        };
+        with_engine(&root, |engine| {
+            to_json(
+                &engine
+                    .chart_data(&id, &component)
+                    .map_err(|e| e.to_string())?,
+            )
+        })
+    })
+}
+
 /// Compute the value behind a `metric_card`. Rust resolves the binding.
 ///
 /// # Safety
@@ -627,7 +661,7 @@ mod tests {
     fn engine_info_returns_json() {
         let v = json(morphic_engine_info());
         assert_eq!(v["engine"], "morphic");
-        assert_eq!(v["apiVersion"], 5);
+        assert_eq!(v["apiVersion"], 6);
     }
 
     #[test]
@@ -1472,4 +1506,91 @@ mod tests {
             .is_empty());
         std::fs::remove_dir_all(&p).ok();
     }
+
+    // --- M1.4 task 1.4.1: chart scenes over FFI --------------------------------------------
+
+    unsafe fn chart(rp: &CString, id: &CString, component: &str) -> serde_json::Value {
+        json(morphic_chart_data(
+            rp.as_ptr(),
+            id.as_ptr(),
+            c(component).as_ptr(),
+        ))
+    }
+
+    /// The compiler's bar chart id for the two-column CSV fixture.
+    unsafe fn bar_id(rp: &CString, id: &CString) -> String {
+        let snap = json(morphic_snapshot(rp.as_ptr(), id.as_ptr()));
+        snap["doc"]["workspace"]["components"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|c| c["type"] == "bar_chart")
+            .expect("region is a low-cardinality dimension")["id"]
+            .as_str()
+            .unwrap()
+            .to_string()
+    }
+
+    #[test]
+    fn chart_data_returns_a_scene_not_rows() {
+        let (p, rp) = root("chartscene");
+        let id = c("w1");
+        unsafe { import(&rp, &id, None) };
+        let bar = unsafe { bar_id(&rp, &id) };
+        let got = unsafe { chart(&rp, &id, &bar) };
+        assert_eq!(got["componentId"], bar);
+        assert_eq!(got["revision"], 1);
+        let scene = &got["scene"];
+        assert_eq!(scene["kind"], "category");
+        assert_eq!(scene["dimension"], "region");
+        assert_eq!(scene["measure"], "avg_amount");
+        // eu: 10,30 -> 20.0 (2 rows); us: 20,10 -> 15.0 (2 rows). Descending by measure.
+        assert_eq!(scene["points"][0]["label"], "eu");
+        assert_eq!(scene["points"][0]["value"], 20.0);
+        assert_eq!(scene["points"][0]["rowCount"], 2);
+        assert_eq!(scene["points"][1]["label"], "us");
+        assert_eq!(scene["points"][1]["value"], 15.0);
+        // The contract that matters: no raw rows cross the boundary.
+        assert!(scene.get("rows").is_none(), "a chart must not receive rows");
+        assert!(got.get("rows").is_none());
+        std::fs::remove_dir_all(&p).ok();
+    }
+
+    #[test]
+    fn a_workspace_filter_moves_the_chart_over_ffi() {
+        let (p, rp) = root("chartffifilter");
+        let id = c("w1");
+        unsafe { import(&rp, &id, None) };
+        let bar = unsafe { bar_id(&rp, &id) };
+        let outcome = unsafe {
+            apply(
+                &rp,
+                &id,
+                r#"[{"kind":"setGlobalFilter","filters":[
+                    {"op":"eq","field":"region","value":"eu"}]}]"#,
+            )
+        };
+        let revision = outcome["revision"].as_u64().unwrap();
+        let got = unsafe { chart(&rp, &id, &bar) };
+        assert_eq!(got["revision"], revision, "the scene reports its revision");
+        let scene = &got["scene"];
+        assert_eq!(scene["totalCategories"], 1);
+        assert_eq!(scene["points"].as_array().unwrap().len(), 1);
+        assert_eq!(scene["points"][0]["label"], "eu");
+        assert_eq!(scene["points"][0]["value"], 20.0);
+        std::fs::remove_dir_all(&p).ok();
+    }
+
+    #[test]
+    fn chart_data_on_a_table_is_a_typed_error_over_ffi() {
+        let (p, rp) = root("chartffibad");
+        let id = c("w1");
+        unsafe { import(&rp, &id, None) };
+        let got = unsafe { chart(&rp, &id, "data_table") };
+        assert!(got["error"].as_str().unwrap().contains("not a chart"), "{got}");
+        let ghost = unsafe { chart(&rp, &id, "ghost") };
+        assert!(ghost["error"].is_string());
+        std::fs::remove_dir_all(&p).ok();
+    }
+
 }

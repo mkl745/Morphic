@@ -35,7 +35,7 @@ use thiserror::Error;
 /// v2 adds sessions, queryPage, metricData, and snapshot (M1.1 task 1.1.4).
 /// v5 adds applyCommands and componentPage (M1.3 task 1.3.3). Additive: every v4 entry point
 /// still exists with the same shape, so an older client keeps working.
-pub const API_VERSION: u32 = 5;
+pub const API_VERSION: u32 = 6;
 
 #[derive(Debug, Error)]
 pub enum CoreError {
@@ -989,6 +989,181 @@ mod tests {
         let (engine, root) = imported("notmetric");
         let e = engine.metric_data("w1", "data_table").unwrap_err();
         assert!(matches!(e, CoreError::NotAMetric(_, _)), "{e}");
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    // --- M1.4 task 1.4.1: chart scenes -------------------------------------------------
+
+    /// The compiler's bar chart over SALES: region is the dimension, amount the measure.
+    fn breakdown_id(doc: &morphic_schema::WorkspaceDoc) -> String {
+        doc.workspace
+            .components
+            .iter()
+            .find(|c| matches!(c.binding, morphic_schema::Binding::BarChart { .. }))
+            .expect("the sales fixture has a low-cardinality dimension")
+            .id
+            .clone()
+    }
+
+    #[test]
+    fn chart_data_groups_in_rust_and_reports_its_revision() {
+        let (engine, root) = imported("chart_group");
+        let id = breakdown_id(&engine.snapshot("w1").unwrap().doc);
+        let got = engine.chart_data("w1", &id).unwrap();
+        assert_eq!(got.revision, 1);
+        assert_eq!(got.component_id, id);
+        let morphic_query::ChartScene::Category(scene) = got.scene else {
+            panic!("a bar chart must produce a category scene");
+        };
+        assert_eq!(scene.dimension, "region");
+        assert_eq!(scene.measure, "avg_amount");
+        assert_eq!(scene.total_categories, 2);
+        // us: 20,40 -> 30.0 sorts above eu: 10,10,50 -> 23.33. Descending by measure.
+        assert_eq!(scene.points.len(), 2);
+        assert_eq!(scene.points[0].label.as_deref(), Some("us"));
+        assert_eq!(scene.points[0].value, Some(30.0));
+        assert_eq!(scene.points[0].row_count, 2);
+        assert_eq!(scene.points[1].label.as_deref(), Some("eu"));
+        assert_eq!(scene.points[1].row_count, 3);
+        assert!(scene.other.is_none(), "two categories fit the limit of two");
+        assert!(!scene.truncated);
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn a_global_filter_moves_the_chart_and_the_cache_does_not_serve_the_old_scene() {
+        let (engine, root) = imported("chart_filter");
+        let id = breakdown_id(&engine.snapshot("w1").unwrap().doc);
+        let before = engine.chart_data("w1", &id).unwrap();
+        let revision = engine
+            .apply(
+                "w1",
+                &[Command::SetGlobalFilter {
+                    filters: vec![eq_filter("region", serde_json::json!("eu"))],
+                }],
+                "2026-11-05T00:00:00Z",
+            )
+            .unwrap()
+            .revision;
+        let after = engine.chart_data("w1", &id).unwrap();
+        assert_eq!(after.revision, revision);
+        assert_ne!(after.revision, before.revision);
+        let morphic_query::ChartScene::Category(scene) = after.scene else {
+            panic!("category scene");
+        };
+        assert_eq!(scene.total_categories, 1, "us must be gone, not cached");
+        assert_eq!(scene.points.len(), 1);
+        assert_eq!(scene.points[0].label.as_deref(), Some("eu"));
+        assert_eq!(scene.points[0].row_count, 3);
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn a_repeated_chart_read_is_served_from_cache() {
+        let (engine, root) = imported("chart_cache");
+        let id = breakdown_id(&engine.snapshot("w1").unwrap().doc);
+        let first = engine.chart_data("w1", &id).unwrap();
+        let once = engine.compute_count("w1", &id).unwrap();
+        let second = engine.chart_data("w1", &id).unwrap();
+        assert_eq!(engine.compute_count("w1", &id).unwrap(), once);
+        assert_eq!(first.scene, second.scene);
+        assert_eq!(once, 1, "the scene must be computed exactly once");
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn chart_data_on_a_non_chart_is_a_typed_error() {
+        let (engine, root) = imported("chart_notchart");
+        let e = engine.chart_data("w1", "data_table").unwrap_err();
+        assert!(matches!(e, CoreError::NotAChart(_, _)), "{e}");
+        let e = engine.chart_data("w1", "total_records").unwrap_err();
+        assert!(matches!(e, CoreError::NotAChart(_, _)), "{e}");
+        assert!(matches!(
+            engine.chart_data("w1", "ghost"),
+            Err(CoreError::UnknownComponent(_))
+        ));
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn a_line_chart_with_two_measures_is_rejected_not_silently_truncated() {
+        // The compiler emits one measure. A hand-authored document asking for two must hear
+        // about it: charting the first and dropping the second is the silent-loss failure this
+        // project keeps refusing.
+        let (engine, root) = imported("chart_two_measures");
+        let mut doc = engine.snapshot("w1").unwrap().doc;
+        let id = breakdown_id(&doc);
+        {
+            let c = doc
+                .workspace
+                .components
+                .iter_mut()
+                .find(|c| c.id == id)
+                .unwrap();
+            c.binding = morphic_schema::Binding::LineChart {
+                x: "region".into(),
+                y: vec![
+                    morphic_schema::Aggregation {
+                        op: "avg".into(),
+                        field: Some("amount".into()),
+                        filter: None,
+                    },
+                    morphic_schema::Aggregation {
+                        op: "sum".into(),
+                        field: Some("amount".into()),
+                        filter: None,
+                    },
+                ],
+                group_by: None,
+            };
+        }
+        let store = FileStore::new(&root).unwrap();
+        store.save_workspace(&doc).unwrap();
+        drop(engine);
+        let engine = Engine::new(&root).unwrap();
+        let e = engine.chart_data("w1", &id).unwrap_err();
+        assert!(matches!(e, CoreError::UnsupportedBinding(_)), "{e}");
+        assert!(e.to_string().contains("2 y aggregations"), "{e}");
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn a_chart_measure_filter_composes_with_the_workspace_filter() {
+        // A chart's measure carries the same optional binding filter a card's does. Global and
+        // binding must intersect, not replace one another.
+        let (engine, root) = imported("chart_binding_filter");
+        let mut doc = engine.snapshot("w1").unwrap().doc;
+        let id = breakdown_id(&doc);
+        {
+            let c = doc
+                .workspace
+                .components
+                .iter_mut()
+                .find(|c| c.id == id)
+                .unwrap();
+            if let morphic_schema::Binding::BarChart { measure, .. } = &mut c.binding {
+                measure.filter = Some(morphic_schema::FilterExpr {
+                    op: "gt".into(),
+                    field: Some("amount".into()),
+                    value: Some(serde_json::json!(10)),
+                    args: vec![],
+                });
+            }
+        }
+        let store = FileStore::new(&root).unwrap();
+        store.save_workspace(&doc).unwrap();
+        drop(engine);
+        let engine = Engine::new(&root).unwrap();
+        // amount > 10 leaves us 20, us 40, eu 50 -> eu avg 50 (1 row), us avg 30 (2 rows).
+        let morphic_query::ChartScene::Category(scene) = engine.chart_data("w1", &id).unwrap().scene
+        else {
+            panic!("category scene");
+        };
+        assert_eq!(scene.points[0].label.as_deref(), Some("eu"));
+        assert_eq!(scene.points[0].value, Some(50.0));
+        assert_eq!(scene.points[0].row_count, 1);
+        assert_eq!(scene.points[1].label.as_deref(), Some("us"));
+        assert_eq!(scene.points[1].row_count, 2);
         std::fs::remove_dir_all(&root).ok();
     }
 
