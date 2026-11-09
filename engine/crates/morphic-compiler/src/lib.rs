@@ -714,7 +714,10 @@ mod tests {
         match &errors.binding {
             Binding::MetricCard { aggregation } => {
                 assert_eq!(aggregation.op, "count");
-                let f = aggregation.filter.as_ref().expect("restricted in the binding");
+                let f = aggregation
+                    .filter
+                    .as_ref()
+                    .expect("restricted in the binding");
                 assert_eq!(f.op, "in");
                 assert_eq!(f.field.as_deref(), Some("level"));
             }
@@ -821,7 +824,11 @@ mod tests {
         let capped = cap_components(many);
         assert_eq!(capped.len(), MAX_COMPONENTS);
         assert_eq!(capped.last().unwrap().component_type, "data_table");
-        assert_eq!(capped.first().unwrap().id, "c0", "priority order is preserved");
+        assert_eq!(
+            capped.first().unwrap().id,
+            "c0",
+            "priority order is preserved"
+        );
     }
 
     #[test]

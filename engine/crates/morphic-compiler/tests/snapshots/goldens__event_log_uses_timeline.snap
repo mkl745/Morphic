@@ -24,6 +24,7 @@ expression: doc
       "mode": "adaptive",
       "order": [
         "total_records",
+        "error_records",
         "event_timeline",
         "breakdown_by_service",
         "data_table"
@@ -59,6 +60,42 @@ expression: doc
             "4 rows detected"
           ],
           "confidence": 1.0
+        }
+      },
+      {
+        "id": "error_records",
+        "type": "metric_card",
+        "typeVersion": "1.0",
+        "title": "Errors",
+        "dataSource": "data",
+        "binding": {
+          "kind": "metric_card",
+          "aggregation": {
+            "op": "count",
+            "field": null,
+            "filter": {
+              "op": "in",
+              "field": "level",
+              "value": [
+                "ERROR"
+              ],
+              "args": []
+            }
+          }
+        },
+        "interactions": {
+          "filter": true,
+          "search": false,
+          "sort": false,
+          "select": false
+        },
+        "explanation": {
+          "reason": "R2b_error_metric",
+          "detail": "'level' carries severity levels, so the count of error-level records is a headline number.",
+          "evidence": [
+            "1 error-shaped level(s) observed"
+          ],
+          "confidence": 0.97
         }
       },
       {
@@ -127,7 +164,12 @@ expression: doc
         "dataSource": "data",
         "binding": {
           "kind": "data_table",
-          "columns": [],
+          "columns": [
+            "time",
+            "level",
+            "service",
+            "message"
+          ],
           "page_size": 256
         },
         "interactions": {

@@ -132,7 +132,10 @@ expression: doc
         "dataSource": "data",
         "binding": {
           "kind": "data_table",
-          "columns": [],
+          "columns": [
+            "shipped_on",
+            "amount"
+          ],
           "page_size": 256
         },
         "interactions": {

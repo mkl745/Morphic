@@ -132,7 +132,11 @@ expression: doc
         "dataSource": "data",
         "binding": {
           "kind": "data_table",
-          "columns": [],
+          "columns": [
+            "occurred_at",
+            "value",
+            "event_id"
+          ],
           "page_size": 256
         },
         "interactions": {

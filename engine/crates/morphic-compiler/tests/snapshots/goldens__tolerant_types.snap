@@ -97,7 +97,10 @@ expression: doc
         "dataSource": "data",
         "binding": {
           "kind": "data_table",
-          "columns": [],
+          "columns": [
+            "qty",
+            "name"
+          ],
           "page_size": 256
         },
         "interactions": {

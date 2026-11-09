@@ -129,7 +129,11 @@ expression: doc
         "dataSource": "data",
         "binding": {
           "kind": "data_table",
-          "columns": [],
+          "columns": [
+            "revenue",
+            "units",
+            "region"
+          ],
           "page_size": 256
         },
         "interactions": {

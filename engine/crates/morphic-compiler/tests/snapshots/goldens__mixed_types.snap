@@ -164,7 +164,13 @@ expression: doc
         "dataSource": "data",
         "binding": {
           "kind": "data_table",
-          "columns": [],
+          "columns": [
+            "ts",
+            "amount",
+            "name",
+            "active",
+            "id"
+          ],
           "page_size": 256
         },
         "interactions": {
