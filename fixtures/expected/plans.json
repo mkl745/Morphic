@@ -1,0 +1,143 @@
+{
+  "schema": "morphic/plan-labels/1",
+  "purpose": "AT-12 ground truth: the components a person would expect for each valid fixture.",
+  "labelledBy": "hand, from the file contents and docs/architecture/05 §5 — never from the planner's output",
+  "rules": [
+    "Label the SET of component types, not their ids, titles or order. Rule ids and wording are the planner's business; whether a log file deserves an error count is a person's call.",
+    "A component type may appear more than once (two metric cards are two entries). The scorer compares multisets, so dropping one of two metrics is a miss.",
+    "Every file gets data_table. That is AT-12's invariant, not a judgement call, and it is asserted separately as well so a label edit cannot quietly remove it.",
+    "Temporal data gets exactly one time-based view: line_chart when there is a measure to plot, timeline when there is only event occurrence. Never both — they would draw the same axis twice.",
+    "A severity field gets an error metric in addition to the record count. A log without severity does not get one.",
+    "A dimension earns a bar_chart only if a person could read it: at least two values and no more than the chart can show. A single-valued column is a constant, not a breakdown.",
+    "Where a call is genuinely arguable the file carries a note saying why. Changing a label is a reviewable edit with a reason; lowering the target to make a run green is not."
+  ],
+  "targets": {
+    "selectionAccuracy": 0.85
+  },
+  "invariants": {
+    "temporalGetsTimeView": true,
+    "severityGetsErrorMetric": true,
+    "alwaysHasTable": true
+  },
+  "files": [
+    {
+      "path": "valid/access.log",
+      "components": ["metric_card", "metric_card", "line_chart", "bar_chart", "data_table"],
+      "note": "CLF access log. bytes is a measure and time is temporal, so a trend over time; status is a small category set, so a breakdown. No severity field — HTTP status is not a log level — so no error metric. The time column stays utf8 (month names), which is exactly the case where a time view must still be offered but cannot be bucketed by the query layer; see the scorer's render check."
+    },
+    {
+      "path": "valid/ambiguous_dates.csv",
+      "components": ["metric_card", "metric_card", "line_chart", "data_table"],
+      "note": "A date and an amount: count, mean amount, amount over time, table. No dimension, so no bar. The date's day/month order is unresolved and its dtype is utf8; the field is still a date, so AT-12 still asks for a time view."
+    },
+    {
+      "path": "valid/day_first_dates.csv",
+      "components": ["metric_card", "metric_card", "line_chart", "data_table"],
+      "note": "Same shape as ambiguous_dates, but 25/12 resolves the order so the axis is a real timestamp."
+    },
+    {
+      "path": "valid/events.jsonl",
+      "components": ["metric_card", "metric_card", "line_chart", "bar_chart", "data_table"],
+      "note": "ts + latency_ms is a trend; event (3 values) and user.city (3 values) are both chartable categories, and one breakdown is enough. No severity."
+    },
+    {
+      "path": "valid/headerless.csv",
+      "components": ["metric_card", "metric_card", "data_table"],
+      "note": "Three numeric columns, no header, no time, no category. Nothing to chart honestly: a line over row order would invent an axis the file does not have. Doc 05 §5 rule 5 floats that idea for numeric-only data; this label says no, and the disagreement is recorded rather than hidden."
+    },
+    {
+      "path": "valid/latin1.csv",
+      "components": ["metric_card", "bar_chart", "data_table"],
+      "note": "Two rows, two text columns, no numbers. A count and a breakdown by city is all that is defensible; a mean of nothing is not a metric."
+    },
+    {
+      "path": "valid/logfmt.log",
+      "components": [
+        "metric_card",
+        "metric_card",
+        "metric_card",
+        "line_chart",
+        "bar_chart",
+        "data_table"
+      ],
+      "note": "The full case: total, mean latency, error count, latency over time split by level, breakdown by service, table. Six components, exactly at the phone cap. Doc 05 §5 rule 1 asks for a timeline here; with latency_ms present a severity-split line carries the same information and more, so this label takes rule 2's line. The rule table's own ordering is what is being scored, and this is the one place the two docs disagree."
+    },
+    {
+      "path": "valid/mixed_types.csv",
+      "components": ["metric_card", "metric_card", "line_chart", "bar_chart", "data_table"],
+      "note": "ts + amount is a trend; active (2 values) and name (5 values) are categories. id identifies a row and must not become a headline mean."
+    },
+    {
+      "path": "valid/naive_timestamps.csv",
+      "components": ["metric_card", "metric_card", "line_chart", "data_table"],
+      "note": "Offset-free timestamps are typed timestamp with the UTC assumption disclosed, so the time view is a real one."
+    },
+    {
+      "path": "valid/nested.json",
+      "components": ["metric_card", "metric_card", "bar_chart", "data_table"],
+      "note": "Flattened geometry: lat/lon are measures, user.city is a category, tags and the depth-capped object are opaque text. No temporal field, so no time view. A mean latitude is not meaningful on its own but it is the honest headline for a numeric column, and the alternative — no metric at all — is worse."
+    },
+    {
+      "path": "valid/notes.txt",
+      "components": ["metric_card", "data_table"],
+      "note": "Prose. A line count and the text itself; there is nothing to chart and no category to group by. line_number is an ordinal, not a measure."
+    },
+    {
+      "path": "valid/records.json",
+      "components": ["metric_card", "metric_card", "bar_chart", "data_table"],
+      "note": "metric (3 values) and host (3 values) are categories, value is a measure, no time field. Count, mean, breakdown, table."
+    },
+    {
+      "path": "valid/semicolon.csv",
+      "components": ["metric_card", "metric_card", "bar_chart", "data_table"],
+      "note": "region (4 values) by revenue is the obvious reading. The delimiter is an ingest concern and must not change the plan."
+    },
+    {
+      "path": "valid/sensors.json",
+      "components": ["metric_card", "metric_card", "line_chart", "bar_chart", "data_table"],
+      "note": "taken_at + reading is a trend; site.room (3), unit (2), ok (2) and site.building (2) are all chartable. sensor_id identifies a device and is not a category to group by."
+    },
+    {
+      "path": "valid/server_logs.log",
+      "components": [
+        "metric_card",
+        "metric_card",
+        "metric_card",
+        "line_chart",
+        "bar_chart",
+        "data_table"
+      ],
+      "note": "Same shape as logfmt: severity AND a measure, so three metrics, a severity-split trend, a service breakdown and the table. Six, at the cap."
+    },
+    {
+      "path": "valid/single_object.json",
+      "components": ["metric_card", "metric_card", "data_table"],
+      "note": "One row. Every column has exactly one value, so no breakdown is readable and no trend exists. The two limits are measures; a mean of one number is that number, which is still the honest headline."
+    },
+    {
+      "path": "valid/syslog.log",
+      "components": ["metric_card", "metric_card", "timeline", "bar_chart", "data_table"],
+      "note": "Severity, a timestamp-shaped field, host/service categories and NO measure: this is the timeline case. Total, error count, events over time in severity lanes, breakdown by service, table. RFC3164 time has no year and stays utf8, so the axis cannot be bucketed until the dtype is resolved — the view is still the right selection."
+    },
+    {
+      "path": "valid/tab.tsv",
+      "components": ["metric_card", "metric_card", "bar_chart", "data_table"],
+      "note": "Two rows, two measures and a two-value category. Tab-delimited is an ingest concern."
+    },
+    {
+      "path": "valid/timestamps.csv",
+      "components": ["metric_card", "metric_card", "line_chart", "data_table"],
+      "note": "Mixed offsets normalise to UTC, so a real time axis. event_id is a key, not a measure."
+    },
+    {
+      "path": "valid/tolerant_types.csv",
+      "components": ["metric_card", "metric_card", "data_table"],
+      "note": "name holds 20 distinct single letters in 20 rows. It is labelled a dimension because a letter is a category, but twenty bars of one row each is not a readable breakdown, so no bar_chart. This is the case where the role label and the chart decision legitimately differ."
+    },
+    {
+      "path": "valid/sales.csv",
+      "components": ["metric_card", "metric_card", "line_chart", "bar_chart", "data_table"],
+      "note": "The product-shaped import: order count, a mean of the strongest measure, that measure over ordered_at, a breakdown by one of region/channel/sales_rep, and the table. No severity, so no error metric — five components, under the cap."
+    }
+  ]
+}
