@@ -14,9 +14,10 @@
 
 use morphic_model::{DataType, DatasetProfile, FieldProfile, FieldRole};
 use morphic_schema::{
-    Aggregation, Binding, ComponentSpec, DataSourceRef, Explanation, Generator, Interactions,
-    Layout, Workspace, WorkspaceDoc, SCHEMA_VERSION,
+    Aggregation, Binding, ComponentSpec, DataSourceRef, Explanation, FilterExpr, Generator,
+    Interactions, Layout, Workspace, WorkspaceDoc, SCHEMA_VERSION,
 };
+use serde_json::Value;
 
 /// Version stamped into `workspace.generator.version`. Bump when rules change so saved
 /// workspaces record which planner produced them.
@@ -24,6 +25,26 @@ pub const GENERATOR_VERSION: &str = "0.2.0";
 
 /// Upper bound on categories shown in a breakdown; keeps the chart legible and bounded.
 pub const MAX_BAR_CATEGORIES: u32 = 12;
+
+/// Phone-first ceiling (docs/architecture/05 §5 rule 6). A generated workspace must fit a phone
+/// screen's attention, not just its scroll view.
+pub const MAX_COMPONENTS: usize = 6;
+
+/// Table projection ceiling (docs/architecture/05 §5 rule 4). The rest stays reachable by
+/// horizontal scroll and in row detail; the binding names the columns worth showing first.
+pub const MAX_TABLE_COLUMNS: usize = 8;
+
+/// Levels that mean "something went wrong", for the error metric AT-12 requires whenever a
+/// severity field exists. Matching is exact on the lower-cased value, never a substring: a level
+/// literally named `error_handler` is not an error count.
+const ERROR_LEVELS: &[&str] = &[
+    "error", "err", "fatal", "critical", "crit", "alert", "emerg", "panic",
+];
+
+/// True when a severity value should be counted as an error.
+fn is_error_level(value: &str) -> bool {
+    ERROR_LEVELS.contains(&value.trim().to_ascii_lowercase().as_str())
+}
 
 /// User intent. M1.1 only supports `explore`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -68,6 +89,11 @@ pub const RULE_TABLE: &[Rule] = &[
         emits: "metric_card",
     },
     Rule {
+        id: "R2b_error_metric",
+        when: "a severity field exists",
+        emits: "metric_card",
+    },
+    Rule {
         id: "R3_time_series",
         when: "a temporal field AND a numeric measure exist",
         emits: "line_chart",
@@ -88,6 +114,59 @@ pub const RULE_TABLE: &[Rule] = &[
         emits: "data_table",
     },
 ];
+
+/// Applies the phone cap, keeping the table.
+///
+/// A free function rather than an inline branch so it can be tested with more components than the
+/// current rules can emit. Today R1–R6 produce at most six, which would leave an inline
+/// truncation permanently unexercised — and an untested branch is not a guarantee.
+fn cap_components(mut components: Vec<ComponentSpec>) -> Vec<ComponentSpec> {
+    if components.len() <= MAX_COMPONENTS {
+        return components;
+    }
+    // R6 pushes the table last, and AT-12 requires it in every workspace, so the cap yields to
+    // that invariant rather than the other way round.
+    let table = components.pop().expect("R6 always pushes a table last");
+    components.truncate(MAX_COMPONENTS - 1);
+    components.push(table);
+    components
+}
+
+/// The columns a phone table should show first (docs/architecture/05 §5 rule 4).
+///
+/// Ordered by how much a column tells you at a glance: when it happened, how bad it was, what
+/// quantity, which category, then the prose payload. Identifiers sort last — an order number is
+/// rarely what someone scans a table for — and unrecognised fields after that. Within a rank the
+/// profile's own order is kept, so the result is deterministic and follows the source layout.
+///
+/// Nothing is lost: the binding names a projection, and every field remains in row detail.
+fn informative_columns(profile: &DatasetProfile) -> Vec<String> {
+    fn rank(role: FieldRole) -> u8 {
+        match role {
+            FieldRole::Temporal => 0,
+            FieldRole::Severity => 1,
+            FieldRole::Measure => 2,
+            FieldRole::Dimension => 3,
+            FieldRole::Text => 4,
+            FieldRole::Identifier => 5,
+            FieldRole::Unknown => 6,
+        }
+    }
+    let mut ranked: Vec<(usize, u8, &str)> = profile
+        .fields
+        .iter()
+        .enumerate()
+        .map(|(i, f)| (i, rank(f.inference.role), f.name.as_str()))
+        .collect();
+    // Stable sort keeps source order inside a rank; the index makes that explicit rather than
+    // relying on the sort algorithm's stability guarantee.
+    ranked.sort_by(|a, b| a.1.cmp(&b.1).then(a.0.cmp(&b.0)));
+    ranked
+        .into_iter()
+        .take(MAX_TABLE_COLUMNS)
+        .map(|(_, _, name)| name.to_string())
+        .collect()
+}
 
 /// Component ids must be safe to use as keys/routes regardless of the source column name.
 fn safe_id(s: &str) -> String {
@@ -211,6 +290,10 @@ pub fn compile(
     let measure = primary_measure(profile);
     let temporal = temporal_field(profile);
     let dimension = best_dimension(profile);
+    let severity = profile
+        .fields
+        .iter()
+        .find(|f| f.inference.role == FieldRole::Severity);
 
     // R1 — always: a record count is the fastest orientation signal.
     components.push(ComponentSpec {
@@ -267,6 +350,62 @@ pub fn compile(
         });
     }
 
+    // R2b — a severity field always earns an error count (AT-12). The restriction lives in the
+    // aggregation's own filter, not in component state: state is what the *user* set and can be
+    // cleared, which would silently turn an "Errors" card into a second "Records" card.
+    if let Some(sev) = severity {
+        // Exact values as they appear in the data, because `in` is case-sensitive and logs write
+        // ERROR, error and Error interchangeably. The profiler keeps the top 20 values, which
+        // covers every level a severity field realistically has.
+        let mut levels: Vec<Value> = sev
+            .top_values
+            .iter()
+            .filter(|vc| is_error_level(&vc.value))
+            .map(|vc| Value::String(vc.value.clone()))
+            .collect();
+        if levels.is_empty() {
+            // No error-shaped level was observed. The card still ships and reads zero, which is
+            // the honest answer; AT-12 asks for the metric whenever severity exists, not only
+            // when something has already gone wrong.
+            levels.push(Value::String("error".into()));
+        }
+        let observed = levels.len();
+        components.push(ComponentSpec {
+            id: "error_records".into(),
+            component_type: "metric_card".into(),
+            type_version: "1.0".into(),
+            title: Some("Errors".into()),
+            data_source: "data".into(),
+            binding: Binding::MetricCard {
+                aggregation: Aggregation {
+                    op: "count".into(),
+                    field: None,
+                    filter: Some(FilterExpr {
+                        op: "in".into(),
+                        field: Some(sev.name.clone()),
+                        value: Some(Value::Array(levels)),
+                        args: vec![],
+                    }),
+                },
+            },
+            interactions: Interactions {
+                filter: true,
+                ..Default::default()
+            },
+            state: Default::default(),
+            explanation: Some(explanation(
+                "R2b_error_metric",
+                format!(
+                    "'{}' carries severity levels, so the count of error-level records is a \
+                     headline number.",
+                    sev.name
+                ),
+                vec![format!("{observed} error-shaped level(s) observed")],
+                sev.inference.confidence,
+            )),
+        });
+    }
+
     // R3 / R4 — time is shown as a trend when there is something to measure, otherwise as
     // an event timeline. Never both: that would duplicate the same axis.
     if let Some(t) = temporal {
@@ -280,7 +419,10 @@ pub fn compile(
                 binding: Binding::LineChart {
                     x: t.name.clone(),
                     y: vec![average_of(&m.name)],
-                    group_by: None,
+                    // Split by severity when the data has it (docs/architecture/05 §5 rule 2).
+                    // Without this the renderer's multi-series legend was unreachable from any
+                    // generated document, however well the painter handled eight series.
+                    group_by: severity.map(|f| f.name.clone()),
                 },
                 interactions: Interactions {
                     filter: true,
@@ -392,7 +534,7 @@ pub fn compile(
         title: Some("Data".into()),
         data_source: "data".into(),
         binding: Binding::DataTable {
-            columns: vec![],
+            columns: informative_columns(profile),
             page_size: 256,
         },
         interactions: Interactions {
@@ -409,6 +551,11 @@ pub fn compile(
             1.0,
         )),
     });
+
+    // Rule 6: cap for a phone. The table is dropped from the truncation, never from the
+    // workspace — AT-12 requires every workspace to keep every record reachable, so the cap
+    // yields to that invariant rather than the other way round.
+    let components = cap_components(components);
 
     let order: Vec<String> = components.iter().map(|c| c.id.clone()).collect();
 
@@ -530,6 +677,193 @@ mod tests {
             other => panic!("wrong binding: {other:?}"),
         }
         assert!(morphic_schema::validate_with_profile(&doc, &p).is_empty());
+    }
+
+    #[test]
+    fn severity_always_earns_an_error_metric() {
+        // AT-12: "severity data always gets an error metric".
+        let p = profile(vec![
+            field("ts", DataType::Timestamp, FieldRole::Temporal, 90),
+            field("level", DataType::Utf8, FieldRole::Severity, 4),
+        ]);
+        let doc = build(&p);
+        let errors = doc
+            .workspace
+            .components
+            .iter()
+            .find(|c| c.id == "error_records")
+            .expect("a severity field must produce an error metric");
+        assert_eq!(errors.component_type, "metric_card");
+        assert_eq!(errors.title.as_deref(), Some("Errors"));
+        assert!(morphic_schema::validate_with_profile(&doc, &p).is_empty());
+    }
+
+    #[test]
+    fn the_error_restriction_lives_in_the_binding_not_user_state() {
+        // If it lived in `state.filter`, clearing filters would silently turn "Errors" into a
+        // second "Records" card.
+        let p = profile(vec![field("level", DataType::Utf8, FieldRole::Severity, 3)]);
+        let doc = build(&p);
+        let errors = doc
+            .workspace
+            .components
+            .iter()
+            .find(|c| c.id == "error_records")
+            .unwrap();
+        assert!(errors.state.filter.is_none());
+        match &errors.binding {
+            Binding::MetricCard { aggregation } => {
+                assert_eq!(aggregation.op, "count");
+                let f = aggregation.filter.as_ref().expect("restricted in the binding");
+                assert_eq!(f.op, "in");
+                assert_eq!(f.field.as_deref(), Some("level"));
+            }
+            other => panic!("expected a metric binding, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_severity_field_without_errors_still_gets_the_metric() {
+        // Zero is the honest answer, and AT-12 asks for the card whenever severity exists.
+        let p = profile(vec![field("level", DataType::Utf8, FieldRole::Severity, 2)]);
+        let doc = build(&p);
+        assert!(doc
+            .workspace
+            .components
+            .iter()
+            .any(|c| c.id == "error_records"));
+    }
+
+    #[test]
+    fn error_levels_are_matched_exactly_not_by_substring() {
+        assert!(is_error_level("ERROR"));
+        assert!(is_error_level(" Fatal "));
+        assert!(is_error_level("crit"));
+        assert!(!is_error_level("error_handler"));
+        assert!(!is_error_level("warning"));
+        assert!(!is_error_level("info"));
+    }
+
+    #[test]
+    fn temporal_data_always_gets_a_time_based_view() {
+        // AT-12, both branches: with a measure it is a trend, without one it is event density.
+        for with_measure in [true, false] {
+            let mut fields = vec![field("ts", DataType::Timestamp, FieldRole::Temporal, 90)];
+            if with_measure {
+                fields.push(field("latency", DataType::Float64, FieldRole::Measure, 40));
+            }
+            let doc = build(&profile(fields));
+            let kinds = ids(&doc);
+            assert!(
+                kinds.contains(&"line_chart") || kinds.contains(&"timeline"),
+                "temporal data must get a time view (measure={with_measure}): {kinds:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_line_chart_splits_by_severity_when_the_data_has_it() {
+        let p = profile(vec![
+            field("ts", DataType::Timestamp, FieldRole::Temporal, 90),
+            field("latency", DataType::Float64, FieldRole::Measure, 40),
+            field("level", DataType::Utf8, FieldRole::Severity, 4),
+        ]);
+        let doc = build(&p);
+        let line = doc
+            .workspace
+            .components
+            .iter()
+            .find(|c| c.component_type == "line_chart")
+            .unwrap();
+        match &line.binding {
+            Binding::LineChart { group_by, .. } => {
+                assert_eq!(group_by.as_deref(), Some("level"));
+            }
+            other => panic!("expected a line binding, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_line_chart_has_no_split_when_there_is_no_severity() {
+        let p = profile(vec![
+            field("ts", DataType::Timestamp, FieldRole::Temporal, 90),
+            field("latency", DataType::Float64, FieldRole::Measure, 40),
+        ]);
+        let doc = build(&p);
+        let line = doc
+            .workspace
+            .components
+            .iter()
+            .find(|c| c.component_type == "line_chart")
+            .unwrap();
+        match &line.binding {
+            Binding::LineChart { group_by, .. } => assert!(group_by.is_none()),
+            other => panic!("expected a line binding, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn the_cap_keeps_the_table_and_drops_from_the_middle() {
+        let p = profile(vec![field("x", DataType::Utf8, FieldRole::Dimension, 3)]);
+        let template = build(&p).workspace.components.remove(0);
+        let mut many: Vec<ComponentSpec> = (0..9)
+            .map(|i| {
+                let mut c = template.clone();
+                c.id = format!("c{i}");
+                c
+            })
+            .collect();
+        let mut table = template;
+        table.id = "data_table".into();
+        table.component_type = "data_table".into();
+        many.push(table);
+
+        let capped = cap_components(many);
+        assert_eq!(capped.len(), MAX_COMPONENTS);
+        assert_eq!(capped.last().unwrap().component_type, "data_table");
+        assert_eq!(capped.first().unwrap().id, "c0", "priority order is preserved");
+    }
+
+    #[test]
+    fn a_cap_that_does_not_bind_leaves_the_plan_alone() {
+        let p = profile(vec![field("x", DataType::Utf8, FieldRole::Dimension, 3)]);
+        let components = build(&p).workspace.components;
+        let n = components.len();
+        assert_eq!(cap_components(components).len(), n);
+    }
+
+    #[test]
+    fn every_generated_workspace_keeps_a_table_within_the_cap() {
+        let p = profile(vec![
+            field("ts", DataType::Timestamp, FieldRole::Temporal, 90),
+            field("latency", DataType::Float64, FieldRole::Measure, 40),
+            field("level", DataType::Utf8, FieldRole::Severity, 4),
+            field("service", DataType::Utf8, FieldRole::Dimension, 6),
+        ]);
+        let doc = build(&p);
+        let kinds = ids(&doc);
+        assert!(kinds.contains(&"data_table"));
+        assert!(doc.workspace.components.len() <= MAX_COMPONENTS);
+        assert!(morphic_schema::validate_with_profile(&doc, &p).is_empty());
+    }
+
+    #[test]
+    fn the_table_projection_is_ranked_and_capped() {
+        let p = profile(vec![
+            field("row_id", DataType::Int64, FieldRole::Identifier, 100),
+            field("note", DataType::Utf8, FieldRole::Text, 100),
+            field("region", DataType::Utf8, FieldRole::Dimension, 4),
+            field("amount", DataType::Float64, FieldRole::Measure, 90),
+            field("level", DataType::Utf8, FieldRole::Severity, 4),
+            field("ts", DataType::Timestamp, FieldRole::Temporal, 90),
+        ]);
+        let cols = informative_columns(&p);
+        assert_eq!(cols, ["ts", "level", "amount", "region", "note", "row_id"]);
+
+        let wide: Vec<FieldProfile> = (0..20)
+            .map(|i| field(&format!("c{i}"), DataType::Utf8, FieldRole::Dimension, 4))
+            .collect();
+        assert_eq!(informative_columns(&profile(wide)).len(), MAX_TABLE_COLUMNS);
     }
 
     #[test]

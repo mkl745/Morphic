@@ -11,8 +11,10 @@ morphic-model.workspace = true
 morphic-schema.workspace = true
 morphic-semantic.workspace = true
 serde.workspace = true
+# The error metric's restriction is a FilterExpr, whose value is JSON. Building one is planner
+# work, not test work, so this moved out of dev-dependencies in 1.4.5.
+serde_json.workspace = true
 
 [dev-dependencies]
-serde_json.workspace = true
 morphic-ingest.workspace = true
 insta = { version = "1", features = ["json"] }
