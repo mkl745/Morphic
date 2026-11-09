@@ -25,7 +25,6 @@ expression: doc
       "order": [
         "total_records",
         "metric_amount",
-        "trend_over_time",
         "data_table"
       ],
       "hints": []
@@ -85,40 +84,6 @@ expression: doc
           "reason": "R2_primary_measure",
           "detail": "'amount' is the strongest numeric measure, so its average is surfaced. An average is used rather than a sum because it stays meaningful for rates as well as totals.",
           "evidence": [
-            "'amount' is numeric (int64)"
-          ],
-          "confidence": 0.85
-        }
-      },
-      {
-        "id": "trend_over_time",
-        "type": "line_chart",
-        "typeVersion": "1.0",
-        "title": "amount over time",
-        "dataSource": "data",
-        "binding": {
-          "kind": "line_chart",
-          "x": "booked_on",
-          "y": [
-            {
-              "op": "avg",
-              "field": "amount",
-              "filter": null
-            }
-          ],
-          "group_by": null
-        },
-        "interactions": {
-          "filter": true,
-          "search": false,
-          "sort": false,
-          "select": true
-        },
-        "explanation": {
-          "reason": "R3_time_series",
-          "detail": "'booked_on' is temporal and 'amount' is a measure, so the measure is plotted over time.",
-          "evidence": [
-            "'booked_on' values look like timestamps but stayed text: the layout is not unambiguous enough to type",
             "'amount' is numeric (int64)"
           ],
           "confidence": 0.85

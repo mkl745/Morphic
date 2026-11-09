@@ -34,6 +34,21 @@ pub const MAX_COMPONENTS: usize = 6;
 /// horizontal scroll and in row detail; the binding names the columns worth showing first.
 pub const MAX_TABLE_COLUMNS: usize = 8;
 
+/// Cardinality above which a column is not a breakdown at all. Mirrors the ceiling
+/// `morphic-semantic` uses to call a column a Dimension in the first place.
+///
+/// This is deliberately NOT `MAX_BAR_CATEGORIES`. The bar renderer keeps the top N and folds
+/// the rest into an "Other" bucket, so a 20-value dimension is chartable — showing 12 bars and
+/// one Other is the whole point of that bucket. Capping selection at 12 made Other unreachable
+/// from every generated workspace, however well the painter implemented it.
+pub const MAX_DIMENSION_CARDINALITY: usize = 50;
+
+/// Row count at which "every value is unique" starts to mean "this is a key".
+///
+/// Below it, uniqueness is an artefact of the sample: two rows have two distinct cities and
+/// that says nothing. Matches the floor `morphic-semantic` uses for its identifier heuristic.
+const KEY_LIKE_MIN_ROWS: usize = 5;
+
 /// Levels that mean "something went wrong", for the error metric AT-12 requires whenever a
 /// severity field exists. Matching is exact on the lower-cased value, never a substring: a level
 /// literally named `error_handler` is not an error count.
@@ -209,12 +224,24 @@ fn primary_measure(profile: &DatasetProfile) -> Option<&FieldProfile> {
     candidates.into_iter().next()
 }
 
-/// Prefer a normalized `Timestamp` (a measured fact) over a string-shape inference.
+/// The best time axis the query layer can actually bucket.
+///
+/// A `Temporal` *role* is not enough. CLF and RFC3164 timestamps stay `utf8` (month names, no
+/// year), and an unresolved day/month order stays `utf8` on purpose — guessing it would invent
+/// data. `series_scene` refuses a text x and `timeline_scene` refuses a non-timestamp time
+/// field, so proposing one produced a component that validated and then failed at the first
+/// draw. Found by rendering every generated chart against its own fixture in the AT-12 scorer.
+///
+/// The cost is stated, not hidden: those files get no time view. Making them chartable means
+/// teaching ingest to parse those formats, not loosening this check.
 fn temporal_field(profile: &DatasetProfile) -> Option<&FieldProfile> {
     let mut candidates: Vec<&FieldProfile> = profile
         .fields
         .iter()
-        .filter(|f| f.dtype == DataType::Timestamp || f.inference.role == FieldRole::Temporal)
+        .filter(|f| {
+            f.dtype == DataType::Timestamp
+                || (f.inference.role == FieldRole::Temporal && f.dtype.is_numeric())
+        })
         .collect();
     candidates.sort_by(|a, b| {
         (b.dtype == DataType::Timestamp)
@@ -233,7 +260,11 @@ fn best_dimension(profile: &DatasetProfile) -> Option<&FieldProfile> {
         .filter(|f| {
             f.inference.role == FieldRole::Dimension
                 && f.distinct_count >= 2
-                && f.distinct_count <= MAX_BAR_CATEGORIES as usize
+                && f.distinct_count <= MAX_DIMENSION_CARDINALITY
+                // Every value unique is a key, not a category — but only once the sample is
+                // big enough for that to mean anything.
+                && !(profile.row_count >= KEY_LIKE_MIN_ROWS
+                    && f.distinct_count == profile.row_count)
         })
         .collect();
     candidates.sort_by(|a, b| {
@@ -446,7 +477,9 @@ pub fn compile(
                     t.inference.confidence.min(m.inference.confidence),
                 )),
             }),
-            None => components.push(ComponentSpec {
+            // `timeline_scene` buckets epoch milliseconds and nothing else. A numeric temporal
+            // column can carry a line but not event density, so it does not reach this branch.
+            None if t.dtype == DataType::Timestamp => components.push(ComponentSpec {
                 id: "event_timeline".into(),
                 component_type: "timeline".into(),
                 type_version: "1.0".into(),
@@ -483,6 +516,7 @@ pub fn compile(
                     t.inference.confidence,
                 )),
             }),
+            None => {}
         }
     }
 
@@ -871,6 +905,85 @@ mod tests {
             .map(|i| field(&format!("c{i}"), DataType::Utf8, FieldRole::Dimension, 4))
             .collect();
         assert_eq!(informative_columns(&profile(wide)).len(), MAX_TABLE_COLUMNS);
+    }
+
+    #[test]
+    fn a_text_time_axis_is_not_offered_as_a_chart() {
+        // CLF and RFC3164 times stay utf8, and an unresolved day/month order stays utf8 on
+        // purpose. `series_scene` and `timeline_scene` both refuse a text axis, so proposing one
+        // produced a card that validated and then failed at the first draw. Caught by rendering
+        // every generated chart against its own fixture, not by any selection assertion.
+        for role_dtype in [DataType::Utf8, DataType::Bool] {
+            let p = profile(vec![
+                field("time", role_dtype, FieldRole::Temporal, 90),
+                field("latency", DataType::Float64, FieldRole::Measure, 40),
+            ]);
+            let doc = build(&p);
+            assert!(
+                !ids(&doc).contains(&"line_chart"),
+                "a {role_dtype:?} axis cannot be bucketed"
+            );
+            assert!(morphic_schema::validate_with_profile(&doc, &p).is_empty());
+        }
+    }
+
+    #[test]
+    fn a_text_time_axis_without_a_measure_is_not_a_timeline() {
+        let p = profile(vec![field("time", DataType::Utf8, FieldRole::Temporal, 90)]);
+        let doc = build(&p);
+        assert!(!ids(&doc).contains(&"timeline"));
+        assert!(ids(&doc).contains(&"data_table"), "the records stay reachable");
+    }
+
+    #[test]
+    fn a_normalized_time_axis_still_charts() {
+        // The guard above must not cost the cases that do work.
+        let p = profile(vec![
+            field("time", DataType::Timestamp, FieldRole::Temporal, 90),
+            field("latency", DataType::Float64, FieldRole::Measure, 40),
+        ]);
+        assert!(ids(&build(&p)).contains(&"line_chart"));
+    }
+
+    #[test]
+    fn a_dimension_wider_than_the_bar_limit_is_still_charted_via_other() {
+        // The renderer keeps the top 12 and folds the rest into an "Other" bucket. Capping
+        // *selection* at 12 made that bucket unreachable from every generated workspace.
+        let p = profile(vec![
+            field("service", DataType::Utf8, FieldRole::Dimension, 20),
+            field("latency", DataType::Float64, FieldRole::Measure, 90),
+        ]);
+        let doc = build(&p);
+        let bar = doc
+            .workspace
+            .components
+            .iter()
+            .find(|c| c.component_type == "bar_chart")
+            .expect("20 categories is chartable as top-12 plus Other");
+        match &bar.binding {
+            Binding::BarChart { limit, .. } => {
+                assert_eq!(*limit, MAX_BAR_CATEGORIES, "the chart still shows at most 12");
+            }
+            other => panic!("wrong binding: {other:?}"),
+        }
+        assert!(morphic_schema::validate_with_profile(&doc, &p).is_empty());
+    }
+
+    #[test]
+    fn an_all_unique_column_is_a_key_not_a_breakdown() {
+        // 20 distinct values in 20 rows is an index, whatever the role says. Charting it would
+        // draw twenty bars of one record each.
+        let mut p = profile(vec![field("name", DataType::Utf8, FieldRole::Dimension, 20)]);
+        p.row_count = 20;
+        assert!(!ids(&build(&p)).contains(&"bar_chart"));
+    }
+
+    #[test]
+    fn uniqueness_in_a_tiny_sample_is_not_evidence_of_a_key() {
+        // Two rows have two distinct cities. That is the sample size talking, not the data.
+        let mut p = profile(vec![field("city", DataType::Utf8, FieldRole::Dimension, 2)]);
+        p.row_count = 2;
+        assert!(ids(&build(&p)).contains(&"bar_chart"));
     }
 
     #[test]
