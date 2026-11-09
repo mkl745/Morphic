@@ -932,7 +932,10 @@ mod tests {
         let p = profile(vec![field("time", DataType::Utf8, FieldRole::Temporal, 90)]);
         let doc = build(&p);
         assert!(!ids(&doc).contains(&"timeline"));
-        assert!(ids(&doc).contains(&"data_table"), "the records stay reachable");
+        assert!(
+            ids(&doc).contains(&"data_table"),
+            "the records stay reachable"
+        );
     }
 
     #[test]
@@ -962,7 +965,10 @@ mod tests {
             .expect("20 categories is chartable as top-12 plus Other");
         match &bar.binding {
             Binding::BarChart { limit, .. } => {
-                assert_eq!(*limit, MAX_BAR_CATEGORIES, "the chart still shows at most 12");
+                assert_eq!(
+                    *limit, MAX_BAR_CATEGORIES,
+                    "the chart still shows at most 12"
+                );
             }
             other => panic!("wrong binding: {other:?}"),
         }
@@ -973,7 +979,12 @@ mod tests {
     fn an_all_unique_column_is_a_key_not_a_breakdown() {
         // 20 distinct values in 20 rows is an index, whatever the role says. Charting it would
         // draw twenty bars of one record each.
-        let mut p = profile(vec![field("name", DataType::Utf8, FieldRole::Dimension, 20)]);
+        let mut p = profile(vec![field(
+            "name",
+            DataType::Utf8,
+            FieldRole::Dimension,
+            20,
+        )]);
         p.row_count = 20;
         assert!(!ids(&build(&p)).contains(&"bar_chart"));
     }

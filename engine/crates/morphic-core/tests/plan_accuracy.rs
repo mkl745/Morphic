@@ -262,7 +262,12 @@ fn score_corpus(l: &Labels) -> Score {
         l.files.len()
     )
     .unwrap();
-    writeln!(s.card, "- **charts that do not render: {}**", s.render.len()).unwrap();
+    writeln!(
+        s.card,
+        "- **charts that do not render: {}**",
+        s.render.len()
+    )
+    .unwrap();
     // The known shortfall, named rather than left to be inferred from the misses.
     writeln!(
         s.card,
