@@ -7,7 +7,7 @@ instead of asserted.
 | File | Scores | Consumer |
 |---|---|---|
 | `schema-labels.json` | per-field dtype + semantic role (AT-02) | `engine/crates/morphic-core/tests/schema_accuracy.rs` |
-| *(planned)* `plans.json` | component selection per fixture (AT-12) | M1.4 planner accuracy test |
+| `plans.json` | component selection per fixture (AT-12) | `engine/crates/morphic-core/tests/plan_accuracy.rs` |
 
 ## How to label
 
@@ -44,6 +44,37 @@ The scorer also fails on **label drift in both directions** — a labelled colum
 longer emits, or an emitted column nobody labelled. An unlabelled column is a hole in the
 ground truth, not a free pass.
 
+## Plan labels (AT-12)
+
+```bash
+cargo test -p morphic-core --test plan_accuracy
+cat target/plan-accuracy.md
+```
+
+`plans.json` labels the **multiset of component types** a person would expect for each file — not
+ids, titles or order. Whether a log file deserves an error count is a person's call; what the card
+is called is the planner's business. Two expected metric cards against one emitted scores 1/2, so a
+quietly dropped component is a miss rather than a pass.
+
+The three AT-12 guarantees are asserted **per file, never averaged**: every workspace keeps a table,
+every bucketable time axis gets a time view, every severity field gets a restricted error count. An
+85% mean must not be able to excuse a workspace with no table.
+
+### The scorer also renders every chart
+
+A selection can be right and still be dead. The first scorecard measured **100% selection with three
+charts that failed at the first draw**: the planner proposed a time axis on a `utf8` column (CLF
+month names, RFC3164 with no year, unresolved day/month order) and the query layer refuses to bucket
+text. All five validator passes were green, because pass 4 checks the *role*.
+
+So every generated chart is rendered against its own fixture, and a render failure is reported beside
+the selection score. Selection quality and renderability are different claims; only the second one
+is invisible to a set comparison.
+
+The planner now declines those axes. **The labels were not changed to match** — they still ask for a
+time view, so those three files score as misses and the corpus keeps reporting the gap until ingest
+parses those formats. Current score: 96.6% (85/88), 18/21 exact, 0 unrenderable charts.
+
 ## Tuning caveat — read this before quoting the score
 
 The role heuristics in `morphic-semantic` were **revised against this corpus** after the first
@@ -61,6 +92,10 @@ estimate.** To turn it into an estimate:
    is an engine bug or a label error. Both happen; the first scorecard found one of each.
 3. Never lower `targets` to make a run green. If the target is wrong, change it in
    `mvp-acceptance-tests.md` with a reason, so the spec and the scorer stay in agreement.
+
+The same caveat applies to `plans.json`: the rule table was written against these 21 files, so its
+score is an upper bound too. The two corpora share a failure mode — a label edited to match the
+engine stops being ground truth — and the same rule covers both.
 
 Two label decisions are worth knowing because they look like engine bugs and are not:
 
