@@ -321,6 +321,12 @@ pub fn compile(
                 },
                 interactions: Interactions {
                     filter: true,
+                    // The renderer offers a lane legend whose chips hide and show a severity.
+                    // Without `select` those chips render disabled, so a documented interaction
+                    // (docs/architecture/04 §2: "lane toggle") is unreachable in a generated
+                    // workspace even though the painter implements it. Found by a tester tapping
+                    // the chips on a device and getting no response.
+                    select: true,
                     ..Default::default()
                 },
                 state: Default::default(),
@@ -523,6 +529,30 @@ mod tests {
             }
             other => panic!("wrong binding: {other:?}"),
         }
+        assert!(morphic_schema::validate_with_profile(&doc, &p).is_empty());
+    }
+
+    #[test]
+    fn a_timeline_allows_the_lane_toggle_its_renderer_offers() {
+        let p = profile(vec![
+            field("ts", DataType::Timestamp, FieldRole::Temporal, 90),
+            field("level", DataType::Utf8, FieldRole::Severity, 4),
+        ]);
+        let doc = build(&p);
+        let timeline = doc
+            .workspace
+            .components
+            .iter()
+            .find(|c| c.component_type == "timeline")
+            .expect("temporal without a measure yields a timeline");
+        assert!(
+            timeline.interactions.filter,
+            "tap-bucket-to-range is part of the contract"
+        );
+        assert!(
+            timeline.interactions.select,
+            "the lane legend's chips are gated on select; without it the toggle is dead UI"
+        );
         assert!(morphic_schema::validate_with_profile(&doc, &p).is_empty());
     }
 
