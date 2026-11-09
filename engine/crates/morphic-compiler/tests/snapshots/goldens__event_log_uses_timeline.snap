@@ -77,7 +77,7 @@ expression: doc
           "filter": true,
           "search": false,
           "sort": false,
-          "select": false
+          "select": true
         },
         "explanation": {
           "reason": "R4_event_timeline",
