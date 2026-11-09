@@ -108,6 +108,10 @@ jobs:
             echo '```'
             cat target/schema-accuracy.md 2>/dev/null || echo "scorecard not produced"
             echo '```'
+            echo "### AT-12 planner selection accuracy"
+            echo '```'
+            cat target/plan-accuracy.md 2>/dev/null || echo "scorecard not produced"
+            echo '```'
           } > /tmp/report.md
           jq -Rs '{body: .}' < /tmp/report.md > /tmp/payload.json
           curl -sS -X POST \

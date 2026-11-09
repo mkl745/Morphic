@@ -66,15 +66,15 @@ fn read_fixture(rel: &str) -> Vec<u8> {
     std::fs::read(format!("{ROOT}/fixtures/{rel}")).expect("fixture must exist")
 }
 
-fn extension(rel: &str) -> String {
-    rel.rsplit('.').next().unwrap_or_default().to_string()
+fn extension(rel: &str) -> &str {
+    rel.rsplit('.').next().unwrap_or_default()
 }
 
 /// The real pipeline, minus persistence: detect → parse → profile → compile.
 fn plan_fixture(rel: &str) -> (WorkspaceDoc, DatasetProfile) {
     let bytes = read_fixture(rel);
     let opts = IngestOptions {
-        extension: Some(extension(rel)),
+        extension: Some(extension(rel).to_string()),
         ..Default::default()
     };
     let (table, _report) = morphic_ingest::ingest_with(&bytes, &opts, None, &mut |_| {})
