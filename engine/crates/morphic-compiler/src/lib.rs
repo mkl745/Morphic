@@ -908,6 +908,58 @@ mod tests {
     }
 
     #[test]
+    fn the_plan_is_composed_for_a_phone() {
+        // Phone-aware composition is the part the renderer actually honours today:
+        // at most six components, metric cards consecutive at the front so the adaptive
+        // Wrap flows them into one row, the table last, and its projection capped.
+        //
+        // `layout.hints` stays empty on purpose. Nothing reads it, and doc 03 §1 defines it
+        // as where *manual* adjustments persist (M1.5). Emitting spans no renderer consumes
+        // would be one more feature that exists only in the document.
+        let p = profile(vec![
+            field("ts", DataType::Timestamp, FieldRole::Temporal, 90),
+            field("latency", DataType::Float64, FieldRole::Measure, 40),
+            field("level", DataType::Utf8, FieldRole::Severity, 4),
+            field("service", DataType::Utf8, FieldRole::Dimension, 6),
+            field("message", DataType::Utf8, FieldRole::Text, 90),
+        ]);
+        let doc = build(&p);
+        let kinds: Vec<&str> = doc
+            .workspace
+            .components
+            .iter()
+            .map(|c| c.component_type.as_str())
+            .collect();
+        assert!(kinds.len() <= MAX_COMPONENTS);
+        assert_eq!(
+            kinds.last(),
+            Some(&"data_table"),
+            "the table anchors the page"
+        );
+
+        // Every metric card precedes every chart: a metric buried between two charts breaks
+        // the renderer's consecutive-metric row and wastes a screen on a one-card row.
+        let last_metric = kinds.iter().rposition(|k| *k == "metric_card").unwrap();
+        let first_chart = kinds
+            .iter()
+            .position(|k| *k != "metric_card")
+            .expect("a table at minimum");
+        assert!(
+            last_metric < first_chart,
+            "metric cards must be consecutive at the front: {kinds:?}"
+        );
+        assert!(doc.workspace.layout.hints.is_empty());
+
+        match &doc.workspace.components.last().unwrap().binding {
+            Binding::DataTable { columns, page_size } => {
+                assert!(columns.len() <= MAX_TABLE_COLUMNS);
+                assert_eq!(*page_size, 256);
+            }
+            other => panic!("wrong binding: {other:?}"),
+        }
+    }
+
+    #[test]
     fn a_text_time_axis_is_not_offered_as_a_chart() {
         // CLF and RFC3164 times stay utf8, and an unresolved day/month order stays utf8 on
         // purpose. `series_scene` and `timeline_scene` both refuse a text axis, so proposing one
