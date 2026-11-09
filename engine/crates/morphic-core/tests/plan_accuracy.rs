@@ -345,7 +345,13 @@ fn label_vocabulary_matches_the_registry() {
         );
     }
     // A corpus that never exercises a component cannot score the planner that emits it.
-    for kind in ["metric_card", "data_table", "bar_chart", "line_chart", "timeline"] {
+    for kind in [
+        "metric_card",
+        "data_table",
+        "bar_chart",
+        "line_chart",
+        "timeline",
+    ] {
         assert!(
             seen.contains_key(kind),
             "no fixture is labelled with `{kind}`; the corpus does not exercise it"
@@ -382,8 +388,7 @@ fn at_12_invariants_hold_for_every_fixture() {
         );
 
         let temporal = profile.fields.iter().any(|p| {
-            p.inference.role == FieldRole::Temporal
-                || p.dtype == morphic_model::DataType::Timestamp
+            p.inference.role == FieldRole::Temporal || p.dtype == morphic_model::DataType::Timestamp
         });
         if temporal {
             assert!(
