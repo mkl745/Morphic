@@ -136,8 +136,11 @@ fn cap_components(mut components: Vec<ComponentSpec>) -> Vec<ComponentSpec> {
 ///
 /// Ordered by how much a column tells you at a glance: when it happened, how bad it was, what
 /// quantity, which category, then the prose payload. Identifiers sort last — an order number is
-/// rarely what someone scans a table for — and unrecognised fields after that. Within a rank the
-/// profile's own order is kept, so the result is deterministic and follows the source layout.
+/// rarely what someone scans a table for — and unrecognised fields after that.
+///
+/// Ties break by name, like every other selector here. Source order looks like the natural
+/// tie-break and is not one: JSON object keys and logfmt keys have no stable order, and the
+/// planner promises that reordering the columns of a file does not change the interface.
 ///
 /// Nothing is lost: the binding names a projection, and every field remains in row detail.
 fn informative_columns(profile: &DatasetProfile) -> Vec<String> {
@@ -152,19 +155,16 @@ fn informative_columns(profile: &DatasetProfile) -> Vec<String> {
             FieldRole::Unknown => 6,
         }
     }
-    let mut ranked: Vec<(usize, u8, &str)> = profile
+    let mut ranked: Vec<(u8, &str)> = profile
         .fields
         .iter()
-        .enumerate()
-        .map(|(i, f)| (i, rank(f.inference.role), f.name.as_str()))
+        .map(|f| (rank(f.inference.role), f.name.as_str()))
         .collect();
-    // Stable sort keeps source order inside a rank; the index makes that explicit rather than
-    // relying on the sort algorithm's stability guarantee.
-    ranked.sort_by(|a, b| a.1.cmp(&b.1).then(a.0.cmp(&b.0)));
+    ranked.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(b.1)));
     ranked
         .into_iter()
         .take(MAX_TABLE_COLUMNS)
-        .map(|(_, _, name)| name.to_string())
+        .map(|(_, name)| name.to_string())
         .collect()
 }
 
@@ -871,6 +871,30 @@ mod tests {
             .map(|i| field(&format!("c{i}"), DataType::Utf8, FieldRole::Dimension, 4))
             .collect();
         assert_eq!(informative_columns(&profile(wide)).len(), MAX_TABLE_COLUMNS);
+    }
+
+    #[test]
+    fn the_table_projection_breaks_ties_by_name_not_source_order() {
+        // Caught by `measure_ties_break_by_name_not_input_order` when the projection first
+        // shipped: ranking kept the profile's own order inside a rank, so reversing the columns
+        // of a file changed the generated table. JSON and logfmt keys have no stable order.
+        let forward = profile(vec![
+            field("zulu", DataType::Utf8, FieldRole::Dimension, 4),
+            field("alpha", DataType::Utf8, FieldRole::Dimension, 4),
+            field("middle", DataType::Utf8, FieldRole::Dimension, 4),
+        ]);
+        let mut reversed = forward.clone();
+        reversed.fields.reverse();
+        assert_eq!(
+            informative_columns(&forward),
+            ["alpha", "middle", "zulu"],
+            "same rank, so the tie breaks by name"
+        );
+        assert_eq!(
+            informative_columns(&forward),
+            informative_columns(&reversed),
+            "column order in the file must not change the generated table"
+        );
     }
 
     #[test]

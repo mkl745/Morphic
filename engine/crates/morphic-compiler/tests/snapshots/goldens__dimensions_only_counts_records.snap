@@ -100,8 +100,8 @@ expression: doc
         "binding": {
           "kind": "data_table",
           "columns": [
-            "region",
-            "city"
+            "city",
+            "region"
           ],
           "page_size": 256
         },

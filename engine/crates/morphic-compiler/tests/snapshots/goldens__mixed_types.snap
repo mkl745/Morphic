@@ -167,8 +167,8 @@ expression: doc
           "columns": [
             "ts",
             "amount",
-            "name",
             "active",
+            "name",
             "id"
           ],
           "page_size": 256
