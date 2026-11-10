@@ -58,6 +58,11 @@ pub const FIELD_ROLES: &[&str] = &[
 ];
 pub const DATA_TYPES: &[&str] = &["null", "bool", "int64", "float64", "utf8", "timestamp"];
 
+/// Closed vocabulary for M1.5's persisted layout hints (docs/architecture/03 §2). An empty
+/// height means the component keeps its intrinsic height; a span of 1..=3 is a column count.
+pub const LAYOUT_HEIGHTS: &[&str] = &["small", "medium", "large"];
+pub const MAX_LAYOUT_SPAN: u8 = 3;
+
 // ---------------------------------------------------------------------------
 // Document
 // ---------------------------------------------------------------------------
@@ -478,6 +483,39 @@ pub fn validate(doc: &WorkspaceDoc) -> Vec<ValidationIssue> {
     // Layout order must reference exactly the component ids (no orphans, no missing).
     let comp_ids: std::collections::HashSet<&str> =
         ws.components.iter().map(|c| c.id.as_str()).collect();
+
+    // Manual layout adjustments are persisted as hints. Validate them against the *same*
+    // component ids and closed vocabulary the Rust command handler writes, so a corrupt file
+    // cannot smuggle a fourth column or an unknown height into the renderer.
+    let mut hinted = std::collections::HashSet::new();
+    for (i, h) in ws.layout.hints.iter().enumerate() {
+        let ptr = format!("/workspace/layout/hints/{i}");
+        if !comp_ids.contains(h.component_id.as_str()) {
+            issues.push(ValidationIssue {
+                pointer: ptr.clone(),
+                rule: format!("layout hint names unknown component '{}'", h.component_id),
+            });
+        }
+        if !hinted.insert(h.component_id.as_str()) {
+            issues.push(ValidationIssue {
+                pointer: ptr.clone(),
+                rule: format!("duplicate layout hint for '{}'", h.component_id),
+            });
+        }
+        if !(1..=MAX_LAYOUT_SPAN).contains(&h.span) {
+            issues.push(ValidationIssue {
+                pointer: ptr.clone(),
+                rule: format!("layout span {} is outside 1..={MAX_LAYOUT_SPAN}", h.span),
+            });
+        }
+        if !h.height.is_empty() && !LAYOUT_HEIGHTS.contains(&h.height.as_str()) {
+            issues.push(ValidationIssue {
+                pointer: ptr,
+                rule: format!("unknown layout height '{}'", h.height),
+            });
+        }
+    }
+
     for id in &ws.layout.order {
         if !comp_ids.contains(id.as_str()) {
             issues.push(ValidationIssue {
@@ -967,6 +1005,47 @@ mod tests {
     #[test]
     fn minimal_doc_validates() {
         assert!(validate(&minimal_doc()).is_empty());
+    }
+
+    #[test]
+    fn layout_hints_are_closed_vocabulary_and_reference_real_components() {
+        let mut doc = minimal_doc();
+        doc.workspace.layout.hints.push(LayoutHint {
+            component_id: "m1".into(),
+            span: 2,
+            height: "large".into(),
+        });
+        assert!(validate(&doc).is_empty());
+
+        doc.workspace.layout.hints[0].component_id = "missing".into();
+        assert!(validate(&doc)
+            .iter()
+            .any(|i| i.rule.contains("unknown component")));
+
+        let mut doc = minimal_doc();
+        doc.workspace.layout.hints.push(LayoutHint {
+            component_id: "m1".into(),
+            span: MAX_LAYOUT_SPAN + 1,
+            height: "tall".into(),
+        });
+        let issues = validate(&doc);
+        assert!(issues.iter().any(|i| i.rule.contains("layout span")));
+        assert!(issues.iter().any(|i| i.rule.contains("unknown layout height")));
+    }
+
+    #[test]
+    fn duplicate_layout_hints_are_rejected() {
+        let mut doc = minimal_doc();
+        for _ in 0..2 {
+            doc.workspace.layout.hints.push(LayoutHint {
+                component_id: "m1".into(),
+                span: 1,
+                height: "small".into(),
+            });
+        }
+        assert!(validate(&doc)
+            .iter()
+            .any(|i| i.rule.contains("duplicate layout hint")));
     }
 
     #[test]

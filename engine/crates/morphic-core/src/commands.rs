@@ -63,6 +63,16 @@ pub enum Command {
         #[serde(rename = "toIndex")]
         to_index: usize,
     },
+    /// Persist a manual span/height adjustment in `layout.hints`. One record per component;
+    /// omitted fields leave the other dimension unchanged (M1.5 task 1.5.2).
+    ResizeComponent {
+        #[serde(rename = "componentId")]
+        component_id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        span: Option<u8>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        height: Option<String>,
+    },
     /// Persist a user correction to a field's inferred physical type. Recompilation of the
     /// affected bindings is 1.5.5; storing and undoing the command arrives with 1.5.1.
     OverrideFieldType { field: String, dtype: String },
@@ -195,6 +205,44 @@ pub(crate) fn apply(
                     layout_changed = true;
                 }
             }
+            Command::ResizeComponent {
+                component_id,
+                span,
+                height,
+            } => {
+                if !next
+                    .workspace
+                    .components
+                    .iter()
+                    .any(|c| &c.id == component_id)
+                {
+                    return Err(at(i, format!("unknown component '{component_id}'")));
+                }
+                if let Some(s) = span {
+                    let valid = (1..=morphic_schema::MAX_LAYOUT_SPAN).contains(s);
+                    if !valid {
+                        return Err(at(i, format!("invalid layout span {s}")));
+                    }
+                }
+                if let Some(h) = height {
+                    let valid = morphic_schema::LAYOUT_HEIGHTS.contains(&h.as_str());
+                    if !valid {
+                        return Err(at(i, format!("unknown layout height '{h}'")));
+                    }
+                }
+                if span.is_none() && height.is_none() {
+                    return Err(at(
+                        i,
+                        "resize names neither a span nor a height".to_string(),
+                    ));
+                }
+                layout_changed |= resize_layout_hint(
+                    &mut next,
+                    component_id.clone(),
+                    *span,
+                    height.clone(),
+                );
+            }
             Command::OverrideFieldType { field, dtype } => {
                 check_override_field(field, fields).map_err(|m| at(i, m))?;
                 if !DATA_TYPES.contains(&dtype.as_str()) {
@@ -299,6 +347,38 @@ pub(crate) fn apply(
         affected,
         changed: true,
     })
+}
+
+/// Write one bounded layout hint. A command that sets span and height to their current
+/// values is a no-op, so repeated menu taps do not bump the revision or push a history frame.
+fn resize_layout_hint(
+    doc: &mut WorkspaceDoc,
+    component_id: String,
+    span: Option<u8>,
+    height: Option<String>,
+) -> bool {
+    if let Some(existing) = doc
+        .workspace
+        .layout
+        .hints
+        .iter_mut()
+        .find(|h| h.component_id == component_id)
+    {
+        let before = (existing.span, existing.height.clone());
+        if let Some(s) = span {
+            existing.span = s;
+        }
+        if let Some(h) = height {
+            existing.height = h;
+        }
+        return before != (existing.span, existing.height.clone());
+    }
+    doc.workspace.layout.hints.push(morphic_schema::LayoutHint {
+        component_id,
+        span: span.unwrap_or(1),
+        height: height.unwrap_or_default(),
+    });
+    true
 }
 
 fn check_override_field(field: &str, fields: Option<&[String]>) -> Result<(), String> {

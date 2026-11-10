@@ -14,7 +14,7 @@ import 'workspace_args.dart';
 /// engine-driven paging, explicit loading/empty/error states. Without one it falls back to
 /// the Phase 0 *structural* view, which shows the generated document and its explanations —
 /// still useful for inspecting a saved document, and kept so existing callers keep working.
-class WorkspaceScreen extends StatelessWidget {
+class WorkspaceScreen extends StatefulWidget {
   const WorkspaceScreen({
     super.key,
     this.document,
@@ -34,57 +34,98 @@ class WorkspaceScreen extends StatelessWidget {
   final List<String> warnings;
 
   @override
+  State<WorkspaceScreen> createState() => _WorkspaceScreenState();
+}
+
+class _WorkspaceScreenState extends State<WorkspaceScreen> {
+  bool _editingLayout = false;
+  bool _focusMode = false;
+  int _focusIndex = 0;
+
+  @override
   Widget build(BuildContext context) {
     final args = ModalRoute.of(context)?.settings.arguments;
     final argsObj = args is WorkspaceArgs ? args : null;
-    final ctl = controller ?? argsObj?.controller;
-    final notices = warnings.isNotEmpty ? warnings : (argsObj?.warnings ?? const []);
+    final ctl = widget.controller ?? argsObj?.controller;
+    final notices = widget.warnings.isNotEmpty
+        ? widget.warnings
+        : (argsObj?.warnings ?? const []);
 
     if (ctl != null) {
-      final ws = ctl.doc?['workspace'] as Map<String, dynamic>?;
       // The whole scaffold listens: the app bar's enabled state and tooltips come from the
       // engine's undo/redo depths, not from a Dart-side guess about what changed.
       return AnimatedBuilder(
         animation: ctl,
-        builder: (context, _) => Scaffold(
-          appBar: AppBar(
-            title: Text(ws?['title'] as String? ?? 'Workspace'),
-            actions: [
-              _historyButton(context, ctl, undo: true),
-              _historyButton(context, ctl, undo: false),
-              // AT-07's measurement has to be runnable on the phone that is being judged, in
-              // the build the harness installs. Tucking it here keeps it one tap from the data
-              // it measures without putting a benchmark in the user's face.
-              IconButton(
-                tooltip: 'Performance probe',
-                icon: const Icon(Icons.speed),
-                onPressed: () => Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (_) => PerfProbeScreen(controller: ctl),
+        builder: (context, _) {
+          final ws = ctl.doc?['workspace'] as Map<String, dynamic>?;
+          final phone = MediaQuery.sizeOf(context).width < 640;
+          return Scaffold(
+            appBar: AppBar(
+              title: Text(ws?['title'] as String? ?? 'Workspace'),
+              actions: [
+                _historyButton(context, ctl, undo: true),
+                _historyButton(context, ctl, undo: false),
+                IconButton(
+                  key: const Key('layout-edit-button'),
+                  tooltip:
+                      _editingLayout ? 'Finish layout editing' : 'Edit layout',
+                  icon: Icon(_editingLayout ? Icons.check : Icons.tune),
+                  onPressed: () => setState(() {
+                    _editingLayout = !_editingLayout;
+                    if (_editingLayout) _focusMode = false;
+                  }),
+                ),
+                if (phone)
+                  IconButton(
+                    key: const Key('focus-mode-button'),
+                    tooltip:
+                        _focusMode ? 'Show all components' : 'Focus one component',
+                    icon: Icon(_focusMode ? Icons.view_list : Icons.filter_center_focus),
+                    onPressed: () => setState(() {
+                      _focusMode = !_focusMode;
+                      _editingLayout = false;
+                      _focusIndex = 0;
+                    }),
+                  ),
+                // AT-07's measurement has to be runnable on the phone that is being judged, in
+                // the build the harness installs. Tucking it here keeps it one tap from the data
+                // it measures without putting a benchmark in the user's face.
+                IconButton(
+                  tooltip: 'Performance probe',
+                  icon: const Icon(Icons.speed),
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => PerfProbeScreen(controller: ctl),
+                    ),
                   ),
                 ),
-              ),
-            ],
-          ),
-          body: Column(
-            children: [
-              if (notices.isNotEmpty) _WarningBanner(warnings: notices),
-              Expanded(
-                child: WorkspaceView(
-                  controller: ctl,
-                  registry: registry ?? ComponentRegistry(),
-                  onRetry: ctl.workspaceId == null
-                      ? null
-                      : () => ctl.open(ctl.workspaceId!),
+              ],
+            ),
+            body: Column(
+              children: [
+                if (notices.isNotEmpty) _WarningBanner(warnings: notices),
+                Expanded(
+                  child: WorkspaceView(
+                    controller: ctl,
+                    registry: widget.registry ?? ComponentRegistry(),
+                    onRetry: ctl.workspaceId == null
+                        ? null
+                        : () => ctl.open(ctl.workspaceId!),
+                    layoutEditing: _editingLayout,
+                    focusMode: _focusMode,
+                    focusIndex: _focusIndex,
+                    onFocusIndexChanged: (index) =>
+                        setState(() => _focusIndex = index),
+                  ),
                 ),
-              ),
-            ],
-          ),
-        ),
+              ],
+            ),
+          );
+        },
       );
     }
 
-    final doc = document ??
+    final doc = widget.document ??
         argsObj?.document ??
         (args is Map<String, dynamic> ? args : null);
     final ws = doc?['workspace'] as Map<String, dynamic>?;

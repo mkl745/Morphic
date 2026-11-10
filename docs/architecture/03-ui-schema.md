@@ -41,23 +41,26 @@ registry. AI (Phase 2+) may *propose* documents, but they pass the identical val
     "layout": {
       "mode": "adaptive",                      // v1: adaptive | grid. "freeform" reserved (P2/P3)
       "order": ["errors_metric", "event_timeline", "log_table"],
-      "hints": {                               // manual adjustments persist here
-        "errors_metric":  { "span": 1, "height": "small" },
-        "event_timeline": { "span": 2, "height": "medium" },
-        "log_table":      { "span": 2, "height": "large" }
-      }
+      "hints": [                               // manual adjustments persist here
+        { "componentId": "errors_metric",  "span": 1, "height": "small" },
+        { "componentId": "event_timeline", "span": 2, "height": "medium" },
+        { "componentId": "log_table",      "span": 2, "height": "large" }
+      ]
     },
     "globalFilters": [],                       // FilterExpr[] — apply to all bound components
     "fieldOverrides": [                        // user corrections of engine assumptions
       { "field": "level", "role": "severity" }
     ],
-    "components": [ /* ComponentSpec[] */ ],
-    "uiState": {                               // persisted, non-authoritative conveniences
-      "focusedComponentId": null
-    }
+    "components": [ /* ComponentSpec[] */ ]
   }
 }
 ```
+
+`layout.hints` is an **array of records**, one per component (the object-by-id shape in an
+earlier draft never matched `morphic_schema::Layout`). Since 1.5.2, `ResizeComponent` writes
+`componentId`, `span` (`1..=3`) and `height` (`small | medium | large`; empty means intrinsic).
+Pass 1 rejects duplicate hints, unknown component ids, oversized spans and unknown heights, so
+the renderer can trust the vocabulary. Phone focus mode is view-only and is not persisted here.
 
 ### 2.1 ComponentSpec (common envelope)
 
@@ -152,7 +155,7 @@ aggregations in v1.0.
 | 2. Registry | type exists, `typeVersion` supported, binding matches component contract | line_chart bound to string x |
 | 3. Binding | aliases exist; fields exist; types compatible; aggregation legal | sum over `message` |
 | 4. Resources | ≤ 64 components; table projection ≤ 32 cols; filter depth/nodes; pageSize ≤ 1024; series ≤ 2000 pts; groupBy ≤ 8 | 65th component |
-| 5. Referential | unique ids; layout order ⊆ component ids (and covers all); state keys valid for type | hint for deleted component |
+| 5. Referential | unique ids; layout order ⊆ component ids (and covers all); state keys valid for type; layout hints reference real components once | hint for deleted component |
 
 Every failure returns `EngineError::Validation { pointer, rule }` with a JSON-pointer into
 the document — this is what makes AI output debuggable in Phase 2.

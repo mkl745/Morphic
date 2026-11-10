@@ -18,6 +18,7 @@ class ScriptedBridge implements MorphicBridge {
     List<String>? fields,
     List<Map<String, dynamic>>? components,
     List<String>? order,
+    List<Map<String, dynamic>>? hints,
     Map<String, String>? dtypes,
     Map<String, List<String>>? topValues,
     Map<String, List<String>>? typeOptions,
@@ -62,6 +63,7 @@ class ScriptedBridge implements MorphicBridge {
               },
             ],
         order = order ?? ['total_records', 'data_table'],
+        hints = hints ?? <Map<String, dynamic>>[],
         dtypes = dtypes ?? const {},
         topValues = topValues ?? const {},
         typeOptions = typeOptions ?? const <String, List<String>>{};
@@ -77,6 +79,9 @@ class ScriptedBridge implements MorphicBridge {
   final Map<String, List<String>> typeOptions;
   final List<Map<String, dynamic>> components;
   final List<String> order;
+
+  /// Persisted `layout.hints`, mirroring the Rust command handler for widget tests.
+  final List<Map<String, dynamic>> hints;
 
   /// Behaviour switches.
   bool failMetric = false;
@@ -156,6 +161,13 @@ class ScriptedBridge implements MorphicBridge {
     order
       ..clear()
       ..addAll(ord);
+    final nextHints = (layout?['hints'] as List? ?? const [])
+        .whereType<Map>()
+        .map((e) => _clone(e.cast<String, dynamic>()))
+        .toList();
+    hints
+      ..clear()
+      ..addAll(nextHints);
     _globalFilters = (ws['globalFilters'] as List? ?? const [])
         .map((e) => _clone((e as Map).cast<String, dynamic>()))
         .toList();
@@ -201,7 +213,11 @@ class ScriptedBridge implements MorphicBridge {
           'id': 'w1',
           'title': 'Scripted',
           'revision': _revision,
-          'layout': {'mode': 'adaptive', 'order': order},
+          'layout': {
+            'mode': 'adaptive',
+            'order': order,
+            if (hints.isNotEmpty) 'hints': hints,
+          },
           'globalFilters': _globalFilters,
           'components': components,
         },
@@ -225,7 +241,7 @@ class ScriptedBridge implements MorphicBridge {
 
   @override
   EngineInfo engineInfo() =>
-      const EngineInfo(apiVersion: 8, coreVersion: '0.1.0', engine: 'morphic');
+      const EngineInfo(apiVersion: 9, coreVersion: '0.1.0', engine: 'morphic');
 
   @override
   Map<String, dynamic> profileCsv(Uint8List bytes) => profileJson();
@@ -379,6 +395,28 @@ class ScriptedBridge implements MorphicBridge {
             affected.addAll(order);
             changed = true;
           }
+        case 'resizeComponent':
+          final id = cmd['componentId'] as String? ?? '';
+          if (!order.contains(id)) {
+            throw const MorphicBridgeException('unknown component');
+          }
+          final span = (cmd['span'] as num?)?.toInt();
+          final height = cmd['height'] as String?;
+          if (span == null && height == null) {
+            throw const MorphicBridgeException('empty resize');
+          }
+          Map<String, dynamic>? hint;
+          for (final h in hints) {
+            if (h['componentId'] == id) hint = h;
+          }
+          if (hint == null) {
+            hint = <String, dynamic>{'componentId': id, 'span': 1, 'height': ''};
+            hints.add(hint);
+          }
+          if (span != null) hint['span'] = span;
+          if (height != null) hint['height'] = height;
+          affected.addAll(order);
+          changed = true;
         case 'overrideFieldRole':
         case 'overrideFieldType':
           final field = cmd['field'] as String? ?? '';

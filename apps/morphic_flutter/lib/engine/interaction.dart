@@ -176,6 +176,21 @@ class Commands {
         'toIndex': toIndex,
       };
 
+  /// Persist one manual span/height adjustment in `layout.hints` (task 1.5.2). Omitted
+  /// fields leave the other dimension unchanged; Rust validates the closed vocabulary and
+  /// keeps one hint per component.
+  static Map<String, dynamic> resizeComponent(
+    String componentId, {
+    int? span,
+    String? height,
+  }) =>
+      {
+        'kind': 'resizeComponent',
+        'componentId': componentId,
+        if (span != null) 'span': span,
+        if (height != null) 'height': height,
+      };
+
   /// Persist a user correction to a field's inferred type. Targeted recompilation is 1.5.5;
   /// the command itself is an ordinary undoable batch as of 1.5.1.
   static Map<String, dynamic> overrideFieldType(

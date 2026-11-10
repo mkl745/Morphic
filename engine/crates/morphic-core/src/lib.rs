@@ -41,9 +41,10 @@ use thiserror::Error;
 /// v7 adds `ChangeComponentType` to the command vocabulary and `typeOptions` to the
 /// snapshot/import/apply payloads (M1.4 task 1.4.7). v8 adds `MoveComponent`,
 /// `OverrideFieldType`, `OverrideFieldRole`, undo/redo entry points and history metadata on
-/// snapshot/import/apply (M1.5 task 1.5.1). New commands are additive contract changes and
+/// snapshot/import/apply (M1.5 task 1.5.1). v9 adds `ResizeComponent` and its persisted
+/// `layout.hints` record (M1.5 task 1.5.2). New commands are additive contract changes and
 /// are versioned with the bridge (doc 02 §4).
-pub const API_VERSION: u32 = 8;
+pub const API_VERSION: u32 = 9;
 
 #[derive(Debug, Error)]
 pub enum CoreError {
@@ -288,6 +289,7 @@ fn command_label(commands: &[Command]) -> String {
         Command::SetSearch { .. } => "Changed search".into(),
         Command::ChangeComponentType { .. } => "Changed component type".into(),
         Command::MoveComponent { .. } => "Moved component".into(),
+        Command::ResizeComponent { .. } => "Resized component".into(),
         Command::OverrideFieldType { .. } => "Overrode field type".into(),
         Command::OverrideFieldRole { .. } => "Overrode field role".into(),
     }
@@ -2897,6 +2899,81 @@ mod tests {
         assert_eq!(top.undo_depth, 10);
         assert_eq!(top.redo_depth, 0);
         assert_eq!(top.state_hash, hashes[10]);
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn layout_resize_persists_a_hint_and_is_undoable_after_restart() {
+        let (engine, root) = imported("layout_resize");
+        let before = engine.snapshot("w1").unwrap().doc;
+        let table = component_id_of(&before, "data_table");
+        let out = engine
+            .apply(
+                "w1",
+                &[Command::ResizeComponent {
+                    component_id: table.clone(),
+                    span: Some(2),
+                    height: Some("large".into()),
+                }],
+                NOW,
+            )
+            .unwrap();
+        assert!(out.changed);
+        let hint = out
+            .doc
+            .workspace
+            .layout
+            .hints
+            .iter()
+            .find(|h| h.component_id == table)
+            .expect("the resize wrote one hint");
+        assert_eq!(hint.span, 2);
+        assert_eq!(hint.height, "large");
+        assert!(morphic_schema::validate(&out.doc).is_empty());
+
+        // A fresh engine is a reopen: the hint and the undo frame must both come from disk.
+        let reopened = Engine::new(&root).unwrap();
+        let snap = reopened.open_session("w1").unwrap();
+        assert_eq!(snap.undo_depth, 1);
+        let loaded = snap.doc.workspace.layout.hints;
+        assert_eq!(loaded.len(), 1);
+        assert_eq!(loaded[0].component_id, table);
+        assert_eq!(loaded[0].span, 2);
+        assert_eq!(loaded[0].height, "large");
+        let undone = reopened.undo("w1", NOW).unwrap();
+        assert!(undone.doc.workspace.layout.hints.is_empty());
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn an_invalid_resize_rejects_the_whole_batch() {
+        let (engine, root) = imported("layout_resize_reject");
+        let before = engine.snapshot("w1").unwrap().doc;
+        let table = component_id_of(&before, "data_table");
+        let err = engine
+            .apply(
+                "w1",
+                &[
+                    Command::MoveComponent {
+                        component_id: table.clone(),
+                        to_index: 0,
+                    },
+                    Command::ResizeComponent {
+                        component_id: table,
+                        span: Some(4),
+                        height: None,
+                    },
+                ],
+                NOW,
+            )
+            .unwrap_err();
+        assert!(err.to_string().contains("invalid layout span"));
+        let after = engine.snapshot("w1").unwrap().doc;
+        assert_eq!(after.workspace.revision, before.workspace.revision);
+        assert_eq!(
+            serde_json::to_value(&after.workspace.layout).unwrap(),
+            serde_json::to_value(&before.workspace.layout).unwrap()
+        );
         std::fs::remove_dir_all(&root).ok();
     }
 

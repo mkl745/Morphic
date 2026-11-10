@@ -85,14 +85,14 @@ Future<void>              save(Session s);                  // explicit; autosav
 
 The aspirational union above lists commands planned for later milestones; the shipped
 `morphic_core::Command` has five variants (`SetGlobalFilter`, `SetComponentFilter`,
-`SetComponentSort`, `SetSearch`, **`ChangeComponentType`**). Adding the sixth was an additive
-contract change, so `API_VERSION` went from 6 to **7** (§5). No FFI entry point changed shape:
-the new command travels inside the existing `morphic_apply_commands` JSON array, and a failed
-batch still applies nothing.
+`SetComponentSort`, `SetSearch`, **`ChangeComponentType`**). Adding that fifth variant was an
+additive contract change, so `API_VERSION` went from 6 to **7** (§5). No FFI entry point changed
+shape: the new command travels inside the existing `morphic_apply_commands` JSON array, and a
+failed batch still applies nothing.
 
-The shipped apply result is `{revision, affected, changed, doc, typeOptions}` — the
-`recompilation`/`error?` fields and undo/redo arrive with M1.5. `typeOptions` also appears on
-`snapshot` and on the import outcome: a map from component id to the conversion targets the
+The shipped apply result is `{revision, affected, changed, doc, typeOptions}` — `recompilation`
+remains deferred to 1.5.5, while undo/redo landed in 1.5.1 (§2.4.2). `typeOptions` also appears
+on `snapshot` and on the import outcome: a map from component id to the conversion targets the
 engine can validate against the **live** dataset profile. This keeps the UI's "Change view"
 menu engine-authoritative (docs/architecture/04 §4.1) instead of making Dart a second
 compiler. It is bridge payload, not part of `WorkspaceDoc`, so schema v1.0 is unchanged.
@@ -114,6 +114,17 @@ truncates redo; a failed batch pushes nothing. `WorkspaceSnapshot.dirty`, explic
 and `recompilation` remain deferred to 1.5.4 / 1.5.5, and the field-override commands do not
 yet trigger targeted recompilation — they persist and are undoable, which is what AT-13's
 mixed run needs.
+
+#### 2.4.3 As shipped in M1.5.2 (task 1.5.2)
+
+`ResizeComponent { componentId, span?, height? }` is the additive v9 command behind manual
+layout. Omitted fields leave the other dimension unchanged; `span` is one of `1..=3` columns
+and `height` is `small | medium | large`. Rust writes exactly one record per component into
+`layout.hints`, validates the whole result through pass 1, and treats a no-op as no change.
+Flutter's long-press drag handle emits the existing `MoveComponent`; its pinch-free menu emits
+`ResizeComponent`. Phone focus mode is a view convenience only and does **not** mutate the
+document. `typeOptions` and the history fields keep their v8 shapes. `API_VERSION` went
+**8 → 9** (§5); no entry point changed shape.
 
 ### 2.5 Data plane
 
@@ -188,8 +199,12 @@ Errors MUST NOT embed raw user data rows (privacy in logs); they carry positions
 - **v8 (M1.5 task 1.5.1)** adds `MoveComponent`, `OverrideFieldType`, `OverrideFieldRole`,
   two `undo`/`redo` entry points and history metadata on snapshot/import/apply. No existing
   entry point changed shape; older clients see extra response fields and two more exports.
-- Generated frb code is **committed**; CI regenerates and diffs to catch drift
-  (see [CI/CD](../engineering/ci-cd.md)).
+- **v9 (M1.5 task 1.5.2)** adds `ResizeComponent` and the persisted `layout.hints` record.
+  It travels through the existing `morphic_apply_commands` array; no entry point changed shape.
+- The FFI boundary is a hand-written JSON surface over `morphic_*` exports, not generated frb
+  code. CI compiles and tests both sides, checks generated schema artifacts for drift, and
+  builds an APK whose stamp is compared with the commit SHA (see
+  [CI/CD](../engineering/ci-cd.md)).
 
 ## 6. Performance rules of the boundary
 

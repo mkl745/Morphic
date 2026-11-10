@@ -146,7 +146,7 @@ class RecordingBridge implements MorphicBridge {
 
   @override
   EngineInfo engineInfo() =>
-      const EngineInfo(apiVersion: 8, coreVersion: '0.1.0', engine: 'morphic');
+      const EngineInfo(apiVersion: 9, coreVersion: '0.1.0', engine: 'morphic');
 
   @override
   Map<String, dynamic> profileCsv(Uint8List bytes) => {'rowCount': 3, 'fieldCount': 2};

@@ -63,6 +63,10 @@ label, stateHash, doc}`; `history.json` holds the reconciled stacks; undo/redo b
 revision but `stateHash` excludes `revision`/`modifiedAt`. A crash between the history file
 and the document is repaired by matching the authoritative document's hash on reopen.
 
+**Since 1.5.2:** `ResizeComponent` writes the closed-vocabulary `layout.hints` records into
+that same `doc`, so span/height changes survive reopen and undo restores the previous hints.
+Phone focus mode is view-only and deliberately leaves no journal entry.
+
 ## 4. Workspace lifecycle operations
 
 | Op | Semantics |
