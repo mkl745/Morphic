@@ -130,7 +130,7 @@ class WorkspaceView extends StatelessWidget {
             columns: columns,
           );
         }
-        if (focusMode && constraints.maxWidth < 640) {
+        if (focusMode && MediaQuery.sizeOf(context).width < 640) {
           return _focusedLayout(
             context,
             header: header,
@@ -212,11 +212,11 @@ class WorkspaceView extends StatelessWidget {
     required int columns,
   }) {
     Future<void> reorder(int oldIndex, int newIndex) async {
-      final to = newIndex > oldIndex ? newIndex - 1 : newIndex;
       final id = _idOf(components[oldIndex]);
       if (id.isEmpty) return;
+      // onReorderItem already adjusts newIndex for the removed item; do not subtract again.
       final applied =
-          await controller.applyCommands([Commands.moveComponent(id, to)]);
+          await controller.applyCommands([Commands.moveComponent(id, newIndex)]);
       if (applied == null && context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(controller.error ?? 'Could not reorder this view')),
@@ -249,14 +249,15 @@ class WorkspaceView extends StatelessWidget {
             padding: const EdgeInsets.all(MorphicSpace.lg),
             buildDefaultDragHandles: false,
             itemCount: components.length,
-            onReorder: (oldIndex, newIndex) =>
+            onReorderItem: (oldIndex, newIndex) =>
                 unawaited(reorder(oldIndex, newIndex)),
             itemBuilder: (context, index) {
               final spec = components[index];
               final id = _idOf(spec);
               final hint = hints[id];
               final span = _spanOf(hint, 1, columns);
-              final height = hint?['height'] as String? ?? 'auto';
+              final heightName = hint?['height'] as String? ?? '';
+              final height = heightName.isEmpty ? 'auto' : heightName;
               return Padding(
                 key: ValueKey('layout-tile-$id'),
                 padding: const EdgeInsets.only(bottom: MorphicSpace.md),

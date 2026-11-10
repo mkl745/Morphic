@@ -38,7 +38,11 @@ ComponentRegistry _registry() => ComponentRegistry(
 Widget _host(Widget home, {Size size = const Size(390, 900)}) => MaterialApp(
       home: MediaQuery(
         data: MediaQueryData(size: size),
-        child: home,
+        child: SizedBox(
+          width: size.width,
+          height: size.height,
+          child: home,
+        ),
       ),
     );
 
