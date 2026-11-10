@@ -179,9 +179,10 @@ impl HistoryState {
         // Prefer an exact (hash, revision) match. A crash between the history file and the
         // document may leave the revision stale, in which case the semantic hash still finds
         // the right frame without resurrecting a different state that merely looks alike.
-        let exact = self.frames.iter().position(|f| {
-            f.state_hash == hash && f.revision == doc.workspace.revision
-        });
+        let exact = self
+            .frames
+            .iter()
+            .position(|f| f.state_hash == hash && f.revision == doc.workspace.revision);
         let found = exact.or_else(|| self.frames.iter().position(|f| f.state_hash == hash));
         if let Some(i) = found {
             let frame = &mut self.frames[i];
@@ -395,8 +396,8 @@ impl FileStore {
             return Ok(HistoryState::seed(current));
         }
         let bytes = fs::read(&path)?;
-        let parsed: HistoryState = serde_json::from_slice(&bytes)
-            .unwrap_or_else(|_| HistoryState::seed(current));
+        let parsed: HistoryState =
+            serde_json::from_slice(&bytes).unwrap_or_else(|_| HistoryState::seed(current));
         Ok(parsed.reconcile(current))
     }
 
@@ -875,10 +876,7 @@ mod tests {
         let (entries, _) = s.read_journal("w1").unwrap();
         assert_eq!(entries.len(), HISTORY_LIMIT);
         assert_eq!(entries.first().unwrap().revision, 6);
-        assert_eq!(
-            entries.last().unwrap().revision,
-            HISTORY_LIMIT as u64 + 5
-        );
+        assert_eq!(entries.last().unwrap().revision, HISTORY_LIMIT as u64 + 5);
         fs::remove_dir_all(&root).ok();
     }
 

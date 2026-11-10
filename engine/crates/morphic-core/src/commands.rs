@@ -18,7 +18,7 @@
 //! the result cache is keyed by `(dataRevision, planHash)`, so an unaffected component hits the
 //! cache even if the UI asks for it again.
 
-use morphic_schema::{DATA_TYPES, FIELD_ROLES, FieldOverride, FilterExpr, SortRule, WorkspaceDoc};
+use morphic_schema::{FieldOverride, FilterExpr, SortRule, WorkspaceDoc, DATA_TYPES, FIELD_ROLES};
 use serde::{Deserialize, Serialize};
 
 use crate::CoreError;
@@ -200,12 +200,8 @@ pub(crate) fn apply(
                 if !DATA_TYPES.contains(&dtype.as_str()) {
                     return Err(at(i, format!("unknown dtype override '{dtype}'")));
                 }
-                override_changed |= upsert_override(
-                    &mut next,
-                    field.clone(),
-                    Some(dtype.clone()),
-                    None,
-                );
+                override_changed |=
+                    upsert_override(&mut next, field.clone(), Some(dtype.clone()), None);
             }
             Command::OverrideFieldRole { field, role } => {
                 check_override_field(field, fields).map_err(|m| at(i, m))?;

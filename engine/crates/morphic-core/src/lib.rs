@@ -24,7 +24,9 @@ pub use commands::Command;
 
 use morphic_model::{DatasetProfile, ImportReport, Table};
 use morphic_schema::WorkspaceDoc;
-use morphic_workspace::{FileStore, HistoryFrame, HistoryState, StoreError, WorkspaceStore, state_hash};
+use morphic_workspace::{
+    state_hash, FileStore, HistoryFrame, HistoryState, StoreError, WorkspaceStore,
+};
 
 /// Re-exported so the FFI bridge can create and trip a cancellation token without taking a
 /// direct dependency on the ingest crate. Core stays the bridge's only engine surface.
