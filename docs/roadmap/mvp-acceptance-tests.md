@@ -110,14 +110,23 @@ operations with bounded journal-backed stacks, and
 `engine/crates/morphic-core/src/lib.rs::at13_ten_mixed_commands_undo_and_redo_match_every_state_hash`
 checks ten mixed commands (filters, sort/search, a move, two type changes, two overrides)
 against state hashes at every undo and redo step, with a separate restart test for undo depth.
-The **device** half of AT-13, the M1.5 kill-mid-save chaos suite and the ≤500 ms reopen
-measurement are still owed, so AT-13 is not yet formally green.
+Run 42863981801 (`7e59106`) made that automated half **6/6 CI-green**. The **device** half of
+AT-13, the M1.5 kill-mid-save chaos suite and the ≤500 ms reopen measurement are still owed, so
+AT-13 is not yet formally green.
 
 **AT-14 — Manual layout adjustment.**
 Given a workspace on a phone, when the user reorders components, changes a span/height,
 and switches a bar chart to a line chart (compatible binding), then changes persist across
 reopen, are undoable, and incompatible type switches are either prevented or
 validator-rejected with no state change. *(device)*
+
+*1.5.2 note.* The automated half of AT-14 is now paid: `MoveComponent` reorders the persisted
+layout, `ResizeComponent` writes closed-vocabulary `layout.hints`, the runtime offers a long-press
+drag handle and a pinch-free span/height menu, and phone focus mode stays view-only. Rust tests
+prove hints survive reopen and undo; Dart widget tests prove the gesture, menu command, hint
+geometry and focus mode. Run 42873440886 (`6752d0d`) is **6/6 CI-green**. Incompatible type
+switches were already validator-rejected in 1.4.7. The **device** half is still owed, so AT-14
+is not yet formally green.
 
 **AT-15 — Library lifecycle.**
 Given ≥ 3 workspaces, when renaming, duplicating, and deleting, then the library reflects
@@ -133,6 +142,10 @@ content re-links by hash and restores full function. *(automated chaos)*
 Given a misdetected field (e.g. numeric-looking ids typed as int), when the user overrides
 type/role, then only affected components recompile, the override persists, and undo
 restores the original inference. *(automated)*
+
+*1.5.1 note.* `OverrideFieldType` and `OverrideFieldRole` persist and are undoable, but there is
+no table-header correction UI and no targeted recompilation of affected bindings. Both arrive
+with 1.5.5, so AT-17 is not green.
 
 **AT-18 — Responsive & accessibility.**
 Given compact/medium/expanded widths and text scale 1.3, then layouts follow the design
