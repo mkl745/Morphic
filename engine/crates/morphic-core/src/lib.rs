@@ -2880,17 +2880,17 @@ mod tests {
 
         // Undo all ten, then redo all ten: every intermediate state must match the hash
         // recorded when the mixed run first produced it (AT-13).
-        for i in (0..10).rev() {
+        for (i, expected) in hashes.iter().enumerate().take(10).rev() {
             let out = engine.undo("w1", NOW).unwrap();
-            assert_eq!(out.state_hash, hashes[i], "undo to state {i}");
+            assert_eq!(out.state_hash, expected.as_str(), "undo to state {i}");
             assert!(out.changed);
         }
         let bottom = engine.snapshot("w1").unwrap();
         assert_eq!(bottom.undo_depth, 0);
         assert_eq!(bottom.redo_depth, 10);
-        for i in 1..=10 {
+        for (i, expected) in hashes.iter().enumerate().skip(1) {
             let out = engine.redo("w1", NOW).unwrap();
-            assert_eq!(out.state_hash, hashes[i], "redo to state {i}");
+            assert_eq!(out.state_hash, expected.as_str(), "redo to state {i}");
             assert!(out.changed);
         }
         let top = engine.snapshot("w1").unwrap();

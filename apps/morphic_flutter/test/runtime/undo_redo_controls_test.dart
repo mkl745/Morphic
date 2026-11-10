@@ -81,6 +81,6 @@ void main() {
     await _afterTap(tester);
     expect(find.byKey(const Key('undo-snackbar')), findsOneWidget);
     expect(find.textContaining('undo: no history available'), findsOneWidget);
-    expect(controller.undoDepth, 1, 'a rejected undo changes no history');
+    expect(controller.undoDepth, 1, reason: 'a rejected undo changes no history');
   });
 }

@@ -845,7 +845,8 @@ mod tests {
         s.append_journal("w1", 2, "[]").unwrap();
         s.append_journal("w1", 3, "[]").unwrap();
         let (entries, torn) = s.read_journal("w1").unwrap();
-        assert_eq!(entries.len(), 2);
+        // save_workspace now writes one history state before the two explicit appends.
+        assert_eq!(entries.len(), 3);
         assert_eq!(torn, 0);
         fs::remove_dir_all(&root).ok();
     }
@@ -1012,7 +1013,8 @@ mod tests {
 
         let (entries, torn) = s.read_journal("w1").unwrap();
         assert_eq!(torn, 1);
-        assert_eq!(entries.len(), 1);
+        // One entry from save_workspace, one from journal_revision, one torn line.
+        assert_eq!(entries.len(), 2);
         // The intact revision-2 record still recovers.
         assert_eq!(s.load_workspace("w1").unwrap().workspace.revision, 2);
         fs::remove_dir_all(&root).ok();
@@ -1044,6 +1046,9 @@ mod tests {
         let (s, root) = store();
         s.save_workspace(&doc("w1")).unwrap();
         fs::write(s.doc_path("w1"), b"garbage").unwrap();
+        // save_workspace now retains a bounded history journal. Delete it so this test still
+        // exercises the "unparseable document with nothing to rebuild from" branch.
+        fs::remove_file(s.journal_path("w1")).unwrap();
         let err = s.recover_workspace("w1");
         assert!(matches!(err, Err(StoreError::Corrupt(_))));
         let kept = s.workspace_dir("w1").join("workspace.corrupt.json");
