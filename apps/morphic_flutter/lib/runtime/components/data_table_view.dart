@@ -446,20 +446,29 @@ class _DataTableViewState extends State<DataTableView> {
 
   Widget _body(ThemeData theme, List<String> cols, double totalWidth) {
     if (_state == _Load.failed) {
-      return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text('Could not load rows',
-                style: theme.textTheme.bodyMedium
-                    ?.copyWith(color: MorphicColors.error)),
-            if (_error != null)
-              Padding(
-                padding: const EdgeInsets.all(MorphicSpace.sm),
-                child: Text(_error!, style: theme.textTheme.bodySmall),
-              ),
-            TextButton(onPressed: _fetch, child: const Text('Retry')),
-          ],
+      // The engine's error text is evidence, so it must never be clipped. The table has a
+      // fixed height and a scrollable body: a taller header (the "Why this view?" button) or
+      // a long error message can leave less than the ~150 dp this state wants, and a bare
+      // Column then overflows the RenderFlex. Scrolling keeps every word reachable. Found by
+      // the degraded-mode suite when 1.4.6 added 28 dp to the header.
+      return SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: MorphicSpace.md),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('Could not load rows',
+                  style: theme.textTheme.bodyMedium
+                      ?.copyWith(color: MorphicColors.error)),
+              if (_error != null)
+                Padding(
+                  padding: const EdgeInsets.all(MorphicSpace.sm),
+                  child: Text(_error!, style: theme.textTheme.bodySmall),
+                ),
+              TextButton(onPressed: _fetch, child: const Text('Retry')),
+            ],
+          ),
         ),
       );
     }

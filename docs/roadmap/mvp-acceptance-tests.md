@@ -75,6 +75,17 @@ Given the labeled corpus, then planner selections match expected component sets 
 **(H)**; temporal data always gets a time-based view; severity data always gets an error
 metric; every workspace always gets a table. *(automated, fixture-scored)*
 
+*Scoping note, added after 1.4.5 with the reason stated.* The scorer asserts the temporal
+invariant for **bucketable** time axes (`dtype == Timestamp`, or a Temporal role on a numeric
+column). CLF month names, RFC3164 timestamps with no year, and unresolved day/month order stay
+`Utf8` on purpose: parsing them would invent dates, and the query layer cannot bucket text.
+Asking the planner for a chart on such an axis produced three cards that validated cleanly and
+then failed at the first draw. The planner now declines those axes, and the scorecard prints a
+named "Known gap — text time axes" shortfall. **The labels still ask for those three time views**,
+so they score as misses (96.6%, not 100%) until ingest parses CLF and RFC3164. The invariant was
+scoped to what can be measured, not the target lowered to what the engine happens to do; the
+gap stays visible in the score, in `fixtures/expected/README.md`, and in `m1.4-status.md` §11.
+
 **AT-13 — Undo/redo.**
 Given a sequence of 10 mixed commands (filters, moves, type changes, overrides), when
 undoing all and redoing all, then state hashes match the originals at every step, and
