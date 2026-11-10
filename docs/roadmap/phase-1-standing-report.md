@@ -18,8 +18,8 @@ records the decisions, the measured evidence, and why the milestone's **exit is 
 
 | Question | Answer |
 |---|---|
-| Tasks finished | **22 of 41** (54%) |
-| Tasks not finished | **21** — 19 core + 2 stretch (◇) |
+| Tasks finished | **23 of 41** (56%) |
+| Tasks not finished | **20** — 18 core + 2 stretch (◇) |
 | Milestones code-complete | **3 of 7** (M1.1, M1.2, M1.3) |
 | Milestones not started | **3** (M1.5 → M1.7); M1.4 in progress |
 | Milestone exits formally met | **0 of 7** |
@@ -27,23 +27,23 @@ records the decisions, the measured evidence, and why the milestone's **exit is 
 | Acceptance tests partially evidenced | **7** |
 | Acceptance tests not yet started | **5** |
 | Evidence gaps no task row covers | **6** (see §6) |
-| Remaining core effort, by the plan's own S/M/L legend | **22½–40½ focused days** |
+| Remaining core effort, by the plan's own S/M/L legend | **22–40 focused days** |
 
 **The most important finding is the last row.** The plan estimates *all of Phase 1* at 30–40
-focused days. With M1.3 and tasks 1.4.1–1.4.5 finished, the **17 unfinished core tasks sum to
-22½–40½ days**
+focused days. With M1.3 and tasks 1.4.1–1.4.6 finished, the **16 unfinished core tasks sum to
+22–40 days**
 under the plan's own legend (S ≈ ½ day, M ≈ 1–2, L ≈ 3–5), excluding the two ◇ stretch items:
 
 | Remaining milestone | Core tasks | Focused days |
 |---|---|---|
-| M1.4 Visualization + planner | 2 | 1½–2½ |
+| M1.4 Visualization + planner | 1 | 1–2 |
 | M1.5 Lifecycle & layout | 5 | 7–13 |
 | M1.6 Experience pass | 5 | 8–14 |
 | M1.7 Hardening & release | 5 | 6–11 |
-| **Total** | **17** | **22½–40½** |
+| **Total** | **16** | **22–40** |
 
 The figure is recomputed from the plan's rows on every update rather than decremented by hand.
-The estimate was optimistic before any work started and 22 finished tasks have not made it less
+The estimate was optimistic before any work started and 23 finished tasks have not made it less
 so. §7 proposes a re-baseline.
 
 ---
@@ -55,7 +55,7 @@ so. §7 proposes a re-baseline.
 | M1.1 Vertical slice | 7 | 7 | **complete** | **unmet** — needs a mid-class device; AT-02 unscored; 10 MB ≤ 3 s unmeasured |
 | M1.2 Format breadth | 5 | 5 | **complete** | **unmet** — AT-04's timeline clause depends on M1.4; device evidence pending (fuzz smoke now clean) |
 | M1.3 Interactivity | 5 | 5 | **complete** | **unmet** — AT-06 ✓ AT-08 ✓; AT-07 blocked only on mid-class ARM latency |
-| M1.4 Visualization + planner | 7 | 5 | in progress — all five painters and planner v1 shipped; 1.4.6/1.4.7 next | — |
+| M1.4 Visualization + planner | 7 | 6 | in progress — all five painters, planner v1 and the explanation sheet shipped; 1.4.7 next | — |
 | M1.5 Lifecycle & layout | 6 | 0 | not started | — |
 | M1.6 Experience pass | 6 | 0 | not started | — |
 | M1.7 Hardening & release | 5 | 0 | not started | — |
@@ -117,13 +117,14 @@ templates, and sharing into Morphic.
 | 1.4.4 timeline painter | `f8cb419` | 42507161800 | 6/6 ✅ |
 | Build stamp + stamp gate | `ac98dad` | 42520442345 | 6/6 ✅ |
 | Timeline lane toggle declared | `6339c53` | 42656434678 | 6/6 ✅ |
-| **1.4.5 planner v1 + AT-12 scorer** | **`a3888f5`** | **42691694719** | **6/6 ✅** |
+| 1.4.5 planner v1 + AT-12 scorer | `a3888f5` | 42691694719 | 6/6 ✅ |
+| **1.4.6 "Why this view?" sheet** | **`2705e92`** | **42744816936** | **6/6 ✅** |
 
-Current totals: **652 Rust tests** across 8 engine crates + the bridge (counted as `#[test]`
-functions: ingest 310, query 82, core 66, schema 33, compiler 50, semantic 27, workspace 22,
-model 11, bridge 51), **435 Dart tests** plus **54 golden images**, and **20 Python cases** for
-the device-evidence gate. 1.4.5 added 24: the compiler's rule tests (31 → 50) and the AT-12
-scorer (core 61 → 66).
+Current totals: **653 Rust tests** across 8 engine crates + the bridge (counted as `#[test]`
+functions: ingest 310, query 82, core 67, schema 33, compiler 50, semantic 27, workspace 22,
+model 11, bridge 51), **447 Dart tests** plus **54 golden images**, and **20 Python cases** for
+the device-evidence gate. 1.4.5 added 24 Rust tests (compiler 31 → 50, core 61 → 66); 1.4.6
+added one Rust test (the corpus-wide AT-10 explanation gate) and 12 Dart tests.
 M1.3 added 72 Rust tests: `morphic-query` 21 → 56, `morphic-core` 35 → 52, `morphic-schema`
 24 → 33, bridge 32 → 48; and 119 Dart tests, the first substantial UI test suite.
 Gates on the latest run: `PERMISSIONS_OK`, `ENGINE_FFI_OK`, `POC_OK`,
@@ -147,7 +148,7 @@ three ABIs.
 | AT-07 | Sorting | partial | correct, stable, nulls-last ✓; tap-to-cycle indicator read from persisted state ✓; scroll reset ✓; 36–70 ms on CI x86 for 100k×10, **not** the ≤150 ms mid-ARM figure |
 | AT-08 | Search | **green** | case-insensitive, field-scoped, commutes with filter/sort (property test), debounced as-you-type UI. The test itself specifies no latency bound |
 | AT-09 | Save & reopen | partial | restore ✓; filters/sort/search now persist and survive reopen (tested); ≤ 500 ms unmeasured; field overrides are M1.5 |
-| AT-10 | UI schema validity | **green** | gate-enforced on every run |
+| AT-10 | UI schema validity | **green** | gate-enforced on every run; since 1.4.6 the explanation clause is checked across all 21 fixtures, not just one synthetic profile |
 | AT-11 | Component states | partial | **5 of 5** components paintable; **54 golden images** committed and gated. They pin geometry, colour and layout — with no font asset the test font draws boxes, so wording is asserted behaviourally instead |
 | AT-12 | Selection quality | **green** | **96.6% (85/88) on 21 labelled files**, target 85%; all three guarantees asserted per file; every generated chart rendered against its own fixture, 0 failures. Tuned against this corpus, so an upper bound. The 3 misses are text time axes the query layer cannot bucket — labels deliberately left asking for the chart |
 | AT-13 | Undo/redo | not started | M1.5 |
@@ -212,9 +213,11 @@ repainted **zero** times and the geometry was never rebuilt, while the overlay r
 each of the 56 bucket changes. **1.4.5 is now done too**: the rule table is complete, the error
 metric and severity split are reachable from generated documents, and AT-12 is scored at 96.6%
 against 21 hand-labelled files. The scorer also renders every generated chart, which is how it
-caught three cards that selected correctly and then failed at the first draw. **Next is 1.4.6**,
-the "Why this view?" sheet — every component already carries its explanation object.
-See [m1.4-status.md](m1.4-status.md) §11.
+caught three cards that selected correctly and then failed at the first draw. **1.4.6 is done
+as well**: every component now opens a sheet showing its rule, evidence and confidence, and
+AT-10's explanation clause is finally gated across the whole corpus. **Next is 1.4.7**,
+`ChangeComponentType` — the last task in M1.4. See
+[m1.4-status.md](m1.4-status.md) §12.
 
 "No Dart-side data logic" is now enforced by tests rather than by absence: the table sends
 commands and renders pages, and the interaction suite asserts that no query plan was ever

@@ -65,6 +65,13 @@ Given every corpus fixture, when compiled, then the WorkspaceDoc passes all 5 va
 passes, contains ≤ 6 components, uses only registered types, and each component has a
 non-empty explanation with evidence. *(automated)*
 
+*1.4.6 note.* The explanation clause is gated corpus-wide in
+`engine/crates/morphic-core/tests/plan_accuracy.rs`: `reason` must be a real `RULE_TABLE` id,
+`detail` non-blank, `evidence` non-empty and non-blank, `confidence` in `0..1`. The schema
+validator deliberately still accepts `explanation: null` so v1.0 can open hand-written and
+older documents; the guarantee applies to documents the compiler produces, which is what this
+test says. Before 1.4.6 only one synthetic profile was checked.
+
 **AT-11 — Component instantiation & states.**
 Given workspaces exercising all five MVP components, then each renders normal, loading,
 empty-after-filter, and binding-error states correctly in both themes (goldens), and
