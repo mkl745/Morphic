@@ -316,6 +316,30 @@
       ],
       "type": "object"
     },
+    "FieldOverride": {
+      "additionalProperties": false,
+      "properties": {
+        "dtype": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "field": {
+          "type": "string"
+        },
+        "role": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "field"
+      ],
+      "type": "object"
+    },
     "FilterExpr": {
       "additionalProperties": false,
       "description": "A safe filter expression. Phase 0 uses a flat node representation; the typed-tree grammar with the full operator set is finalized in M1.3 (docs/architecture/03 §2.3).",
@@ -494,6 +518,12 @@
         "dataSources": {
           "items": {
             "$ref": "#/definitions/DataSourceRef"
+          },
+          "type": "array"
+        },
+        "fieldOverrides": {
+          "items": {
+            "$ref": "#/definitions/FieldOverride"
           },
           "type": "array"
         },

@@ -21,6 +21,44 @@ class FakeBridge implements MorphicBridge {
   }
 
   @override
+  Map<String, dynamic> undo({
+    required String storageRoot,
+    required String workspaceId,
+    required String nowIso,
+  }) =>
+      {
+        'revision': 1,
+        'affected': <String>[],
+        'changed': false,
+        'doc': _sampleDoc(),
+        'stateHash': '',
+        'undoDepth': 0,
+        'redoDepth': 0,
+        'undoLabel': '',
+        'redoLabel': '',
+        'label': 'Nothing to undo',
+      };
+
+  @override
+  Map<String, dynamic> redo({
+    required String storageRoot,
+    required String workspaceId,
+    required String nowIso,
+  }) =>
+      {
+        'revision': 1,
+        'affected': <String>[],
+        'changed': false,
+        'doc': _sampleDoc(),
+        'stateHash': '',
+        'undoDepth': 0,
+        'redoDepth': 0,
+        'undoLabel': '',
+        'redoLabel': '',
+        'label': 'Nothing to redo',
+      };
+
+  @override
   Map<String, dynamic> componentPage({
     required String storageRoot,
     required String workspaceId,
@@ -39,7 +77,7 @@ class FakeBridge implements MorphicBridge {
 
   @override
   EngineInfo engineInfo() =>
-      const EngineInfo(apiVersion: 5, coreVersion: '0.1.0', engine: 'morphic');
+      const EngineInfo(apiVersion: 8, coreVersion: '0.1.0', engine: 'morphic');
 
   @override
   Map<String, dynamic> profileCsv(Uint8List bytes) => {

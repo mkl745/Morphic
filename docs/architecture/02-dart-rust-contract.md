@@ -97,6 +97,24 @@ engine can validate against the **live** dataset profile. This keeps the UI's "C
 menu engine-authoritative (docs/architecture/04 §4.1) instead of making Dart a second
 compiler. It is bridge payload, not part of `WorkspaceDoc`, so schema v1.0 is unchanged.
 
+#### 2.4.2 As shipped in M1.5.1 (task 1.5.1)
+
+`undo(Session)` / `redo(Session)` now exist as real FFI entry points
+(`morphic_undo` / `morphic_redo`), and `MoveComponent`, `OverrideFieldType` and
+`OverrideFieldRole` joined the command union. All are additive, so `API_VERSION` went
+**7 → 8** (§5). The apply/snapshot/import payloads gained `stateHash`, `undoDepth`,
+`redoDepth`, `undoLabel`, `redoLabel`, and apply/undo/redo also return `label` for the app
+bar's snackbar. `stateHash` deliberately excludes `revision` and `modifiedAt`, so undoing
+and redoing a state hash-match the original without those bookkeeping fields getting in the
+way (AT-13).
+
+Rust owns the bounded stacks (cap 100), the journal's `inverseSummary` and the document
+restore; Dart only renders the returned document and shows the label. A new command batch
+truncates redo; a failed batch pushes nothing. `WorkspaceSnapshot.dirty`, explicit `save()`
+and `recompilation` remain deferred to 1.5.4 / 1.5.5, and the field-override commands do not
+yet trigger targeted recompilation — they persist and are undoable, which is what AT-13's
+mixed run needs.
+
 ### 2.5 Data plane
 
 ```dart
@@ -167,6 +185,9 @@ Errors MUST NOT embed raw user data rows (privacy in logs); they carry positions
 - **v7 (M1.4 task 1.4.7)** adds `ChangeComponentType` to the command union and the
   `typeOptions` map to snapshot/import/apply payloads. Older clients simply see an extra field
   and one more command name; no entry point was added, removed or reshaped.
+- **v8 (M1.5 task 1.5.1)** adds `MoveComponent`, `OverrideFieldType`, `OverrideFieldRole`,
+  two `undo`/`redo` entry points and history metadata on snapshot/import/apply. No existing
+  entry point changed shape; older clients see extra response fields and two more exports.
 - Generated frb code is **committed**; CI regenerates and diffs to catch drift
   (see [CI/CD](../engineering/ci-cd.md)).
 

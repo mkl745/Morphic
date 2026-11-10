@@ -18,7 +18,7 @@
 //! the result cache is keyed by `(dataRevision, planHash)`, so an unaffected component hits the
 //! cache even if the UI asks for it again.
 
-use morphic_schema::{FilterExpr, SortRule, WorkspaceDoc};
+use morphic_schema::{DATA_TYPES, FIELD_ROLES, FieldOverride, FilterExpr, SortRule, WorkspaceDoc};
 use serde::{Deserialize, Serialize};
 
 use crate::CoreError;
@@ -56,6 +56,18 @@ pub enum Command {
         #[serde(rename = "targetType")]
         target_type: String,
     },
+    /// Reorder one component in the persisted layout. The whole order is still owned by Rust.
+    MoveComponent {
+        #[serde(rename = "componentId")]
+        component_id: String,
+        #[serde(rename = "toIndex")]
+        to_index: usize,
+    },
+    /// Persist a user correction to a field's inferred physical type. Recompilation of the
+    /// affected bindings is 1.5.5; storing and undoing the command arrives with 1.5.1.
+    OverrideFieldType { field: String, dtype: String },
+    /// Persist a user correction to a field's inferred semantic role.
+    OverrideFieldRole { field: String, role: String },
 }
 
 /// The result of applying a batch to a document. `changed` is false for a no-op batch.
@@ -87,6 +99,8 @@ pub(crate) fn apply(
     let mut next = doc.clone();
     let mut touched: Vec<String> = Vec::new();
     let mut global_changed = false;
+    let mut layout_changed = false;
+    let mut override_changed = false;
     let mut type_changed = false;
 
     for (i, cmd) in commands.iter().enumerate() {
@@ -166,6 +180,41 @@ pub(crate) fn apply(
                 touched.push(component_id.clone());
                 type_changed = true;
             }
+            Command::MoveComponent {
+                component_id,
+                to_index,
+            } => {
+                let order = &mut next.workspace.layout.order;
+                let Some(from) = order.iter().position(|id| id == component_id) else {
+                    return Err(at(i, format!("unknown component '{component_id}'")));
+                };
+                let to = (*to_index).min(order.len().saturating_sub(1));
+                if from != to {
+                    let id = order.remove(from);
+                    order.insert(to, id);
+                    layout_changed = true;
+                }
+            }
+            Command::OverrideFieldType { field, dtype } => {
+                check_override_field(field, fields).map_err(|m| at(i, m))?;
+                if !DATA_TYPES.contains(&dtype.as_str()) {
+                    return Err(at(i, format!("unknown dtype override '{dtype}'")));
+                }
+                override_changed |= upsert_override(
+                    &mut next,
+                    field.clone(),
+                    Some(dtype.clone()),
+                    None,
+                );
+            }
+            Command::OverrideFieldRole { field, role } => {
+                check_override_field(field, fields).map_err(|m| at(i, m))?;
+                if !FIELD_ROLES.contains(&role.as_str()) {
+                    return Err(at(i, format!("unknown role override '{role}'")));
+                }
+                override_changed |=
+                    upsert_override(&mut next, field.clone(), None, Some(role.clone()));
+            }
             Command::SetSearch { component_id, text } => {
                 let c = component(&mut next, component_id).map_err(|m| at(i, m))?;
                 if !c.interactions.search {
@@ -191,7 +240,8 @@ pub(crate) fn apply(
         }
     }
 
-    let changed = global_changed || !touched.is_empty();
+    let broad_changed = global_changed || layout_changed || override_changed;
+    let changed = broad_changed || !touched.is_empty();
     if !changed {
         return Ok(Applied {
             doc: doc.clone(),
@@ -228,7 +278,7 @@ pub(crate) fn apply(
 
     // Global filters reach every component. Order by layout so the list is deterministic and
     // matches the order the UI paints.
-    let affected: Vec<String> = if global_changed {
+    let affected: Vec<String> = if broad_changed {
         next.workspace
             .layout
             .order
@@ -253,6 +303,45 @@ pub(crate) fn apply(
         affected,
         changed: true,
     })
+}
+
+fn check_override_field(field: &str, fields: Option<&[String]>) -> Result<(), String> {
+    let Some(names) = fields else {
+        return Ok(());
+    };
+    if !names.iter().any(|n| n == field) {
+        return Err(format!("override names unknown field '{field}'"));
+    }
+    Ok(())
+}
+
+/// One field has at most one override record; a second command of the other kind edits it
+/// instead of creating a duplicate that validation would reject.
+fn upsert_override(
+    doc: &mut WorkspaceDoc,
+    field: String,
+    dtype: Option<String>,
+    role: Option<String>,
+) -> bool {
+    if let Some(existing) = doc
+        .workspace
+        .field_overrides
+        .iter_mut()
+        .find(|o| o.field == field)
+    {
+        let before = (existing.dtype.clone(), existing.role.clone());
+        if dtype.is_some() {
+            existing.dtype = dtype;
+        }
+        if role.is_some() {
+            existing.role = role;
+        }
+        return before != (existing.dtype.clone(), existing.role.clone());
+    }
+    doc.workspace
+        .field_overrides
+        .push(FieldOverride { field, dtype, role });
+    true
 }
 
 fn at(index: usize, msg: String) -> CoreError {

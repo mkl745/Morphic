@@ -62,6 +62,19 @@ class EngineController extends ChangeNotifier {
   int _revision = 0;
   int get revision => _revision;
 
+  /// Engine-authoritative history metadata (M1.5.1). The app bar enables its controls from
+  /// these, never from a local guess about what is undoable.
+  String _stateHash = '';
+  String get stateHash => _stateHash;
+  int _undoDepth = 0;
+  int get undoDepth => _undoDepth;
+  int _redoDepth = 0;
+  int get redoDepth => _redoDepth;
+  String _undoLabel = '';
+  String get undoLabel => _undoLabel;
+  String _redoLabel = '';
+  String get redoLabel => _redoLabel;
+
   bool _degraded = false;
 
   /// True when the workspace document loaded but its source data did not. The layout is
@@ -110,6 +123,30 @@ class EngineController extends ChangeNotifier {
           .toList();
     });
     return out;
+  }
+
+  /// Adopt the document and history fields Rust returned. Used by apply, undo and redo so a
+  /// snackbar action cannot leave the app bar showing a stale depth.
+  void _applyHistory(Map<String, dynamic> res) {
+    final doc = res['doc'];
+    if (doc is Map<String, dynamic>) _doc = doc;
+    final opts = res['typeOptions'];
+    if (opts is Map) _typeOptions = _parseTypeOptions(opts);
+    _revision = (res['revision'] as num?)?.toInt() ?? _revision;
+    _stateHash = res['stateHash'] as String? ?? _stateHash;
+    _undoDepth = (res['undoDepth'] as num?)?.toInt() ?? _undoDepth;
+    _redoDepth = (res['redoDepth'] as num?)?.toInt() ?? _redoDepth;
+    _undoLabel = res['undoLabel'] as String? ?? _undoLabel;
+    _redoLabel = res['redoLabel'] as String? ?? _redoLabel;
+    _error = null;
+  }
+
+  void _applyHistoryFromSnapshot(Map<String, dynamic> snap) {
+    _stateHash = snap['stateHash'] as String? ?? '';
+    _undoDepth = (snap['undoDepth'] as num?)?.toInt() ?? 0;
+    _redoDepth = (snap['redoDepth'] as num?)?.toInt() ?? 0;
+    _undoLabel = snap['undoLabel'] as String? ?? '';
+    _redoLabel = snap['redoLabel'] as String? ?? '';
   }
 
   List<Map<String, dynamic>> get _profileFields =>
@@ -164,6 +201,7 @@ class EngineController extends ChangeNotifier {
     _degraded = snap['degraded'] == true;
     _notice = snap['notice'] as String?;
     _typeOptions = _parseTypeOptions(snap['typeOptions']);
+    _applyHistoryFromSnapshot(snap);
   }
 
   /// Adopt a snapshot the importer already produced, avoiding a redundant round trip.
@@ -177,6 +215,7 @@ class EngineController extends ChangeNotifier {
     _revision = ws is Map<String, dynamic>
         ? ((ws['revision'] as num?)?.toInt() ?? 1)
         : 1;
+    _applyHistoryFromSnapshot(outcome);
     notifyListeners();
   }
 
@@ -317,16 +356,48 @@ class EngineController extends ChangeNotifier {
         commands: commands,
         nowIso: DateTime.now().toUtc().toIso8601String(),
       );
-      final doc = res['doc'];
-      if (doc is Map<String, dynamic>) _doc = doc;
       // A real engine recomputes the matrix for the *converted* type; a scripted bridge may
       // omit it, in which case the previous options remain the least wrong answer.
-      final opts = res['typeOptions'];
-      if (opts is Map) _typeOptions = _parseTypeOptions(opts);
-      _revision = (res['revision'] as num?)?.toInt() ?? _revision;
-      _error = null;
+      _applyHistory(res);
       notifyListeners();
       return (res['affected'] as List? ?? const []).whereType<String>().toList();
+    } catch (e) {
+      _error = e.toString();
+      notifyListeners();
+      return null;
+    }
+  }
+
+  /// Undo one engine-owned revision. Returns the engine's response so the app bar can show
+  /// its [label] in a snackbar, or null when the bridge rejected the call.
+  Future<Map<String, dynamic>?> undo() => _stepHistory(forward: false);
+
+  /// Redo one engine-owned revision.
+  Future<Map<String, dynamic>?> redo() => _stepHistory(forward: true);
+
+  Future<Map<String, dynamic>?> _stepHistory({required bool forward}) async {
+    final id = _workspaceId;
+    if (id == null) {
+      _error = 'no workspace open';
+      notifyListeners();
+      return null;
+    }
+    final now = DateTime.now().toUtc().toIso8601String();
+    try {
+      final res = forward
+          ? bridge.redo(
+              storageRoot: storageRoot,
+              workspaceId: id,
+              nowIso: now,
+            )
+          : bridge.undo(
+              storageRoot: storageRoot,
+              workspaceId: id,
+              nowIso: now,
+            );
+      _applyHistory(res);
+      notifyListeners();
+      return res;
     } catch (e) {
       _error = e.toString();
       notifyListeners();
@@ -374,6 +445,11 @@ class EngineController extends ChangeNotifier {
     _profile = null;
     _typeOptions = const <String, List<String>>{};
     _revision = 0;
+    _stateHash = '';
+    _undoDepth = 0;
+    _redoDepth = 0;
+    _undoLabel = '';
+    _redoLabel = '';
     _degraded = false;
     _notice = null;
     notifyListeners();

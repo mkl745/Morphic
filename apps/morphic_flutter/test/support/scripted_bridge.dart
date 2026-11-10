@@ -102,6 +102,8 @@ class ScriptedBridge implements MorphicBridge {
 
   /// Set to reject the next command batch, the way the engine rejects an invalid one.
   bool failCommands = false;
+  /// Set to make `undo()` fail, so the app bar's error snackbar is testable.
+  bool failUndo = false;
 
   /// When true, `metricData` computes from the rows through the active filters instead of
   /// returning the canned [metrics] value. Off by default so the many tests that assert a
@@ -113,6 +115,69 @@ class ScriptedBridge implements MorphicBridge {
   String commandError = "filter references unknown field 'nope'";
 
   int _revision = 1;
+
+  /// A deliberately small stand-in for the engine's bounded stacks. The authoritative
+  /// implementation lives in Rust; widget tests only need the response shape and label.
+  final List<_Frame> _undoStack = [];
+  final List<_Frame> _redoStack = [];
+
+  Map<String, dynamic> _clone(Map<String, dynamic> m) =>
+      (jsonDecode(jsonEncode(m)) as Map).cast<String, dynamic>();
+
+  Map<String, dynamic> _semanticDoc() {
+    final d = doc();
+    final ws = Map<String, dynamic>.from(d['workspace'] as Map);
+    ws.remove('revision');
+    ws.remove('modifiedAt');
+    return <String, dynamic>{...d, 'workspace': ws};
+  }
+
+  /// FNV-1a over the canonical JSON, so two states with the same semantic content hash
+  /// alike regardless of the volatile revision (AT-13).
+  String _stateHash() {
+    var hash = 0xcbf29ce484222325;
+    for (final unit in utf8.encode(jsonEncode(_semanticDoc()))) {
+      hash ^= unit;
+      hash = (hash * 0x100000001b3) & 0xffffffffffffffff;
+    }
+    return hash.toRadixString(16).padLeft(16, '0');
+  }
+
+  void _restore(Map<String, dynamic> snapshot) {
+    final ws = snapshot['workspace'] as Map<String, dynamic>;
+    final comps = (ws['components'] as List? ?? const [])
+        .map((e) => _clone((e as Map).cast<String, dynamic>()))
+        .toList();
+    components
+      ..clear()
+      ..addAll(comps);
+    final layout = ws['layout'] as Map<String, dynamic>?;
+    final ord = (layout?['order'] as List? ?? const []).whereType<String>().toList();
+    order
+      ..clear()
+      ..addAll(ord);
+    _globalFilters = (ws['globalFilters'] as List? ?? const [])
+        .map((e) => _clone((e as Map).cast<String, dynamic>()))
+        .toList();
+  }
+
+  Map<String, dynamic> _historyResponse({
+    required bool changed,
+    required String label,
+  }) =>
+      {
+        'revision': _revision,
+        'affected': changed ? order.toList() : <String>[],
+        'changed': changed,
+        'doc': doc(),
+        'typeOptions': typeOptions,
+        'stateHash': _stateHash(),
+        'undoDepth': _undoStack.length,
+        'redoDepth': _redoStack.length,
+        'undoLabel': _undoStack.isEmpty ? '' : _undoStack.last.label,
+        'redoLabel': _redoStack.isEmpty ? '' : _redoStack.last.label,
+        'label': label,
+      };
 
   Map<String, dynamic>? _component(String id) {
     for (final c in components) {
@@ -160,7 +225,7 @@ class ScriptedBridge implements MorphicBridge {
 
   @override
   EngineInfo engineInfo() =>
-      const EngineInfo(apiVersion: 5, coreVersion: '0.1.0', engine: 'morphic');
+      const EngineInfo(apiVersion: 8, coreVersion: '0.1.0', engine: 'morphic');
 
   @override
   Map<String, dynamic> profileCsv(Uint8List bytes) => profileJson();
@@ -202,6 +267,12 @@ class ScriptedBridge implements MorphicBridge {
         'doc': doc(),
         'profile': profileJson(),
         'report': {'rowsImported': rows.length, 'warnings': importWarnings},
+        'typeOptions': typeOptions,
+        'stateHash': _stateHash(),
+        'undoDepth': 0,
+        'redoDepth': 0,
+        'undoLabel': '',
+        'redoLabel': '',
       };
 
   @override
@@ -217,6 +288,11 @@ class ScriptedBridge implements MorphicBridge {
       'degraded': degraded,
       'notice': notice,
       'typeOptions': typeOptions,
+      'stateHash': _stateHash(),
+      'undoDepth': _undoStack.length,
+      'redoDepth': _redoStack.length,
+      'undoLabel': _undoStack.isEmpty ? '' : _undoStack.last.label,
+      'redoLabel': _redoStack.isEmpty ? '' : _redoStack.last.label,
     };
   }
 
@@ -229,6 +305,7 @@ class ScriptedBridge implements MorphicBridge {
   }) {
     commandBatches.add(commands);
     if (failCommands) throw MorphicBridgeException(commandError);
+    final before = _clone(doc());
     var changed = false;
     final affected = <String>[];
     for (final cmd in commands) {
@@ -288,18 +365,80 @@ class ScriptedBridge implements MorphicBridge {
           // job. Tests assert the command that was sent, not a second compiler's output.
           affected.add(c['id'] as String);
           changed = true;
+        case 'moveComponent':
+          final id = cmd['componentId'] as String? ?? '';
+          if (!order.contains(id)) {
+            throw const MorphicBridgeException('unknown component');
+          }
+          final to = (cmd['toIndex'] as num?)?.toInt() ?? 0;
+          final from = order.indexOf(id);
+          final clamped = to.clamp(0, order.length - 1).toInt();
+          if (from != clamped) {
+            order.removeAt(from);
+            order.insert(clamped, id);
+            affected.addAll(order);
+            changed = true;
+          }
+        case 'overrideFieldRole':
+        case 'overrideFieldType':
+          final field = cmd['field'] as String? ?? '';
+          final raw = cmd['role'] ?? cmd['dtype'];
+          final value = raw is String ? raw : '';
+          if (field.isEmpty || value.isEmpty) {
+            throw const MorphicBridgeException('empty override');
+          }
+          affected.addAll(order);
+          changed = true;
         default:
           throw MorphicBridgeException('unknown command ${cmd['kind']}');
       }
     }
-    if (changed) _revision++;
-    return {
-      'revision': _revision,
-      'affected': affected,
-      'changed': changed,
-      'doc': doc(),
-      'typeOptions': typeOptions,
-    };
+    if (changed) {
+      _revision++;
+      _undoStack.add(_Frame(before, 'Applied changes'));
+      _redoStack.clear();
+    }
+    return _historyResponse(
+      changed: changed,
+      label: changed ? 'Applied changes' : '',
+    )..['affected'] = affected;
+  }
+
+  @override
+  Map<String, dynamic> undo({
+    required String storageRoot,
+    required String workspaceId,
+    required String nowIso,
+  }) {
+    if (failUndo) {
+      throw const MorphicBridgeException('undo: no history available');
+    }
+    if (_undoStack.isEmpty) {
+      return _historyResponse(changed: false, label: 'Nothing to undo');
+    }
+    final current = _clone(doc());
+    final frame = _undoStack.removeLast();
+    _redoStack.add(_Frame(current, 'Redid ${frame.label}'));
+    _restore(frame.doc);
+    _revision++;
+    return _historyResponse(changed: true, label: 'Undid ${frame.label}');
+  }
+
+  @override
+  Map<String, dynamic> redo({
+    required String storageRoot,
+    required String workspaceId,
+    required String nowIso,
+  }) {
+    if (_redoStack.isEmpty) {
+      return _historyResponse(changed: false, label: 'Nothing to redo');
+    }
+    final current = _clone(doc());
+    final frame = _redoStack.removeLast();
+    _undoStack.add(_Frame(current, frame.label));
+    _restore(frame.doc);
+    _revision++;
+    return _historyResponse(changed: true, label: frame.label);
   }
 
   Map<String, dynamic> _stateOf(Map<String, dynamic> component) {
@@ -893,4 +1032,10 @@ class GatedEngineController extends EngineController {
   Future<PageResult?> componentPage(String componentId,
           {int offset = 0, int limit = 0}) =>
       pageGate.future;
+}
+
+class _Frame {
+  const _Frame(this.doc, this.label);
+  final Map<String, dynamic> doc;
+  final String label;
 }

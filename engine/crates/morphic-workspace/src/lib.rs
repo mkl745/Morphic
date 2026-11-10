@@ -10,8 +10,9 @@
 //!   workspaces over the same file share one copy. A workspace references its dataset by
 //!   hash through `dataSources[].datasetId`.
 //! - **Write-ahead journal.** `save_workspace` journals the revision *before* the atomic
-//!   rename, so a crash in between is recoverable rather than lost. On load, a journal entry
-//!   newer than `workspace.json` wins and is compacted away.
+//!   rename, so a crash in between is recoverable rather than lost. Since M1.5 the journal is
+//!   also the **bounded undo history**: compaction keeps the last `HISTORY_LIMIT` states
+//!   instead of deleting them, so undo depth survives a restart.
 //! - **Torn-write tolerance.** A crash mid-append leaves a partial JSONL line. The reader
 //!   drops the torn trailing line instead of failing the whole journal.
 //! - **Corruption handling.** An unparseable `workspace.json` is reconstructed from the
@@ -77,17 +78,161 @@ pub struct Library {
     pub workspaces: Vec<WorkspaceMeta>,
 }
 
+/// Maximum number of document states kept on disk for undo (doc 06 §3).
+pub const HISTORY_LIMIT: usize = 100;
+
 /// One write-ahead journal record.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JournalEntry {
     pub revision: u64,
-    /// Reserved for M1.5 edit commands. M1.1 writes an empty array.
+    /// The command batch that produced this state. Stored as JSON because this crate cannot
+    /// depend on `morphic-core` (DAG rule); the engine only uses it for provenance.
     #[serde(default)]
     pub commands: serde_json::Value,
-    /// M1.1 payload: the whole document at this revision. Small (kilobytes) and enough to
-    /// reconstruct authoritative state after a crash.
+    /// The whole document at this revision. Small (kilobytes) and enough to reconstruct
+    /// authoritative state after a crash or to undo one step.
     #[serde(default)]
     pub doc: Option<WorkspaceDoc>,
+    /// Short description of the batch, shown in the app bar's snackbar.
+    #[serde(default)]
+    pub label: String,
+    /// What a future `undo()` of this state would do (doc 06 §3).
+    #[serde(default, rename = "inverseSummary")]
+    pub inverse_summary: String,
+    /// Hash of the semantic state, with volatile bookkeeping excluded.
+    #[serde(default, rename = "stateHash")]
+    pub state_hash: String,
+}
+
+/// A stable hash of the *semantic* workspace state.
+///
+/// `revision` and `modifiedAt` are volatile bookkeeping: undoing and redoing must not change
+/// the hash of the state a person is looking at (AT-13). Everything else — components,
+/// bindings, filters, sort, search, layout, field overrides — is part of the state.
+pub fn state_hash(doc: &WorkspaceDoc) -> String {
+    let mut value = serde_json::to_value(doc).unwrap_or(serde_json::Value::Null);
+    if let Some(ws) = value.get_mut("workspace").and_then(|v| v.as_object_mut()) {
+        ws.remove("revision");
+        ws.remove("modifiedAt");
+    }
+    let bytes = serde_json::to_vec(&value).unwrap_or_default();
+    format!("{:x}", Sha256::digest(bytes))
+}
+
+/// One undoable state in the engine's bounded history.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HistoryFrame {
+    pub revision: u64,
+    pub doc: WorkspaceDoc,
+    #[serde(default)]
+    pub commands: serde_json::Value,
+    #[serde(default)]
+    pub label: String,
+    #[serde(default)]
+    pub inverse_summary: String,
+    #[serde(default)]
+    pub state_hash: String,
+}
+
+/// The persisted undo/redo stacks. `frames[cursor]` is the current state.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HistoryState {
+    #[serde(default)]
+    pub cursor: usize,
+    #[serde(default)]
+    pub frames: Vec<HistoryFrame>,
+}
+
+impl HistoryState {
+    /// A fresh workspace has exactly one state and nothing to undo.
+    pub fn seed(doc: &WorkspaceDoc) -> Self {
+        let frame = HistoryFrame {
+            revision: doc.workspace.revision,
+            doc: doc.clone(),
+            commands: serde_json::json!([]),
+            label: "Imported workspace".to_string(),
+            inverse_summary: String::new(),
+            state_hash: state_hash(doc),
+        };
+        HistoryState {
+            cursor: 0,
+            frames: vec![frame],
+        }
+    }
+
+    /// Repair a history file that is missing, corrupt or out of step with the authoritative
+    /// document. A crash between the journal and this file must never resurrect a future
+    /// state: the document's own hash decides which frame is current.
+    pub fn reconcile(mut self, doc: &WorkspaceDoc) -> Self {
+        if self.frames.is_empty() || self.cursor >= self.frames.len() {
+            return HistoryState::seed(doc);
+        }
+        let hash = state_hash(doc);
+        if self.frames[self.cursor].state_hash == hash
+            && self.frames[self.cursor].revision == doc.workspace.revision
+        {
+            self.trim_to_limit();
+            return self;
+        }
+        // Prefer an exact (hash, revision) match. A crash between the history file and the
+        // document may leave the revision stale, in which case the semantic hash still finds
+        // the right frame without resurrecting a different state that merely looks alike.
+        let exact = self.frames.iter().position(|f| {
+            f.state_hash == hash && f.revision == doc.workspace.revision
+        });
+        let found = exact.or_else(|| self.frames.iter().position(|f| f.state_hash == hash));
+        if let Some(i) = found {
+            let frame = &mut self.frames[i];
+            frame.doc = doc.clone();
+            frame.revision = doc.workspace.revision;
+            frame.state_hash = hash;
+            self.cursor = i;
+            self.trim_to_limit();
+            return self;
+        }
+        HistoryState::seed(doc)
+    }
+
+    /// Drop redo states, append one new frame and keep at most `HISTORY_LIMIT` states.
+    pub fn push_frame(&mut self, frame: HistoryFrame) {
+        self.frames.truncate(self.cursor + 1);
+        self.frames.push(frame);
+        self.cursor = self.frames.len() - 1;
+        self.trim_to_limit();
+    }
+
+    fn trim_to_limit(&mut self) {
+        let excess = self.frames.len().saturating_sub(HISTORY_LIMIT);
+        if excess > 0 {
+            self.frames.drain(..excess);
+            self.cursor = self.cursor.saturating_sub(excess);
+        }
+    }
+
+    pub fn undo_depth(&self) -> usize {
+        self.cursor
+    }
+
+    pub fn redo_depth(&self) -> usize {
+        self.frames.len().saturating_sub(self.cursor + 1)
+    }
+
+    pub fn undo_label(&self) -> String {
+        self.frames
+            .get(self.cursor)
+            .map(|f| f.label.clone())
+            .unwrap_or_default()
+    }
+
+    pub fn redo_label(&self) -> String {
+        self.cursor
+            .checked_add(1)
+            .and_then(|i| self.frames.get(i))
+            .map(|f| f.label.clone())
+            .unwrap_or_default()
+    }
 }
 
 /// What recovery actually did, so the caller can tell the user rather than silently fixing.
@@ -156,6 +301,10 @@ impl FileStore {
             .join("commands.jsonl")
     }
 
+    fn history_path(&self, id: &str) -> PathBuf {
+        self.workspace_dir(id).join("history.json")
+    }
+
     fn legacy_source_path(&self, id: &str) -> PathBuf {
         self.workspace_dir(id).join("source.csv")
     }
@@ -201,21 +350,59 @@ impl FileStore {
                 revision,
                 commands,
                 doc: None,
+                label: String::new(),
+                inverse_summary: String::new(),
+                state_hash: String::new(),
             },
         )
     }
 
     /// Write-ahead record of a document revision, fsynced before the caller renames the
-    /// authoritative file.
+    /// authoritative file. Kept for the crash-recovery tests and older callers.
     pub fn journal_revision(&self, doc: &WorkspaceDoc) -> Result<(), StoreError> {
+        self.append_history(doc, serde_json::json!([]), "", "")
+    }
+
+    /// Append one durable document state with the batch that produced it.
+    pub fn append_history(
+        &self,
+        doc: &WorkspaceDoc,
+        commands: serde_json::Value,
+        label: &str,
+        inverse_summary: &str,
+    ) -> Result<(), StoreError> {
         self.append_entry(
             &doc.workspace.id,
             &JournalEntry {
                 revision: doc.workspace.revision,
-                commands: serde_json::json!([]),
+                commands,
                 doc: Some(doc.clone()),
+                label: label.to_string(),
+                inverse_summary: inverse_summary.to_string(),
+                state_hash: state_hash(doc),
             },
         )
+    }
+
+    /// Read the undo/redo stacks, repairing them against [current] if a crash left them stale.
+    pub fn read_history(
+        &self,
+        id: &str,
+        current: &WorkspaceDoc,
+    ) -> Result<HistoryState, StoreError> {
+        let path = self.history_path(id);
+        if !path.exists() {
+            return Ok(HistoryState::seed(current));
+        }
+        let bytes = fs::read(&path)?;
+        let parsed: HistoryState = serde_json::from_slice(&bytes)
+            .unwrap_or_else(|_| HistoryState::seed(current));
+        Ok(parsed.reconcile(current))
+    }
+
+    pub fn write_history(&self, id: &str, state: &HistoryState) -> Result<(), StoreError> {
+        let bytes = serde_json::to_vec_pretty(state)?;
+        atomic_write(&self.history_path(id), &bytes)
     }
 
     fn append_entry(&self, id: &str, entry: &JournalEntry) -> Result<(), StoreError> {
@@ -259,13 +446,12 @@ impl FileStore {
         Ok((entries, torn))
     }
 
-    /// Drop journal entries at or below the persisted revision.
-    pub fn compact_journal(&self, id: &str, persisted_revision: u64) -> Result<(), StoreError> {
+    /// Keep only the newest `keep_last` states. A torn trailing line is dropped here too:
+    /// `read_journal` never returns it, so the rewrite is clean.
+    pub fn compact_journal(&self, id: &str, keep_last: usize) -> Result<(), StoreError> {
         let (entries, _) = self.read_journal(id)?;
-        let keep: Vec<&JournalEntry> = entries
-            .iter()
-            .filter(|e| e.revision > persisted_revision)
-            .collect();
+        let start = entries.len().saturating_sub(keep_last);
+        let keep = &entries[start..];
         let path = self.journal_path(id);
         if keep.is_empty() {
             if path.exists() {
@@ -315,7 +501,7 @@ impl FileStore {
         match (base, best) {
             (Some(doc), None) => {
                 if torn > 0 {
-                    self.compact_journal(id, doc.workspace.revision)?;
+                    self.compact_journal(id, HISTORY_LIMIT)?;
                 }
                 Ok((doc, report))
             }
@@ -330,7 +516,7 @@ impl FileStore {
                 }
                 // A crash after the journal append but before the rename: promote the journal.
                 atomic_write(&path, &serde_json::to_vec_pretty(&doc)?)?;
-                self.compact_journal(id, doc.workspace.revision)?;
+                self.compact_journal(id, HISTORY_LIMIT)?;
                 self.index(&doc)?;
                 report.restored_from_journal = true;
                 Ok((doc, report))
@@ -429,17 +615,30 @@ fn sweep_tmp(dir: &Path, swept: &mut usize) -> Result<(), StoreError> {
     Ok(())
 }
 
-impl WorkspaceStore for FileStore {
-    fn save_workspace(&self, doc: &WorkspaceDoc) -> Result<(), StoreError> {
+impl FileStore {
+    /// Persist a state and its producing batch in one write-ahead transaction.
+    pub fn save_history(
+        &self,
+        doc: &WorkspaceDoc,
+        commands: serde_json::Value,
+        label: &str,
+        inverse_summary: &str,
+    ) -> Result<(), StoreError> {
         let id = &doc.workspace.id;
         fs::create_dir_all(self.workspace_dir(id))?;
         // Write-ahead: the journal record is durable before the authoritative rename, so a
         // crash in between is recoverable rather than a lost save.
-        self.journal_revision(doc)?;
+        self.append_history(doc, commands, label, inverse_summary)?;
         atomic_write(&self.doc_path(id), &serde_json::to_vec_pretty(doc)?)?;
         self.index(doc)?;
-        self.compact_journal(id, doc.workspace.revision)?;
+        self.compact_journal(id, HISTORY_LIMIT)?;
         Ok(())
+    }
+}
+
+impl WorkspaceStore for FileStore {
+    fn save_workspace(&self, doc: &WorkspaceDoc) -> Result<(), StoreError> {
+        self.save_history(doc, serde_json::json!([]), "", "")
     }
 
     fn load_workspace(&self, id: &str) -> Result<WorkspaceDoc, StoreError> {
@@ -567,6 +766,7 @@ mod tests {
                     hints: vec![],
                 },
                 global_filters: vec![],
+                field_overrides: vec![],
                 components: vec![ComponentSpec {
                     id: "m1".into(),
                     component_type: "metric_card".into(),
@@ -650,15 +850,48 @@ mod tests {
     }
 
     #[test]
-    fn save_compacts_the_journal_so_it_does_not_grow_forever() {
+    fn save_keeps_a_bounded_journal_instead_of_deleting_it() {
         let (s, root) = store();
         for rev in 1..=5 {
             s.save_workspace(&doc_at("w1", rev, "2026-11-05T00:00:00Z"))
                 .unwrap();
         }
-        // Every save is acknowledged by workspace.json, so nothing needs replaying.
-        assert!(!s.journal_path("w1").exists());
+        // M1.5: the journal is the undo history, not just a crash-recovery scratch pad.
+        let (entries, torn) = s.read_journal("w1").unwrap();
+        assert_eq!(torn, 0);
+        assert_eq!(entries.len(), 5);
+        assert_eq!(entries.last().unwrap().revision, 5);
         assert_eq!(s.load_workspace("w1").unwrap().workspace.revision, 5);
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn compaction_caps_the_journal_at_the_history_limit() {
+        let (s, root) = store();
+        for rev in 1..=(HISTORY_LIMIT as u64 + 5) {
+            s.save_workspace(&doc_at("w1", rev, "2026-11-05T00:00:00Z"))
+                .unwrap();
+        }
+        let (entries, _) = s.read_journal("w1").unwrap();
+        assert_eq!(entries.len(), HISTORY_LIMIT);
+        assert_eq!(entries.first().unwrap().revision, 6);
+        assert_eq!(
+            entries.last().unwrap().revision,
+            HISTORY_LIMIT as u64 + 5
+        );
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn state_hash_ignores_revision_and_modified_at() {
+        let (s, root) = store();
+        let mut a = doc_at("w1", 1, "2026-11-05T00:00:00Z");
+        let b = doc_at("w1", 2, "2026-11-06T00:00:00Z");
+        assert_eq!(state_hash(&a), state_hash(&b));
+        a.workspace.title = "Changed".into();
+        assert_ne!(state_hash(&a), state_hash(&b));
+        // Keep `s` used so the store helper stays honest.
+        s.save_workspace(&a).unwrap();
         fs::remove_dir_all(&root).ok();
     }
 
@@ -758,10 +991,9 @@ mod tests {
             recovered.workspace.revision, 2,
             "pre-crash revision restored"
         );
-        assert!(
-            !s.journal_path("w1").exists(),
-            "journal compacted after replay"
-        );
+        let (entries, _) = s.read_journal("w1").unwrap();
+        assert_eq!(entries.len(), 2, "bounded history retained after replay");
+        assert_eq!(entries.last().unwrap().revision, 2);
         // Recovery is idempotent.
         assert!(!s.recover_workspace("w1").unwrap().restored_from_journal);
         fs::remove_dir_all(&root).ok();

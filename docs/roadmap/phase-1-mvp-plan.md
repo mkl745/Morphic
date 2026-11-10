@@ -108,6 +108,12 @@ p95 ≤ 33 ms measured; every generated component explains itself.
 | 1.5.5 | Field corrections UI: override type/role from table header → targeted recompile | M | AT-17 |
 | 1.5.6 | ◇ Workspace export/import `.morphic` bundle | M | stretch |
 
+*Status, 2026-11-05:* **M1.5 is in progress.** Task 1.5.1 ships engine-owned undo/redo with
+100-revision journal-bounded stacks, app-bar controls and snackbars, plus the additive
+move/override commands AT-13's mixed run needs. The automated state-hash and restart gates
+are green; the milestone exit is still unmet — see [m1.5-status.md](m1.5-status.md) §1 and
+the remaining AT-13…AT-17, chaos-suite and reopen-budget evidence.
+
 **Exit:** AT-13…AT-17 pass; kill-mid-save chaos suite green; reopen ≤ 500 ms measured.
 
 ## M1.6 — Experience pass (the product feels like MORPHIC)

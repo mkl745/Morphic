@@ -6,7 +6,8 @@
 //! **M1.1 (task 1.1.4):** real sessions. An import retains the typed `Table` + profile +
 //! generated document in memory, so `queryPage` and `metricData` execute against canonical
 //! Rust state instead of re-parsing. Reopening a workspace rehydrates the session from the
-//! content-addressed source. Typed commands, undo/redo, and layout mutation arrive in M1.5.
+//! content-addressed source. Undo/redo and the additive layout/field-override commands arrived
+//! in M1.5.1; their full UI surfaces are later M1.5 tasks.
 //!
 //! **M1.1 (task 1.1.6):** datasets are content-addressed, opens replay the write-ahead
 //! journal (so a crash mid-save restores the pre-crash revision), pre-1.1.6 workspaces are
@@ -23,7 +24,7 @@ pub use commands::Command;
 
 use morphic_model::{DatasetProfile, ImportReport, Table};
 use morphic_schema::WorkspaceDoc;
-use morphic_workspace::{FileStore, StoreError, WorkspaceStore};
+use morphic_workspace::{FileStore, HistoryFrame, HistoryState, StoreError, WorkspaceStore, state_hash};
 
 /// Re-exported so the FFI bridge can create and trip a cancellation token without taking a
 /// direct dependency on the ingest crate. Core stays the bridge's only engine surface.
@@ -36,9 +37,11 @@ use thiserror::Error;
 /// v5 adds applyCommands and componentPage (M1.3 task 1.3.3). Additive: every v4 entry point
 /// still exists with the same shape, so an older client keeps working.
 /// v7 adds `ChangeComponentType` to the command vocabulary and `typeOptions` to the
-/// snapshot/import/apply payloads (M1.4 task 1.4.7). No entry point changed shape, but doc 02
-/// §4 says new commands are an additive contract change and are versioned with the bridge.
-pub const API_VERSION: u32 = 7;
+/// snapshot/import/apply payloads (M1.4 task 1.4.7). v8 adds `MoveComponent`,
+/// `OverrideFieldType`, `OverrideFieldRole`, undo/redo entry points and history metadata on
+/// snapshot/import/apply (M1.5 task 1.5.1). New commands are additive contract changes and
+/// are versioned with the bridge (doc 02 §4).
+pub const API_VERSION: u32 = 8;
 
 #[derive(Debug, Error)]
 pub enum CoreError {
@@ -131,6 +134,11 @@ pub struct ImportOutcome {
     /// The engine's compatibility matrix, per component id. The UI must not offer a switch
     /// the engine would refuse (docs/architecture/04 §4).
     pub type_options: std::collections::BTreeMap<String, Vec<String>>,
+    pub state_hash: String,
+    pub undo_depth: usize,
+    pub redo_depth: usize,
+    pub undo_label: String,
+    pub redo_label: String,
 }
 
 /// A revisioned view of canonical state, as rendered by Flutter.
@@ -147,6 +155,11 @@ pub struct Snapshot {
     pub notice: Option<String>,
     /// Empty in degraded mode, where no profile exists to validate a converted binding.
     pub type_options: std::collections::BTreeMap<String, Vec<String>>,
+    pub state_hash: String,
+    pub undo_depth: usize,
+    pub redo_depth: usize,
+    pub undo_label: String,
+    pub redo_label: String,
 }
 
 /// The computed value behind one `metric_card`.
@@ -183,6 +196,13 @@ pub struct ApplyOutcome {
     /// Recomputed after the batch, so a converted component immediately offers the switches
     /// that are valid for its *new* type.
     pub type_options: std::collections::BTreeMap<String, Vec<String>>,
+    pub state_hash: String,
+    pub undo_depth: usize,
+    pub redo_depth: usize,
+    pub undo_label: String,
+    pub redo_label: String,
+    /// Short description of what this result did, shown by the app bar's snackbar.
+    pub label: String,
 }
 
 /// An open workspace: canonical Rust state that Flutter only renders.
@@ -191,6 +211,8 @@ struct Session {
     table: Option<Table>,
     profile: Option<DatasetProfile>,
     notice: Option<String>,
+    /// Engine-owned undo/redo stacks. Dart never reconstructs state itself (doc 06 §3).
+    history: HistoryState,
     /// Revision of the *data*, not the document. Editing a filter bumps the document revision
     /// but not this one, which is what lets an untouched component keep its cached result.
     /// Bumped when the table is replaced (re-import or a field override, M1.5).
@@ -209,12 +231,14 @@ impl Session {
         table: Option<Table>,
         profile: Option<DatasetProfile>,
         notice: Option<String>,
+        history: HistoryState,
     ) -> Session {
         Session {
             doc,
             table,
             profile,
             notice,
+            history,
             data_revision: 1,
             pages: morphic_query::cache::ResultCache::default(),
             metrics: morphic_query::cache::ResultCache::default(),
@@ -225,6 +249,61 @@ impl Session {
 
     fn bump_compute(&mut self, component_id: &str) {
         *self.computes.entry(component_id.to_string()).or_insert(0) += 1;
+    }
+}
+
+/// The history fields carried by every bridge response. Computed from the engine's own
+/// stacks and the authoritative document, never from a Dart-side guess.
+#[derive(Debug, Clone)]
+struct HistoryFacts {
+    state_hash: String,
+    undo_depth: usize,
+    redo_depth: usize,
+    undo_label: String,
+    redo_label: String,
+}
+
+impl HistoryFacts {
+    fn new(history: &HistoryState, doc: &WorkspaceDoc) -> Self {
+        HistoryFacts {
+            state_hash: state_hash(doc),
+            undo_depth: history.undo_depth(),
+            redo_depth: history.redo_depth(),
+            undo_label: history.undo_label(),
+            redo_label: history.redo_label(),
+        }
+    }
+}
+
+fn command_label(commands: &[Command]) -> String {
+    if commands.len() != 1 {
+        return format!("Applied {} changes", commands.len());
+    }
+    match &commands[0] {
+        Command::SetGlobalFilter { .. } => "Changed global filters".into(),
+        Command::SetComponentFilter { .. } => "Changed component filter".into(),
+        Command::SetComponentSort { .. } => "Changed component sort".into(),
+        Command::SetSearch { .. } => "Changed search".into(),
+        Command::ChangeComponentType { .. } => "Changed component type".into(),
+        Command::MoveComponent { .. } => "Moved component".into(),
+        Command::OverrideFieldType { .. } => "Overrode field type".into(),
+        Command::OverrideFieldRole { .. } => "Overrode field role".into(),
+    }
+}
+
+fn frame_for(
+    doc: &WorkspaceDoc,
+    commands: serde_json::Value,
+    label: &str,
+    inverse_summary: &str,
+) -> HistoryFrame {
+    HistoryFrame {
+        revision: doc.workspace.revision,
+        doc: doc.clone(),
+        commands,
+        label: label.to_string(),
+        inverse_summary: inverse_summary.to_string(),
+        state_hash: state_hash(doc),
     }
 }
 
@@ -358,14 +437,26 @@ impl Engine {
             return Err(CoreError::Cancelled);
         }
         self.store.put_dataset(bytes)?;
-        self.store.save_workspace(&doc)?;
+        self.store
+            .save_history(&doc, serde_json::json!([]), "Imported workspace", "")?;
+        let history = HistoryState::seed(&doc);
+        // For an import the document must exist before the history file: a crash in between
+        // is repaired by read_history seeding from the authoritative document on reopen.
+        self.store.write_history(workspace_id, &history)?;
+        let facts = HistoryFacts::new(&history, &doc);
 
         self.sessions
             .lock()
             .map_err(|_| CoreError::SessionPoisoned)?
             .insert(
                 workspace_id.to_string(),
-                Session::new(doc.clone(), Some(table), Some(profile.clone()), None),
+                Session::new(
+                    doc.clone(),
+                    Some(table),
+                    Some(profile.clone()),
+                    None,
+                    history,
+                ),
             );
 
         Ok(ImportOutcome {
@@ -373,6 +464,11 @@ impl Engine {
             doc,
             profile,
             report,
+            state_hash: facts.state_hash,
+            undo_depth: facts.undo_depth,
+            redo_depth: facts.redo_depth,
+            undo_label: facts.undo_label,
+            redo_label: facts.redo_label,
         })
     }
 
@@ -431,6 +527,11 @@ impl Engine {
             Err(e) => return Err(e.into()),
         };
 
+        // M1.5: the journal-bounded history file is reconciled against the authoritative
+        // document, so a crash mid-save cannot make a future state current again.
+        let history = self.store.read_history(workspace_id, &doc)?;
+        self.store.write_history(workspace_id, &history)?;
+        let facts = HistoryFacts::new(&history, &doc);
         let snapshot = Snapshot {
             revision: doc.workspace.revision,
             doc: doc.clone(),
@@ -438,13 +539,18 @@ impl Engine {
             degraded: table.is_none(),
             notice: notice.clone(),
             type_options: type_options(&doc, profile.as_ref()),
+            state_hash: facts.state_hash,
+            undo_depth: facts.undo_depth,
+            redo_depth: facts.redo_depth,
+            undo_label: facts.undo_label,
+            redo_label: facts.redo_label,
         };
         self.sessions
             .lock()
             .map_err(|_| CoreError::SessionPoisoned)?
             .insert(
                 workspace_id.to_string(),
-                Session::new(doc, table, profile, notice),
+                Session::new(doc, table, profile, notice, history),
             );
         Ok(snapshot)
     }
@@ -476,6 +582,7 @@ impl Engine {
         let s = sessions
             .get(workspace_id)
             .ok_or_else(|| CoreError::SessionNotFound(workspace_id.into()))?;
+        let facts = HistoryFacts::new(&s.history, &s.doc);
         Ok(Snapshot {
             revision: s.doc.workspace.revision,
             doc: s.doc.clone(),
@@ -483,6 +590,11 @@ impl Engine {
             degraded: s.table.is_none(),
             notice: s.notice.clone(),
             type_options: type_options(&s.doc, s.profile.as_ref()),
+            state_hash: facts.state_hash,
+            undo_depth: facts.undo_depth,
+            redo_depth: facts.redo_depth,
+            undo_label: facts.undo_label,
+            redo_label: facts.redo_label,
         })
     }
 
@@ -512,8 +624,9 @@ impl Engine {
     /// Apply a batch of interaction commands atomically.
     ///
     /// Either every command lands and the document is saved once at one new revision, or
-    /// nothing changes. The save is durable *before* the in-memory session is swapped, so a
-    /// failed write cannot leave the engine showing state that was never persisted.
+    /// nothing changes. The history file is written first, then the command-sourced journal
+    /// and the document; reconciliation on reopen repairs any crash window between them.
+    /// The in-memory session is swapped only after both writes succeed.
     ///
     /// The session lock is held across the save. That serializes edits against reads, which is
     /// the correct trade for a single-user local app: a torn read would be worse than a brief
@@ -547,15 +660,34 @@ impl Engine {
             now_iso,
         )?;
         if !applied.changed {
+            let facts = HistoryFacts::new(&s.history, &s.doc);
             return Ok(ApplyOutcome {
                 revision: s.doc.workspace.revision,
                 affected: Vec::new(),
                 changed: false,
                 doc: s.doc.clone(),
                 type_options: type_options(&s.doc, s.profile.as_ref()),
+                state_hash: facts.state_hash,
+                undo_depth: facts.undo_depth,
+                redo_depth: facts.redo_depth,
+                undo_label: facts.undo_label,
+                redo_label: facts.redo_label,
+                label: String::new(),
             });
         }
-        self.store.save_workspace(&applied.doc)?;
+        let commands_json = serde_json::to_value(commands).unwrap_or(serde_json::json!([]));
+        let label = command_label(commands);
+        let inverse = format!("Undo {label}");
+        let frame = frame_for(&applied.doc, commands_json.clone(), &label, &inverse);
+        let mut next_history = s.history.clone();
+        next_history.push_frame(frame);
+        // The history file is the undo stack; the journal is its durable, bounded provenance.
+        // Writing it first means a crash before the document rename is repaired by
+        // read_history matching the authoritative document's hash on reopen.
+        self.store.write_history(workspace_id, &next_history)?;
+        self.store
+            .save_history(&applied.doc, commands_json, &label, &inverse)?;
+        s.history = next_history;
         s.doc = applied.doc;
         // Old-revision entries can never be asked for again; reclaim them rather than waiting
         // for eviction pressure. The current data revision's entries stay: an unaffected
@@ -563,12 +695,135 @@ impl Engine {
         let data_revision = s.data_revision;
         s.pages.retain_revision(data_revision);
         s.metrics.retain_revision(data_revision);
+        let facts = HistoryFacts::new(&s.history, &s.doc);
         Ok(ApplyOutcome {
             revision: s.doc.workspace.revision,
             affected: applied.affected,
             changed: true,
             doc: s.doc.clone(),
             type_options: type_options(&s.doc, s.profile.as_ref()),
+            state_hash: facts.state_hash,
+            undo_depth: facts.undo_depth,
+            redo_depth: facts.redo_depth,
+            undo_label: facts.undo_label,
+            redo_label: facts.redo_label,
+            label,
+        })
+    }
+
+    /// Undo one revision. Rust restores the document from its own bounded stack; the caller
+    /// receives a full `ApplyResult`-shaped response and never reconstructs state.
+    pub fn undo(&self, workspace_id: &str, now_iso: &str) -> Result<ApplyOutcome, CoreError> {
+        self.step_history(workspace_id, now_iso, false)
+    }
+
+    /// Redo one revision. The redo stack is truncated by any new command batch.
+    pub fn redo(&self, workspace_id: &str, now_iso: &str) -> Result<ApplyOutcome, CoreError> {
+        self.step_history(workspace_id, now_iso, true)
+    }
+
+    fn step_history(
+        &self,
+        workspace_id: &str,
+        now_iso: &str,
+        forward: bool,
+    ) -> Result<ApplyOutcome, CoreError> {
+        if !self.has_session(workspace_id) {
+            self.open_session(workspace_id)?;
+        }
+        let mut sessions = self
+            .sessions
+            .lock()
+            .map_err(|_| CoreError::SessionPoisoned)?;
+        let s = sessions
+            .get_mut(workspace_id)
+            .ok_or_else(|| CoreError::SessionNotFound(workspace_id.into()))?;
+        let cursor = s.history.cursor;
+        let next = if forward {
+            if cursor + 1 >= s.history.frames.len() {
+                None
+            } else {
+                Some(cursor + 1)
+            }
+        } else {
+            cursor.checked_sub(1)
+        };
+        let Some(next) = next else {
+            let facts = HistoryFacts::new(&s.history, &s.doc);
+            let label = if forward {
+                "Nothing to redo"
+            } else {
+                "Nothing to undo"
+            };
+            return Ok(ApplyOutcome {
+                revision: s.doc.workspace.revision,
+                affected: Vec::new(),
+                changed: false,
+                doc: s.doc.clone(),
+                type_options: type_options(&s.doc, s.profile.as_ref()),
+                state_hash: facts.state_hash,
+                undo_depth: facts.undo_depth,
+                redo_depth: facts.redo_depth,
+                undo_label: facts.undo_label,
+                redo_label: facts.redo_label,
+                label: label.to_string(),
+            });
+        };
+
+        let mut target = s.history.frames[next].doc.clone();
+        let max_revision = s
+            .history
+            .frames
+            .iter()
+            .map(|f| f.revision)
+            .max()
+            .unwrap_or(0)
+            .max(s.doc.workspace.revision);
+        // Undo/redo still bump the revision: caches must not serve a stale result, and the
+        // write-ahead journal needs a record strictly newer than the document it replaces.
+        // state_hash deliberately ignores this bookkeeping (AT-13).
+        target.workspace.revision = max_revision.saturating_add(1);
+        target.workspace.modified_at = now_iso.to_string();
+        let label = if forward {
+            format!("Redid {}", s.history.frames[next].label)
+        } else {
+            format!("Undid {}", s.history.frames[cursor].label)
+        };
+        let inverse = if forward {
+            format!("Undo {}", s.history.frames[next].label)
+        } else {
+            format!("Redo {}", s.history.frames[cursor].label)
+        };
+        let kind = if forward { "redo" } else { "undo" };
+        let commands_json = serde_json::json!([{ "kind": kind }]);
+        let mut next_history = s.history.clone();
+        next_history.frames[next].doc = target.clone();
+        next_history.frames[next].revision = target.workspace.revision;
+        next_history.frames[next].state_hash = state_hash(&target);
+        next_history.cursor = next;
+        self.store.write_history(workspace_id, &next_history)?;
+        self.store
+            .save_history(&target, commands_json, &label, &inverse)?;
+        s.history = next_history;
+        s.doc = target;
+        // An undo can restore any filter, binding or layout, so no cached page, metric or
+        // scene may be trusted across it.
+        s.pages.clear();
+        s.metrics.clear();
+        s.charts.clear();
+        let facts = HistoryFacts::new(&s.history, &s.doc);
+        Ok(ApplyOutcome {
+            revision: s.doc.workspace.revision,
+            affected: s.doc.workspace.layout.order.clone(),
+            changed: true,
+            doc: s.doc.clone(),
+            type_options: type_options(&s.doc, s.profile.as_ref()),
+            state_hash: facts.state_hash,
+            undo_depth: facts.undo_depth,
+            redo_depth: facts.redo_depth,
+            undo_label: facts.undo_label,
+            redo_label: facts.redo_label,
+            label,
         })
     }
 
@@ -2553,6 +2808,218 @@ mod tests {
             !opts.iter().any(|t| t == "timeline"),
             "SALES has no Timestamp column, so a timeline must not be offered: {opts:?}"
         );
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    // --- M1.5 task 1.5.1: undo/redo, bounded journal, restart-surviving depth --------------
+
+    fn ten_mixed_commands(doc: &WorkspaceDoc) -> Vec<Vec<Command>> {
+        let table = component_id_of(doc, "data_table");
+        let order = &doc.workspace.layout.order;
+        assert!(order.len() > 1, "a move needs at least two components");
+        let from = order.iter().position(|id| id == &table).unwrap();
+        let to_index = if from == 0 { 1 } else { 0 };
+        vec![
+            vec![Command::SetGlobalFilter {
+                filters: vec![eq_filter("region", serde_json::json!("eu"))],
+            }],
+            vec![Command::SetComponentFilter {
+                component_id: table.clone(),
+                filter: Some(eq_filter("amount", serde_json::json!(10))),
+            }],
+            vec![Command::SetComponentSort {
+                component_id: table.clone(),
+                sort: vec![sort_desc("amount")],
+            }],
+            vec![Command::SetSearch {
+                component_id: table.clone(),
+                text: Some("eu".to_string()),
+            }],
+            vec![Command::MoveComponent {
+                component_id: table.clone(),
+                to_index,
+            }],
+            vec![Command::ChangeComponentType {
+                component_id: table.clone(),
+                target_type: "metric_card".to_string(),
+            }],
+            vec![Command::OverrideFieldRole {
+                field: "region".to_string(),
+                role: "dimension".to_string(),
+            }],
+            vec![Command::OverrideFieldType {
+                field: "amount".to_string(),
+                dtype: "int64".to_string(),
+            }],
+            vec![Command::ChangeComponentType {
+                component_id: table.clone(),
+                target_type: "data_table".to_string(),
+            }],
+            vec![Command::SetGlobalFilter { filters: vec![] }],
+        ]
+    }
+
+    #[test]
+    fn at13_ten_mixed_commands_undo_and_redo_match_every_state_hash() {
+        let (engine, root) = imported("at13_mixed");
+        let initial = engine.snapshot("w1").unwrap();
+        let batches = ten_mixed_commands(&initial.doc);
+        assert_eq!(batches.len(), 10, "AT-13 asks for exactly ten commands");
+        let mut hashes = vec![initial.state_hash];
+        for (i, batch) in batches.iter().enumerate() {
+            let out = engine.apply("w1", batch, NOW).unwrap();
+            assert!(out.changed, "command {i} was a no-op: {out:?}");
+            hashes.push(out.state_hash);
+        }
+        assert_eq!(hashes.len(), 11);
+        let final_snap = engine.snapshot("w1").unwrap();
+        assert_eq!(final_snap.undo_depth, 10);
+        assert_eq!(final_snap.redo_depth, 0);
+
+        // Undo all ten, then redo all ten: every intermediate state must match the hash
+        // recorded when the mixed run first produced it (AT-13).
+        for i in (0..10).rev() {
+            let out = engine.undo("w1", NOW).unwrap();
+            assert_eq!(out.state_hash, hashes[i], "undo to state {i}");
+            assert!(out.changed);
+        }
+        let bottom = engine.snapshot("w1").unwrap();
+        assert_eq!(bottom.undo_depth, 0);
+        assert_eq!(bottom.redo_depth, 10);
+        for i in 1..=10 {
+            let out = engine.redo("w1", NOW).unwrap();
+            assert_eq!(out.state_hash, hashes[i], "redo to state {i}");
+            assert!(out.changed);
+        }
+        let top = engine.snapshot("w1").unwrap();
+        assert_eq!(top.undo_depth, 10);
+        assert_eq!(top.redo_depth, 0);
+        assert_eq!(top.state_hash, hashes[10]);
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn undo_depth_survives_restart_from_the_bounded_journal() {
+        let (engine, root) = imported("history_restart");
+        let mut hashes = vec![engine.snapshot("w1").unwrap().state_hash];
+        for value in ["eu", "us", "eu", "us", "eu", "us"] {
+            let out = engine
+                .apply(
+                    "w1",
+                    &[Command::SetGlobalFilter {
+                        filters: vec![eq_filter("region", serde_json::json!(value))],
+                    }],
+                    NOW,
+                )
+                .unwrap();
+            hashes.push(out.state_hash);
+        }
+        drop(engine);
+
+        // A fresh engine is an app restart: no in-memory session, only the files on disk.
+        let reopened = Engine::new(&root).unwrap();
+        let snap = reopened.open_session("w1").unwrap();
+        assert_eq!(snap.undo_depth, 6, "undo depth must survive restart");
+        assert_eq!(snap.state_hash, hashes[6]);
+        for i in (0..6).rev() {
+            let out = reopened.undo("w1", NOW).unwrap();
+            assert_eq!(out.state_hash, hashes[i], "restart undo to state {i}");
+        }
+        let store = FileStore::new(&root).unwrap();
+        let (entries, torn) = store.read_journal("w1").unwrap();
+        assert_eq!(torn, 0);
+        assert!(entries.len() >= 7, "history was not journaled: {entries:?}");
+        assert!(
+            entries
+                .iter()
+                .any(|e| e.commands.as_array().is_some_and(|a| !a.is_empty())),
+            "the journal is command-sourced (doc 06 §3)"
+        );
+        assert!(
+            entries.iter().any(|e| !e.inverse_summary.is_empty()),
+            "the journal carries inverseSummary"
+        );
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn a_new_command_after_undo_truncates_the_redo_stack() {
+        let (engine, root) = imported("truncate_redo");
+        let initial = engine.snapshot("w1").unwrap().state_hash;
+        let first = engine
+            .apply(
+                "w1",
+                &[Command::SetGlobalFilter {
+                    filters: vec![eq_filter("region", serde_json::json!("eu"))],
+                }],
+                NOW,
+            )
+            .unwrap();
+        let second = engine
+            .apply(
+                "w1",
+                &[Command::SetGlobalFilter {
+                    filters: vec![eq_filter("region", serde_json::json!("us"))],
+                }],
+                NOW,
+            )
+            .unwrap();
+        let undone = engine.undo("w1", NOW).unwrap();
+        assert_eq!(undone.state_hash, first.state_hash);
+        assert_eq!(undone.redo_depth, 1);
+        let branched = engine
+            .apply(
+                "w1",
+                &[Command::SetGlobalFilter {
+                    filters: vec![eq_filter("region", serde_json::json!("latam"))],
+                }],
+                NOW,
+            )
+            .unwrap();
+        assert_eq!(branched.redo_depth, 0, "the old future must be dropped");
+        assert_eq!(branched.undo_depth, 2);
+        let no_redo = engine.redo("w1", NOW).unwrap();
+        assert!(!no_redo.changed);
+        assert_eq!(no_redo.label, "Nothing to redo");
+        assert_ne!(initial, second.state_hash);
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn a_rejected_batch_does_not_push_history() {
+        let (engine, root) = imported("rejected_history");
+        let snap = engine.snapshot("w1").unwrap();
+        let table = component_id_of(&snap.doc, "data_table");
+        let good = engine
+            .apply(
+                "w1",
+                &[Command::SetComponentSort {
+                    component_id: table.clone(),
+                    sort: vec![sort_desc("amount")],
+                }],
+                NOW,
+            )
+            .unwrap();
+        let err = engine
+            .apply(
+                "w1",
+                &[
+                    Command::SetComponentSort {
+                        component_id: table.clone(),
+                        sort: vec![sort_desc("region")],
+                    },
+                    Command::SetGlobalFilter {
+                        filters: vec![eq_filter("nope", serde_json::json!("x"))],
+                    },
+                ],
+                NOW,
+            )
+            .unwrap_err();
+        assert!(err.to_string().contains("unknown field"), "{err}");
+        let after = engine.snapshot("w1").unwrap();
+        assert_eq!(after.state_hash, good.state_hash);
+        assert_eq!(after.undo_depth, 1, "a failed batch is not undoable work");
+        assert_eq!(after.redo_depth, 0);
         std::fs::remove_dir_all(&root).ok();
     }
 }

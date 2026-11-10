@@ -83,11 +83,26 @@ abstract interface class MorphicBridge {
   });
 
   /// Apply a batch of interaction commands atomically. Returns
-  /// `{revision, affected, changed, doc}`. A rejected command changes nothing.
+  /// `{revision, affected, changed, doc, typeOptions, stateHash, undoDepth, redoDepth,
+  /// undoLabel, redoLabel, label}`. A rejected command changes nothing.
   Map<String, dynamic> applyCommands({
     required String storageRoot,
     required String workspaceId,
     required List<Map<String, dynamic>> commands,
+    required String nowIso,
+  });
+
+  /// Engine-owned undo/redo. Rust restores canonical state from its bounded stacks; Dart
+  /// only renders the document and shows [label] in a snackbar. Both return the same
+  /// `ApplyResult`-shaped map as [applyCommands].
+  Map<String, dynamic> undo({
+    required String storageRoot,
+    required String workspaceId,
+    required String nowIso,
+  });
+  Map<String, dynamic> redo({
+    required String storageRoot,
+    required String workspaceId,
     required String nowIso,
   });
 
@@ -240,6 +255,10 @@ class FfiBridge implements MorphicBridge {
       _lib.lookupFunction<_ThreeStringNative, _ThreeStringDart>('morphic_chart_data');
   late final _applyCommands = _lib
       .lookupFunction<_FourStringNative, _FourStringDart>('morphic_apply_commands');
+  late final _undo = _lib
+      .lookupFunction<_ThreeStringNative, _ThreeStringDart>('morphic_undo');
+  late final _redo = _lib
+      .lookupFunction<_ThreeStringNative, _ThreeStringDart>('morphic_redo');
   late final _componentPage = _lib
       .lookupFunction<_ComponentPageNative, _ComponentPageDart>('morphic_component_page');
   late final _closeWorkspace =
@@ -453,6 +472,42 @@ class FfiBridge implements MorphicBridge {
       calloc.free(root);
       calloc.free(id);
       calloc.free(body);
+      calloc.free(now);
+    }
+  }
+
+  @override
+  Map<String, dynamic> undo({
+    required String storageRoot,
+    required String workspaceId,
+    required String nowIso,
+  }) {
+    final root = storageRoot.toNativeUtf8();
+    final id = workspaceId.toNativeUtf8();
+    final now = nowIso.toNativeUtf8();
+    try {
+      return _withResponse(() => _undo(root, id, now), _decodeMap);
+    } finally {
+      calloc.free(root);
+      calloc.free(id);
+      calloc.free(now);
+    }
+  }
+
+  @override
+  Map<String, dynamic> redo({
+    required String storageRoot,
+    required String workspaceId,
+    required String nowIso,
+  }) {
+    final root = storageRoot.toNativeUtf8();
+    final id = workspaceId.toNativeUtf8();
+    final now = nowIso.toNativeUtf8();
+    try {
+      return _withResponse(() => _redo(root, id, now), _decodeMap);
+    } finally {
+      calloc.free(root);
+      calloc.free(id);
       calloc.free(now);
     }
   }

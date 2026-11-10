@@ -493,6 +493,65 @@ pub unsafe extern "C" fn morphic_apply_commands(
     })
 }
 
+/// Undo one engine-owned revision. Returns the same `ApplyResult` shape as
+/// `morphic_apply_commands`, including the new `stateHash`, depths and snackbar label.
+///
+/// # Safety
+/// All pointers must be valid C strings.
+#[no_mangle]
+pub unsafe extern "C" fn morphic_undo(
+    storage_root: *const c_char,
+    workspace_id: *const c_char,
+    now_iso: *const c_char,
+) -> *mut c_char {
+    guarded(|| {
+        let root = match unsafe { cstr(storage_root) } {
+            Some(r) => r,
+            None => return err("invalid storage_root"),
+        };
+        let id = match unsafe { cstr(workspace_id) } {
+            Some(i) => i,
+            None => return err("invalid workspace_id"),
+        };
+        let now = match unsafe { cstr(now_iso) } {
+            Some(s) => s,
+            None => return err("invalid now_iso"),
+        };
+        with_engine(&root, |engine| {
+            to_json(&engine.undo(&id, &now).map_err(|e| e.to_string())?)
+        })
+    })
+}
+
+/// Redo one engine-owned revision. The redo stack is truncated by a new command batch.
+///
+/// # Safety
+/// All pointers must be valid C strings.
+#[no_mangle]
+pub unsafe extern "C" fn morphic_redo(
+    storage_root: *const c_char,
+    workspace_id: *const c_char,
+    now_iso: *const c_char,
+) -> *mut c_char {
+    guarded(|| {
+        let root = match unsafe { cstr(storage_root) } {
+            Some(r) => r,
+            None => return err("invalid storage_root"),
+        };
+        let id = match unsafe { cstr(workspace_id) } {
+            Some(i) => i,
+            None => return err("invalid workspace_id"),
+        };
+        let now = match unsafe { cstr(now_iso) } {
+            Some(s) => s,
+            None => return err("invalid now_iso"),
+        };
+        with_engine(&root, |engine| {
+            to_json(&engine.redo(&id, &now).map_err(|e| e.to_string())?)
+        })
+    })
+}
+
 /// One page of a component's rows with its persisted filter, sort and search applied, plus
 /// any global filters. The UI never assembles this plan itself.
 ///
@@ -661,7 +720,7 @@ mod tests {
     fn engine_info_returns_json() {
         let v = json(morphic_engine_info());
         assert_eq!(v["engine"], "morphic");
-        assert_eq!(v["apiVersion"], 7);
+        assert_eq!(v["apiVersion"], 8);
     }
 
     #[test]
@@ -1087,6 +1146,14 @@ mod tests {
         ))
     }
 
+    unsafe fn undo(rp: &CString, id: &CString, now: &str) -> serde_json::Value {
+        json(morphic_undo(rp.as_ptr(), id.as_ptr(), c(now).as_ptr()))
+    }
+
+    unsafe fn redo(rp: &CString, id: &CString, now: &str) -> serde_json::Value {
+        json(morphic_redo(rp.as_ptr(), id.as_ptr(), c(now).as_ptr()))
+    }
+
     unsafe fn page(
         rp: &CString,
         id: &CString,
@@ -1123,6 +1190,32 @@ mod tests {
             .expect("the compiler emits a table");
         assert_eq!(table["state"]["sort"][0]["field"], "amount");
         assert_eq!(table["state"]["sort"][0]["dir"], "desc");
+        std::fs::remove_dir_all(&p).ok();
+    }
+
+    #[test]
+    fn undo_redo_return_apply_results_with_matching_state_hashes() {
+        let (p, rp) = root("undo_redo_ffi");
+        let id = c("w1");
+        let imported = unsafe { import(&rp, &id, None) };
+        let h0 = imported["stateHash"].as_str().unwrap().to_string();
+        let applied = unsafe { apply(&rp, &id, SORT_AMOUNT_DESC) };
+        let h1 = applied["stateHash"].as_str().unwrap().to_string();
+        assert_ne!(h0, h1);
+        assert_eq!(applied["undoDepth"], 1);
+        assert_eq!(applied["redoDepth"], 0);
+
+        let undone = unsafe { undo(&rp, &id, "2026-11-07T00:01:00Z") };
+        assert_eq!(undone["stateHash"], h0);
+        assert_eq!(undone["undoDepth"], 0);
+        assert_eq!(undone["redoDepth"], 1);
+        assert!(undone["label"].as_str().unwrap().contains("Undid"));
+
+        let redone = unsafe { redo(&rp, &id, "2026-11-07T00:02:00Z") };
+        assert_eq!(redone["stateHash"], h1);
+        assert_eq!(redone["undoDepth"], 1);
+        assert_eq!(redone["redoDepth"], 0);
+        assert!(redone["label"].as_str().unwrap().contains("Redid"));
         std::fs::remove_dir_all(&p).ok();
     }
 

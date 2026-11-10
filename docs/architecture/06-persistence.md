@@ -58,6 +58,11 @@ Explicit save compacts the journal into `workspace.json`.
   state itself. Journal compaction keeps the last 100 revisions on disk.
 - Field overrides and layout moves are ordinary commands → undoable for free.
 
+**As shipped in 1.5.1:** the journal record is `{revision, commands[], inverseSummary,
+label, stateHash, doc}`; `history.json` holds the reconciled stacks; undo/redo bump the
+revision but `stateHash` excludes `revision`/`modifiedAt`. A crash between the history file
+and the document is repaired by matching the authoritative document's hash on reopen.
+
 ## 4. Workspace lifecycle operations
 
 | Op | Semantics |
@@ -97,15 +102,16 @@ This document is the target contract. What the file backend actually implements 
 | Folder-per-workspace, `library.json` index | **Built** | Index carries `revision` + `datasetId`; missing fields default so pre-1.1.6 indexes still read |
 | Atomic write: tmp → fsync → rename → **fsync dir** | **Built** | `atomic_write`; orphaned `*.tmp` swept on startup |
 | Content-addressed `datasets/<sha256>/source.csv` | **Built** | §1 shows the source inside the dataset folder; a workspace references it by hash |
-| Write-ahead journal + replay + compaction | **Built** | Entry is `{revision, commands, doc}`. `commands` is empty in M1.1; the full document is the payload |
+| Write-ahead journal + replay + compaction | **Built** | Since 1.5.1 the entry is `{revision, commands, inverseSummary, label, stateHash, doc}`; commands carry the real batch and compaction keeps the last 100 states, not just the crash scratch pad |
 | Torn trailing JSONL line tolerated | **Built** | Counted in `RecoveryReport`, dropped, never fatal |
 | Corrupt JSON → rebuild, else quarantine | **Built** | Bad bytes are preserved as `workspace.corrupt.json` **even when the journal can rebuild the document**, so recovery never destroys the only evidence. With nothing to rebuild from, a typed `Corrupt` error is returned |
 | Missing source → degraded mode | **Built** | Typed `SourceUnavailable`; snapshot carries `degraded` + `notice`, data calls error |
 | Recents newest-first | **Built** | `modifiedAt` desc, id tiebreak |
 | Legacy in-workspace `source.csv` | **Built** | Loads via fallback, migrated on first open without a revision bump |
+| `history.json` undo/redo stacks | **Built (1.5.1)** | Bounded to 100 frames; reconciled on open so a crash cannot resurrect a future redo state |
 | `snapshot.bin` columnar cache | **Deferred** | Reopen re-ingests the source. The cache is a perf optimization for a 10 MB budget that is still unmeasured on hardware; a versioned binary format before that data exists is speculative risk |
 | `.lock` session files | **Deferred** | Single-process app, sessions already mutex-serialized; a stale-lock protocol would add failure modes with no concurrent writer to guard |
-| `inverseSummary` / undo journal (§3) | **M1.5** | No edit surface exists yet, so there is nothing to undo |
+| `inverseSummary` / undo journal (§3) | **Built (1.5.1)** | Engine-owned stacks, app-bar controls and snackbars shipped; `history.json` is reconciled against the doc hash |
 | Dataset garbage collection | **Not built** | Deleting a workspace deliberately keeps its dataset: another workspace may share the hash |
 
 `RecoveryReport` (`sweptTmp`, `tornJournalLines`, `restoredFromJournal`, `quarantined`,

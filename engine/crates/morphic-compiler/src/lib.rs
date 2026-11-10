@@ -615,6 +615,7 @@ pub fn compile(
                 hints: vec![],
             },
             global_filters: vec![],
+            field_overrides: vec![],
             components,
         },
     }

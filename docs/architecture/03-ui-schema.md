@@ -48,9 +48,9 @@ registry. AI (Phase 2+) may *propose* documents, but they pass the identical val
       }
     },
     "globalFilters": [],                       // FilterExpr[] — apply to all bound components
-    "fieldOverrides": {                        // user corrections of engine assumptions
-      "level": { "role": "severity" }
-    },
+    "fieldOverrides": [                        // user corrections of engine assumptions
+      { "field": "level", "role": "severity" }
+    ],
     "components": [ /* ComponentSpec[] */ ],
     "uiState": {                               // persisted, non-authoritative conveniences
       "focusedComponentId": null
@@ -167,6 +167,9 @@ the document — this is what makes AI output debuggable in Phase 2.
 - The persisted workspace stores the doc verbatim + a `lastMigratedFrom` audit field.
 - The JSON Schema artifact (`schemas/morphic_ui_schema_v1.json`) is **generated from the
   Rust types via `schemars`** and drift-checked in CI — one source of truth.
+- v1.0 gained one **additive optional** field in 1.5.1: `workspace.fieldOverrides`
+  (`[{field, dtype?, role?}]`). It is omitted when empty, so documents written before the
+  field existed still load byte-for-byte; the closed vocabularies are schema-validated.
 
 ## 5. What v1.0 deliberately excludes
 

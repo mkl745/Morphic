@@ -46,6 +46,18 @@ pub const FILTER_OPS: &[&str] = &[
     "not_null",
 ];
 
+/// Closed vocabularies for M1.5's persisted field overrides (docs/architecture/05 §3.2).
+pub const FIELD_ROLES: &[&str] = &[
+    "unknown",
+    "temporal",
+    "measure",
+    "dimension",
+    "severity",
+    "identifier",
+    "text",
+];
+pub const DATA_TYPES: &[&str] = &["null", "bool", "int64", "float64", "utf8", "timestamp"];
+
 // ---------------------------------------------------------------------------
 // Document
 // ---------------------------------------------------------------------------
@@ -72,6 +84,20 @@ pub struct Workspace {
     pub global_filters: Vec<FilterExpr>,
     #[serde(default)]
     pub components: Vec<ComponentSpec>,
+    // User corrections to inferred field type/role (M1.5). Additive and optional: v1.0
+    // documents written before the field existed still load unchanged.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub field_overrides: Vec<FieldOverride>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct FieldOverride {
+    pub field: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dtype: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub role: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -413,6 +439,40 @@ pub fn validate(doc: &WorkspaceDoc) -> Vec<ValidationIssue> {
             &mut nodes,
             &mut issues,
         );
+    }
+
+    // Persisted field corrections are closed-vocabulary and unique per field.
+    let mut overridden = std::collections::HashSet::new();
+    for (i, o) in ws.field_overrides.iter().enumerate() {
+        let ptr = format!("/workspace/fieldOverrides/{i}");
+        if o.field.trim().is_empty() {
+            issues.push(ValidationIssue {
+                pointer: ptr.clone(),
+                rule: "field override names no field".into(),
+            });
+        }
+        if !overridden.insert(o.field.as_str()) {
+            issues.push(ValidationIssue {
+                pointer: ptr.clone(),
+                rule: format!("duplicate field override '{}'", o.field),
+            });
+        }
+        if let Some(d) = &o.dtype {
+            if !DATA_TYPES.contains(&d.as_str()) {
+                issues.push(ValidationIssue {
+                    pointer: ptr.clone(),
+                    rule: format!("unknown dtype override '{d}'"),
+                });
+            }
+        }
+        if let Some(r) = &o.role {
+            if !FIELD_ROLES.contains(&r.as_str()) {
+                issues.push(ValidationIssue {
+                    pointer: ptr.clone(),
+                    rule: format!("unknown role override '{r}'"),
+                });
+            }
+        }
     }
 
     // Layout order must reference exactly the component ids (no orphans, no missing).
@@ -815,6 +875,15 @@ pub fn validate_with_profile(
     profile: &morphic_model::DatasetProfile,
 ) -> Vec<ValidationIssue> {
     let mut issues = validate(doc);
+    let names: Vec<&str> = profile.fields.iter().map(|f| f.name.as_str()).collect();
+    for (i, o) in doc.workspace.field_overrides.iter().enumerate() {
+        if !names.contains(&o.field.as_str()) {
+            issues.push(ValidationIssue {
+                pointer: format!("/workspace/fieldOverrides/{i}"),
+                rule: format!("override names unknown field '{}'", o.field),
+            });
+        }
+    }
     issues.extend(validate_bindings(doc, profile));
     issues
 }
@@ -873,6 +942,7 @@ mod tests {
                     hints: vec![],
                 },
                 global_filters: vec![],
+                field_overrides: vec![],
                 components: vec![ComponentSpec {
                     id: "m1".into(),
                     component_type: "metric_card".into(),

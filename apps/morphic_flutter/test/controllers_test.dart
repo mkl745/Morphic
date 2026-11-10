@@ -37,6 +37,52 @@ class RecordingBridge implements MorphicBridge {
   }
 
   @override
+  Map<String, dynamic> undo({
+    required String storageRoot,
+    required String workspaceId,
+    required String nowIso,
+  }) {
+    undoCalls++;
+    calls.add('undo:$workspaceId');
+    return undoOutcome ??
+        {
+          'revision': 9,
+          'affected': <String>[],
+          'changed': true,
+          'doc': _doc(),
+          'stateHash': 'undo-hash',
+          'undoDepth': 0,
+          'redoDepth': 1,
+          'undoLabel': '',
+          'redoLabel': 'Applied changes',
+          'label': 'Undid Applied changes',
+        };
+  }
+
+  @override
+  Map<String, dynamic> redo({
+    required String storageRoot,
+    required String workspaceId,
+    required String nowIso,
+  }) {
+    redoCalls++;
+    calls.add('redo:$workspaceId');
+    return redoOutcome ??
+        {
+          'revision': 10,
+          'affected': <String>[],
+          'changed': true,
+          'doc': _doc(),
+          'stateHash': 'redo-hash',
+          'undoDepth': 1,
+          'redoDepth': 0,
+          'undoLabel': 'Applied changes',
+          'redoLabel': '',
+          'label': 'Redid Applied changes',
+        };
+  }
+
+  @override
   Map<String, dynamic> componentPage({
     required String storageRoot,
     required String workspaceId,
@@ -68,6 +114,10 @@ class RecordingBridge implements MorphicBridge {
   bool failCommands = false;
   bool failMetric = false;
   Map<String, dynamic>? commandOutcome;
+  Map<String, dynamic>? undoOutcome;
+  Map<String, dynamic>? redoOutcome;
+  int undoCalls = 0;
+  int redoCalls = 0;
   String? lastNowIso;
   bool failImport = false;
   bool failQuery = false;
@@ -96,7 +146,7 @@ class RecordingBridge implements MorphicBridge {
 
   @override
   EngineInfo engineInfo() =>
-      const EngineInfo(apiVersion: 5, coreVersion: '0.1.0', engine: 'morphic');
+      const EngineInfo(apiVersion: 8, coreVersion: '0.1.0', engine: 'morphic');
 
   @override
   Map<String, dynamic> profileCsv(Uint8List bytes) => {'rowCount': 3, 'fieldCount': 2};
@@ -547,6 +597,32 @@ void main() {
     test('library lists persisted workspaces', () {
       final c = EngineController(bridge: RecordingBridge(), storageRoot: '/tmp/m');
       expect(c.library().length, 1);
+    });
+
+    test('undo and redo are bridge calls that adopt engine history', () async {
+      final bridge = RecordingBridge();
+      final c = EngineController(bridge: bridge, storageRoot: '/tmp/m');
+      await c.open('w1');
+      expect(c.undoDepth, 0);
+      expect(c.redoDepth, 0);
+
+      final undo = await c.undo();
+      expect(bridge.undoCalls, 1);
+      expect(bridge.calls, contains('undo:w1'));
+      expect(undo?['label'], 'Undid Applied changes');
+      expect(c.stateHash, 'undo-hash');
+      expect(c.undoDepth, 0);
+      expect(c.redoDepth, 1);
+      expect(c.redoLabel, 'Applied changes');
+
+      final redo = await c.redo();
+      expect(bridge.redoCalls, 1);
+      expect(bridge.calls, contains('redo:w1'));
+      expect(redo?['label'], 'Redid Applied changes');
+      expect(c.stateHash, 'redo-hash');
+      expect(c.undoDepth, 1);
+      expect(c.redoDepth, 0);
+      expect(c.undoLabel, 'Applied changes');
     });
   });
 

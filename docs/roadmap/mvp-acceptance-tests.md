@@ -104,6 +104,15 @@ name), runs on a clone, validates the whole result before committing, and either
 revision or changes nothing. That makes it journal-friendly for M1.5's undo/redo stack; the
 stack itself, and the "moves" and "overrides" commands in this test, are still owed.
 
+*1.5.1 note.* The automated half of that debt is now paid: `MoveComponent`,
+`OverrideFieldType` and `OverrideFieldRole` are real commands, undo/redo are engine-owned
+operations with bounded journal-backed stacks, and
+`engine/crates/morphic-core/src/lib.rs::at13_ten_mixed_commands_undo_and_redo_match_every_state_hash`
+checks ten mixed commands (filters, sort/search, a move, two type changes, two overrides)
+against state hashes at every undo and redo step, with a separate restart test for undo depth.
+The **device** half of AT-13, the M1.5 kill-mid-save chaos suite and the ≤500 ms reopen
+measurement are still owed, so AT-13 is not yet formally green.
+
 **AT-14 — Manual layout adjustment.**
 Given a workspace on a phone, when the user reorders components, changes a span/height,
 and switches a bar chart to a line chart (compatible binding), then changes persist across

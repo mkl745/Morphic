@@ -164,6 +164,40 @@ class Commands {
         'componentId': componentId,
         'targetType': targetType,
       };
+
+  /// Reorder one component in the persisted layout. Rust owns the resulting order.
+  static Map<String, dynamic> moveComponent(
+    String componentId,
+    int toIndex,
+  ) =>
+      {
+        'kind': 'moveComponent',
+        'componentId': componentId,
+        'toIndex': toIndex,
+      };
+
+  /// Persist a user correction to a field's inferred type. Targeted recompilation is 1.5.5;
+  /// the command itself is an ordinary undoable batch as of 1.5.1.
+  static Map<String, dynamic> overrideFieldType(
+    String field,
+    String dtype,
+  ) =>
+      {
+        'kind': 'overrideFieldType',
+        'field': field,
+        'dtype': dtype,
+      };
+
+  /// Persist a user correction to a field's inferred semantic role.
+  static Map<String, dynamic> overrideFieldRole(
+    String field,
+    String role,
+  ) =>
+      {
+        'kind': 'overrideFieldRole',
+        'field': field,
+        'role': role,
+      };
 }
 
 /// Build a flat filter node — the wire shape both `morphic_schema::FilterExpr` and

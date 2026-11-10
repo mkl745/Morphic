@@ -131,7 +131,7 @@ Dart-side rules:
 | Persistence | Rust | atomic writes; Dart triggers save/autosave policy |
 | Scroll offsets, focus, hover, animation, panel expansion | Dart | ephemeral, never persisted to workspace doc |
 | Theme, navigation, route | Dart | Riverpod / go_router |
-| Field-role corrections (user overrides) | Rust (stored in workspace) | command `OverrideFieldRole` → recompile affected |
+| Field-role corrections (user overrides) | Rust (stored in workspace) | `OverrideFieldRole` / `OverrideFieldType` persist as optional `fieldOverrides` and are undoable (1.5.1); targeted recompile → 1.5.5 |
 
 **Rule:** any state that must survive restart lives in Rust. Any state that can die with the
 widget tree lives in Dart. There is no third category.

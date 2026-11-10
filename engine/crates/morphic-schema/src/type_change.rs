@@ -576,6 +576,7 @@ mod tests {
                     hints: vec![],
                 },
                 global_filters: vec![],
+                field_overrides: vec![],
                 components: vec![c],
             },
         }

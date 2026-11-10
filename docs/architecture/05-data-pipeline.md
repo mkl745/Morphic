@@ -136,8 +136,9 @@ string length stats, temporal range + modal granularity, parse-success rate per 
 - Type inference ladder per column: bool → int64 → float64 → timestamp → utf8, threshold
   ≥ 95% parse success (remaining cells → null + anomaly note). Mixed int/float → float64.
 - Every inference carries `{ confidence, evidence[] }`; the compiler surfaces them in
-  explanations; the user can override (`OverrideFieldType` / `OverrideFieldRole`) which
-  triggers targeted recompilation.
+  explanations; the user can override (`OverrideFieldType` / `OverrideFieldRole`). As of
+  1.5.1 those corrections persist in the workspace document and are ordinary undoable
+  commands; **targeted recompilation** of affected bindings is 1.5.5.
 - **No relationship invention in MVP.** Cross-field correlation candidates are Phase 2;
   v1 may report *observed* co-occurrence facts only, clearly labeled as statistics.
 

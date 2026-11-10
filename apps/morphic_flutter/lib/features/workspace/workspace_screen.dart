@@ -42,31 +42,35 @@ class WorkspaceScreen extends StatelessWidget {
 
     if (ctl != null) {
       final ws = ctl.doc?['workspace'] as Map<String, dynamic>?;
-      return Scaffold(
-        appBar: AppBar(
-          title: Text(ws?['title'] as String? ?? 'Workspace'),
-          actions: [
-            // AT-07's measurement has to be runnable on the phone that is being judged, in
-            // the build the harness installs. Tucking it here keeps it one tap from the data
-            // it measures without putting a benchmark in the user's face.
-            IconButton(
-              tooltip: 'Performance probe',
-              icon: const Icon(Icons.speed),
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (_) => PerfProbeScreen(controller: ctl),
+      // The whole scaffold listens: the app bar's enabled state and tooltips come from the
+      // engine's undo/redo depths, not from a Dart-side guess about what changed.
+      return AnimatedBuilder(
+        animation: ctl,
+        builder: (context, _) => Scaffold(
+          appBar: AppBar(
+            title: Text(ws?['title'] as String? ?? 'Workspace'),
+            actions: [
+              _historyButton(context, ctl, undo: true),
+              _historyButton(context, ctl, undo: false),
+              // AT-07's measurement has to be runnable on the phone that is being judged, in
+              // the build the harness installs. Tucking it here keeps it one tap from the data
+              // it measures without putting a benchmark in the user's face.
+              IconButton(
+                tooltip: 'Performance probe',
+                icon: const Icon(Icons.speed),
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => PerfProbeScreen(controller: ctl),
+                  ),
                 ),
               ),
-            ),
-          ],
-        ),
-        body: Column(
-          children: [
-            if (notices.isNotEmpty) _WarningBanner(warnings: notices),
-            Expanded(
-              child: AnimatedBuilder(
-                animation: ctl,
-                builder: (context, _) => WorkspaceView(
+            ],
+          ),
+          body: Column(
+            children: [
+              if (notices.isNotEmpty) _WarningBanner(warnings: notices),
+              Expanded(
+                child: WorkspaceView(
                   controller: ctl,
                   registry: registry ?? ComponentRegistry(),
                   onRetry: ctl.workspaceId == null
@@ -74,8 +78,8 @@ class WorkspaceScreen extends StatelessWidget {
                       : () => ctl.open(ctl.workspaceId!),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       );
     }
@@ -112,6 +116,41 @@ class WorkspaceScreen extends StatelessWidget {
                 ),
               ],
             ),
+    );
+  }
+
+  /// Engine-owned undo/redo control. Disabled when Rust says the depth is zero; the label
+  /// and result come back with the response so Dart never invents what was undone.
+  Widget _historyButton(
+    BuildContext context,
+    EngineController ctl, {
+    required bool undo,
+  }) {
+    final depth = undo ? ctl.undoDepth : ctl.redoDepth;
+    final label = undo ? ctl.undoLabel : ctl.redoLabel;
+    final nothing = undo ? 'Nothing to undo' : 'Nothing to redo';
+    final fallback = undo ? 'Undo complete' : 'Redo complete';
+    return IconButton(
+      key: Key(undo ? 'undo-button' : 'redo-button'),
+      tooltip: depth == 0 ? nothing : '${undo ? 'Undo' : 'Redo'} $label',
+      icon: Icon(undo ? Icons.undo : Icons.redo),
+      onPressed: depth == 0
+          ? null
+          : () async {
+              final res = undo ? await ctl.undo() : await ctl.redo();
+              if (!context.mounted) return;
+              final text = res == null
+                  ? (ctl.error ?? fallback)
+                  : (res['label'] as String? ?? fallback);
+              final messenger = ScaffoldMessenger.of(context);
+              messenger.hideCurrentSnackBar();
+              messenger.showSnackBar(
+                SnackBar(
+                  key: Key(undo ? 'undo-snackbar' : 'redo-snackbar'),
+                  content: Text(text),
+                ),
+              );
+            },
     );
   }
 }
