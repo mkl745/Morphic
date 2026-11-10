@@ -160,9 +160,8 @@ pub(crate) fn apply(
                 if c.component_type == *target_type {
                     continue;
                 }
-                let converted =
-                    morphic_schema::convert_component_type(c, target_type, p)
-                        .map_err(|m| at(i, m))?;
+                let converted = morphic_schema::convert_component_type(c, target_type, p)
+                    .map_err(|m| at(i, m))?;
                 *c = converted;
                 touched.push(component_id.clone());
                 type_changed = true;

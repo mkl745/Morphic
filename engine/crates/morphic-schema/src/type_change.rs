@@ -16,8 +16,8 @@
 //! applies the **query layer's** rule, not the validator's, before it agrees to convert.
 
 use crate::{
-    Aggregation, Binding, ComponentSpec, Explanation, FilterExpr, Interactions,
-    ACTIVE_COMPONENTS, MAX_BAR_LIMIT,
+    Aggregation, Binding, ComponentSpec, Explanation, FilterExpr, Interactions, ACTIVE_COMPONENTS,
+    MAX_BAR_LIMIT,
 };
 use morphic_model::{DataType, DatasetProfile, FieldProfile, FieldRole, Inference};
 
@@ -39,11 +39,7 @@ fn bucketable(f: &FieldProfile) -> bool {
     f.dtype == DataType::Timestamp || f.dtype.is_numeric()
 }
 
-fn require_bucketable(
-    profile: &DatasetProfile,
-    name: &str,
-    what: &str,
-) -> Result<(), String> {
+fn require_bucketable(profile: &DatasetProfile, name: &str, what: &str) -> Result<(), String> {
     match field(profile, name) {
         Some(f) if bucketable(f) => Ok(()),
         Some(f) => Err(format!(
@@ -148,14 +144,17 @@ fn bound_fields(binding: &Binding, profile: &DatasetProfile) -> Vec<String> {
 /// Prefer the columns the old view already showed; break every tie by name so a proposal is
 /// deterministic. A ranking that kept source order would make the same file produce different
 /// workspaces after a re-import.
-fn candidates<'a>(
-    profile: &'a DatasetProfile,
-    preferred: &[String],
-) -> Vec<&'a FieldProfile> {
+fn candidates<'a>(profile: &'a DatasetProfile, preferred: &[String]) -> Vec<&'a FieldProfile> {
     let mut v: Vec<&FieldProfile> = profile.fields.iter().collect();
     v.sort_by(|a, b| {
-        let pa = preferred.iter().position(|n| n == &a.name).unwrap_or(usize::MAX);
-        let pb = preferred.iter().position(|n| n == &b.name).unwrap_or(usize::MAX);
+        let pa = preferred
+            .iter()
+            .position(|n| n == &a.name)
+            .unwrap_or(usize::MAX);
+        let pb = preferred
+            .iter()
+            .position(|n| n == &b.name)
+            .unwrap_or(usize::MAX);
         pa.cmp(&pb).then_with(|| a.name.cmp(&b.name))
     });
     v
@@ -177,15 +176,13 @@ fn propose_axis<'a>(
     preferred: &[String],
     timestamp_only: bool,
 ) -> Option<&'a FieldProfile> {
-    candidates(profile, preferred)
-        .into_iter()
-        .find(|f| {
-            if timestamp_only {
-                f.dtype == DataType::Timestamp
-            } else {
-                bucketable(f)
-            }
-        })
+    candidates(profile, preferred).into_iter().find(|f| {
+        if timestamp_only {
+            f.dtype == DataType::Timestamp
+        } else {
+            bucketable(f)
+        }
+    })
 }
 
 fn propose_severity(profile: &DatasetProfile) -> Option<String> {
@@ -226,13 +223,8 @@ fn title_for(binding: &Binding) -> Option<String> {
         Binding::DataTable { .. } => Some("Data".into()),
         Binding::BarChart {
             dimension, measure, ..
-        } => Some(format!(
-            "{} by {dimension}",
-            measure_label(Some(measure))
-        )),
-        Binding::LineChart { y, .. } => {
-            Some(format!("{} over time", measure_label(y.first())))
-        }
+        } => Some(format!("{} by {dimension}", measure_label(Some(measure)))),
+        Binding::LineChart { y, .. } => Some(format!("{} over time", measure_label(y.first()))),
         Binding::Timeline { .. } => Some("Timeline".into()),
     }
 }
@@ -260,10 +252,7 @@ fn interactions_for(kind: &str) -> Interactions {
     i
 }
 
-fn propose_bar(
-    profile: &DatasetProfile,
-    preferred: &[String],
-) -> Result<(String, u32), String> {
+fn propose_bar(profile: &DatasetProfile, preferred: &[String]) -> Result<(String, u32), String> {
     let d = propose_dimension(profile, preferred)
         .ok_or_else(|| "no low-cardinality text column to break down by".to_string())?;
     Ok((
@@ -304,7 +293,14 @@ fn convert_binding(
         (Binding::BarChart { measure, .. }, "metric_card") => Ok(Binding::MetricCard {
             aggregation: measure.clone(),
         }),
-        (Binding::BarChart { dimension: d, measure, .. }, "line_chart") => {
+        (
+            Binding::BarChart {
+                dimension: d,
+                measure,
+                ..
+            },
+            "line_chart",
+        ) => {
             require_bucketable(profile, d, "line_chart x")?;
             Ok(Binding::LineChart {
                 x: d.clone(),
@@ -313,8 +309,7 @@ fn convert_binding(
             })
         }
         (Binding::LineChart { x, y, .. }, "bar_chart") => {
-            let f = field(profile, x)
-                .ok_or_else(|| format!("field '{x}' does not exist"))?;
+            let f = field(profile, x).ok_or_else(|| format!("field '{x}' does not exist"))?;
             if f.distinct_count > MAX_DIMENSION_CARDINALITY {
                 return Err(format!(
                     "line_chart x '{x}' has {} distinct values; a bar chart needs at most {}",
@@ -335,7 +330,14 @@ fn convert_binding(
                 severity_field: group_by.clone(),
             })
         }
-        (Binding::Timeline { time_field, severity_field, .. }, "line_chart") => {
+        (
+            Binding::Timeline {
+                time_field,
+                severity_field,
+                ..
+            },
+            "line_chart",
+        ) => {
             require_bucketable(profile, time_field, "line_chart x")?;
             Ok(Binding::LineChart {
                 x: time_field.clone(),

@@ -1603,10 +1603,7 @@ mod tests {
         let id = c("w1");
         let before = unsafe { import(&rp, &id, None) };
         let comps = before["doc"]["workspace"]["components"].as_array().unwrap();
-        let table = comps
-            .iter()
-            .find(|c| c["type"] == "data_table")
-            .unwrap()["id"]
+        let table = comps.iter().find(|c| c["type"] == "data_table").unwrap()["id"]
             .as_str()
             .unwrap()
             .to_string();
