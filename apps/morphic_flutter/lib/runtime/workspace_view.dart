@@ -263,7 +263,7 @@ class WorkspaceView extends StatelessWidget {
                 padding: const EdgeInsets.only(bottom: MorphicSpace.md),
                 child: Card(
                   child: ListTile(
-                    leading: ReorderableDragStartListener(
+                    leading: ReorderableDelayedDragStartListener(
                       key: Key('layout-drag-$id'),
                       index: index,
                       child: const SizedBox(

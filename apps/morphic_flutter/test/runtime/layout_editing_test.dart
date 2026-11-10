@@ -154,9 +154,12 @@ void main() {
     final handle = find.byKey(const Key('layout-drag-m1'));
     expect(handle, findsOneWidget);
 
+    // The handle uses a delayed (long-press) recognizer, so a quick drag must not reorder.
     final gesture = await tester.startGesture(tester.getCenter(handle));
-    await tester.pump(const Duration(milliseconds: 600));
-    await gesture.moveBy(const Offset(0, 120));
+    await tester.pump(const Duration(seconds: 1));
+    await gesture.moveBy(const Offset(0, 160));
+    await tester.pump(const Duration(milliseconds: 100));
+    await gesture.moveBy(const Offset(0, 80));
     await tester.pump(const Duration(milliseconds: 100));
     await gesture.up();
     await tester.pumpAndSettle();
