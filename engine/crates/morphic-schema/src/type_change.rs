@@ -19,7 +19,7 @@ use crate::{
     Aggregation, Binding, ComponentSpec, Explanation, FilterExpr, Interactions, ACTIVE_COMPONENTS,
     MAX_BAR_LIMIT,
 };
-use morphic_model::{DataType, DatasetProfile, FieldProfile, FieldRole, Inference};
+use morphic_model::{DataType, DatasetProfile, FieldProfile, FieldRole};
 
 /// Written into a converted component's explanation. Not a planner rule — the compiler never
 /// emits it. Public so the Dart heading map can be drift-checked against the same string.
@@ -481,7 +481,7 @@ pub fn component_type_options(
         .iter()
         .copied()
         .filter(|t| *t != component.component_type.as_str())
-        .filter(|t| convert_component_type(component, *t, profile).is_ok())
+        .filter(|t| convert_component_type(component, t, profile).is_ok())
         .collect()
 }
 
@@ -500,7 +500,7 @@ mod tests {
             max: None,
             top_values: vec![],
             stats: None,
-            inference: Inference {
+            inference: morphic_model::Inference {
                 role,
                 confidence: 0.9,
                 evidence: vec![format!("{name} evidence")],

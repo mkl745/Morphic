@@ -1614,7 +1614,7 @@ mod tests {
         }])
         .to_string();
         let v = unsafe { apply(&rp, &id, &cmd) };
-        assert_eq!(v["changed"], true, "{v}");
+        assert_eq!(v["changed"], serde_json::json!(true), "{v}");
         let after = v["doc"]["workspace"]["components"].as_array().unwrap();
         let changed = after.iter().find(|c| c["id"] == table.as_str()).unwrap();
         assert_eq!(changed["type"], "metric_card");
@@ -1628,7 +1628,7 @@ mod tests {
             .unwrap_or_else(|| panic!("typeOptions missing: {v}"));
         let targets = apply_opts[table.as_str()].as_array().unwrap();
         assert!(
-            targets.iter().any(|x| x == "data_table"),
+            targets.iter().any(|x| x.as_str() == Some("data_table")),
             "the converted metric card must be able to switch back: {v}"
         );
         let snap = json(unsafe { morphic_snapshot(rp.as_ptr(), id.as_ptr()) });

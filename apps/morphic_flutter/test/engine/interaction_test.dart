@@ -13,13 +13,14 @@ import 'package:morphic_flutter/engine/interaction.dart';
 
 import '../runtime/registry_drift_test.dart' show rustStringArray;
 
-/// The four command tags Dart can emit, taken from the builders themselves rather than a
+/// The five command tags Dart can emit, taken from the builders themselves rather than a
 /// hand-copied list, so a new builder cannot escape the gate.
 Set<String> _dartCommandTags() => {
       Commands.setGlobalFilter(const [])['kind'],
       Commands.setComponentFilter('c', null)['kind'],
       Commands.setComponentSort('c', const [])['kind'],
       Commands.setSearch('c', null)['kind'],
+      Commands.changeComponentType('c', 'bar_chart')['kind'],
     }.cast<String>();
 
 /// `SetComponentSort { .. }` → `setComponentSort`, which is what `rename_all = "camelCase"`
@@ -63,12 +64,13 @@ void main() {
     test('every command names its component the way serde expects', () {
       final rust = commandsFile.readAsStringSync();
       // rename_all on an enum renames variants only; fields need their own attribute.
-      expect(RegExp(r'rename = "componentId"').allMatches(rust).length, 3,
-          reason: 'three commands carry a component id');
+      expect(RegExp(r'rename = "componentId"').allMatches(rust).length, 4,
+          reason: 'four commands carry a component id');
       for (final cmd in [
         Commands.setComponentFilter('data_table', null),
         Commands.setComponentSort('data_table', const []),
         Commands.setSearch('data_table', null),
+        Commands.changeComponentType('data_table', 'bar_chart'),
       ]) {
         expect(cmd.containsKey('componentId'), isTrue);
         expect(cmd.containsKey('component_id'), isFalse);
@@ -247,6 +249,14 @@ void main() {
         'sort': [
           {'field': 'amount', 'dir': 'asc', 'nulls': 'last'},
         ],
+      });
+    });
+
+    test('changeComponentType carries the target on the wire', () {
+      expect(Commands.changeComponentType('t', 'bar_chart'), {
+        'kind': 'changeComponentType',
+        'componentId': 't',
+        'targetType': 'bar_chart',
       });
     });
   });
