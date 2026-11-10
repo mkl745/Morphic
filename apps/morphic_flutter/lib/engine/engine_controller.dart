@@ -54,6 +54,11 @@ class EngineController extends ChangeNotifier {
   Map<String, dynamic>? _profile;
   Map<String, dynamic>? get profile => _profile;
 
+  /// Conversion targets the engine can actually express for each component id. Supplied by
+  /// Rust alongside the document, so the UI never offers a switch that would be refused.
+  /// Empty in degraded mode and in older snapshots that predate 1.4.7.
+  Map<String, List<String>> _typeOptions = const <String, List<String>>{};
+
   int _revision = 0;
   int get revision => _revision;
 
@@ -90,6 +95,22 @@ class EngineController extends ChangeNotifier {
       .map((f) => f['name'] as String? ?? '')
       .where((n) => n.isNotEmpty)
       .toList();
+
+  /// Engine-authoritative switch targets. An empty list means the menu stays hidden, which
+  /// is also what an older engine (or degraded mode) should produce.
+  List<String> typeOptionsFor(String componentId) =>
+      _typeOptions[componentId] ?? const <String>[];
+
+  static Map<String, List<String>> _parseTypeOptions(Object? raw) {
+    if (raw is! Map) return const <String, List<String>>{};
+    final out = <String, List<String>>{};
+    raw.forEach((key, value) {
+      out[key.toString()] = (value is List ? value : const <dynamic>[])
+          .whereType<String>()
+          .toList();
+    });
+    return out;
+  }
 
   List<Map<String, dynamic>> get _profileFields =>
       ((_profile?['fields']) as List? ?? const [])
@@ -142,6 +163,7 @@ class EngineController extends ChangeNotifier {
     _revision = (snap['revision'] as num?)?.toInt() ?? 0;
     _degraded = snap['degraded'] == true;
     _notice = snap['notice'] as String?;
+    _typeOptions = _parseTypeOptions(snap['typeOptions']);
   }
 
   /// Adopt a snapshot the importer already produced, avoiding a redundant round trip.
@@ -150,6 +172,7 @@ class EngineController extends ChangeNotifier {
     _error = null;
     _doc = outcome['doc'] as Map<String, dynamic>?;
     _profile = outcome['profile'] as Map<String, dynamic>?;
+    _typeOptions = _parseTypeOptions(outcome['typeOptions']);
     final ws = _doc?['workspace'];
     _revision = ws is Map<String, dynamic>
         ? ((ws['revision'] as num?)?.toInt() ?? 1)
@@ -296,6 +319,10 @@ class EngineController extends ChangeNotifier {
       );
       final doc = res['doc'];
       if (doc is Map<String, dynamic>) _doc = doc;
+      // A real engine recomputes the matrix for the *converted* type; a scripted bridge may
+      // omit it, in which case the previous options remain the least wrong answer.
+      final opts = res['typeOptions'];
+      if (opts is Map) _typeOptions = _parseTypeOptions(opts);
       _revision = (res['revision'] as num?)?.toInt() ?? _revision;
       _error = null;
       notifyListeners();
@@ -345,6 +372,7 @@ class EngineController extends ChangeNotifier {
     _workspaceId = null;
     _doc = null;
     _profile = null;
+    _typeOptions = const <String, List<String>>{};
     _revision = 0;
     _degraded = false;
     _notice = null;

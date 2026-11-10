@@ -90,6 +90,10 @@ no Dart-side data logic (review checklist).
 | 1.4.6 | "Why this view?" sheet rendering explanation objects (reason, evidence, confidence) | S | |
 | 1.4.7 | `ChangeComponentType` with compatibility matrix + binding conversion | M | validator tests |
 
+*Status, 2026-11-05:* **all seven M1.4 task rows are implemented**, ending with 1.4.7's
+engine-authoritative conversion command. The exit criteria below are still not all met — see
+[m1.4-status.md](m1.4-status.md) §13 for what remains.
+
 **Exit:** AT-10, AT-11, AT-12 pass; all five components golden-covered; chart interaction
 p95 ≤ 33 ms measured; every generated component explains itself.
 

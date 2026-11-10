@@ -13,6 +13,7 @@ import 'package:flutter/material.dart';
 
 import '../../design_system/tokens.dart';
 import '../../engine/interaction.dart';
+import '../change_type_button.dart';
 import '../component_registry.dart';
 import '../explanation_sheet.dart';
 import '../global_filter_bar.dart';
@@ -162,6 +163,11 @@ class _MetricCardViewState extends State<MetricCardView> {
                 id: widget.ctx.id,
                 title: widget.ctx.title,
                 explanation: widget.ctx.explanation,
+              ),
+              ChangeTypeButton(
+                engine: widget.ctx.engine,
+                id: widget.ctx.id,
+                type: widget.ctx.type,
               ),
             ],
           ),

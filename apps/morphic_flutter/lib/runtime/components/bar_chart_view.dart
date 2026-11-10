@@ -26,6 +26,7 @@ import 'package:flutter/material.dart';
 import '../../design_system/tokens.dart';
 import '../../engine/chart_scene.dart';
 import '../../engine/interaction.dart';
+import '../change_type_button.dart';
 import '../component_registry.dart';
 import '../explanation_sheet.dart';
 import 'bar_chart_painter.dart';
@@ -258,6 +259,11 @@ class _BarChartViewState extends State<BarChartView> {
             id: widget.ctx.id,
             title: widget.ctx.title,
             explanation: widget.ctx.explanation,
+          ),
+          ChangeTypeButton(
+            engine: widget.ctx.engine,
+            id: widget.ctx.id,
+            type: widget.ctx.type,
           ),
           if (widget.ctx.canSort)
             IconButton(

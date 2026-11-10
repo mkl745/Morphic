@@ -81,6 +81,22 @@ Future<void>              save(Session s);                  // explicit; autosav
 - `ApplyResult { revision, affectedComponentIds, recompilation: None|Partial|Full, error? }`.
   A failed batch applies **nothing** (validate-all-then-apply).
 
+#### 2.4.1 As shipped through M1.4 (task 1.4.7)
+
+The aspirational union above lists commands planned for later milestones; the shipped
+`morphic_core::Command` has five variants (`SetGlobalFilter`, `SetComponentFilter`,
+`SetComponentSort`, `SetSearch`, **`ChangeComponentType`**). Adding the sixth was an additive
+contract change, so `API_VERSION` went from 6 to **7** (§5). No FFI entry point changed shape:
+the new command travels inside the existing `morphic_apply_commands` JSON array, and a failed
+batch still applies nothing.
+
+The shipped apply result is `{revision, affected, changed, doc, typeOptions}` — the
+`recompilation`/`error?` fields and undo/redo arrive with M1.5. `typeOptions` also appears on
+`snapshot` and on the import outcome: a map from component id to the conversion targets the
+engine can validate against the **live** dataset profile. This keeps the UI's "Change view"
+menu engine-authoritative (docs/architecture/04 §4.1) instead of making Dart a second
+compiler. It is bridge payload, not part of `WorkspaceDoc`, so schema v1.0 is unchanged.
+
 ### 2.5 Data plane
 
 ```dart
@@ -148,6 +164,9 @@ Errors MUST NOT embed raw user data rows (privacy in logs); they carry positions
 - Bridge DTOs and the UI Schema version **independently** (`schemaVersion` inside the doc).
 - Additive changes (new event/command variants) bump API version minor; Dart handles unknown
   events by ignoring them (forward tolerance). Breaking changes require a migration note ADR.
+- **v7 (M1.4 task 1.4.7)** adds `ChangeComponentType` to the command union and the
+  `typeOptions` map to snapshot/import/apply payloads. Older clients simply see an extra field
+  and one more command name; no entry point was added, removed or reshaped.
 - Generated frb code is **committed**; CI regenerates and diffs to catch drift
   (see [CI/CD](../engineering/ci-cd.md)).
 

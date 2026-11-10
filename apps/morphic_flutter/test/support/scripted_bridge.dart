@@ -20,6 +20,7 @@ class ScriptedBridge implements MorphicBridge {
     List<String>? order,
     Map<String, String>? dtypes,
     Map<String, List<String>>? topValues,
+    Map<String, List<String>>? typeOptions,
     this.degraded = false,
     this.notice,
     this.sourceUnavailable = false,
@@ -62,13 +63,18 @@ class ScriptedBridge implements MorphicBridge {
             ],
         order = order ?? ['total_records', 'data_table'],
         dtypes = dtypes ?? const {},
-        topValues = topValues ?? const {};
+        topValues = topValues ?? const {},
+        typeOptions = typeOptions ?? const <String, List<String>>{};
 
   final Map<String, Object?> metrics;
   final List<List<dynamic>> rows;
   final List<String> fields;
   final Map<String, String> dtypes;
   final Map<String, List<String>> topValues;
+
+  /// Conversion targets the fake engine says are valid. Empty by default so the many existing
+  /// widget/golden tests keep rendering exactly the headers they did before 1.4.7.
+  final Map<String, List<String>> typeOptions;
   final List<Map<String, dynamic>> components;
   final List<String> order;
 
@@ -210,6 +216,7 @@ class ScriptedBridge implements MorphicBridge {
       'revision': 1,
       'degraded': degraded,
       'notice': notice,
+      'typeOptions': typeOptions,
     };
   }
 
@@ -270,6 +277,17 @@ class ScriptedBridge implements MorphicBridge {
             affected.addAll(order);
             changed = true;
           }
+        case 'changeComponentType':
+          final c = _component(cmd['componentId'] as String);
+          if (c == null) throw const MorphicBridgeException('unknown component');
+          final target = cmd['targetType'] as String? ?? '';
+          if (target.isEmpty) {
+            throw const MorphicBridgeException('empty targetType');
+          }
+          // The fake deliberately does not invent a converted binding: that is the engine's
+          // job. Tests assert the command that was sent, not a second compiler's output.
+          affected.add(c['id'] as String);
+          changed = true;
         default:
           throw MorphicBridgeException('unknown command ${cmd['kind']}');
       }
@@ -280,6 +298,7 @@ class ScriptedBridge implements MorphicBridge {
       'affected': affected,
       'changed': changed,
       'doc': doc(),
+      'typeOptions': typeOptions,
     };
   }
 

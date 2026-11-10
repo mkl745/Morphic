@@ -47,6 +47,15 @@ pub enum Command {
         component_id: String,
         text: Option<String>,
     },
+    /// Switch a component's visualization. The engine converts the binding through a closed
+    /// compatibility matrix (docs/architecture/04 §4) and validates the result before the
+    /// batch is committed; a rejected switch leaves the document untouched.
+    ChangeComponentType {
+        #[serde(rename = "componentId")]
+        component_id: String,
+        #[serde(rename = "targetType")]
+        target_type: String,
+    },
 }
 
 /// The result of applying a batch to a document. `changed` is false for a no-op batch.
@@ -65,6 +74,7 @@ pub(crate) fn apply(
     doc: &WorkspaceDoc,
     commands: &[Command],
     fields: Option<&[String]>,
+    profile: Option<&morphic_model::DatasetProfile>,
     now_iso: &str,
 ) -> Result<Applied, CoreError> {
     if commands.is_empty() {
@@ -77,6 +87,7 @@ pub(crate) fn apply(
     let mut next = doc.clone();
     let mut touched: Vec<String> = Vec::new();
     let mut global_changed = false;
+    let mut type_changed = false;
 
     for (i, cmd) in commands.iter().enumerate() {
         match cmd {
@@ -134,6 +145,28 @@ pub(crate) fn apply(
                     touched.push(component_id.clone());
                 }
             }
+            Command::ChangeComponentType {
+                component_id,
+                target_type,
+            } => {
+                let Some(p) = profile else {
+                    return Err(at(
+                        i,
+                        "cannot change a component type without the dataset profile (degraded mode)"
+                            .to_string(),
+                    ));
+                };
+                let c = component(&mut next, component_id).map_err(|m| at(i, m))?;
+                if c.component_type == *target_type {
+                    continue;
+                }
+                let converted =
+                    morphic_schema::convert_component_type(c, target_type, p)
+                        .map_err(|m| at(i, m))?;
+                *c = converted;
+                touched.push(component_id.clone());
+                type_changed = true;
+            }
             Command::SetSearch { component_id, text } => {
                 let c = component(&mut next, component_id).map_err(|m| at(i, m))?;
                 if !c.interactions.search {
@@ -177,6 +210,21 @@ pub(crate) fn apply(
             "batch would produce an invalid document at {}: {}",
             first.pointer, first.rule
         )));
+    }
+
+    // A converted binding is checked against the live profile too (pass 3). This is a second,
+    // stricter gate than the matrix: the matrix already applies the query layer's bucketing
+    // rule, and this catches any field reference the proposal invented. Both run before the
+    // document is committed, so a rejected switch changes nothing.
+    if let (true, Some(p)) = (type_changed, profile) {
+        let binding_issues = morphic_schema::validate_bindings(&next, p);
+        if !binding_issues.is_empty() {
+            let first = &binding_issues[0];
+            return Err(CoreError::Command(format!(
+                "type change would produce an uncomputable binding at {}: {}",
+                first.pointer, first.rule
+            )));
+        }
     }
 
     // Global filters reach every component. Order by layout so the list is deterministic and

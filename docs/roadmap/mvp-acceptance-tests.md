@@ -98,6 +98,12 @@ Given a sequence of 10 mixed commands (filters, moves, type changes, overrides),
 undoing all and redoing all, then state hashes match the originals at every step, and
 undo depth survives app restart (journal). *(automated + device)*
 
+*1.4.7 note.* The type changes in that mixed run are now real commands:
+`ChangeComponentType` is deterministic (the profile is the only input, ties break by field
+name), runs on a clone, validates the whole result before committing, and either bumps one
+revision or changes nothing. That makes it journal-friendly for M1.5's undo/redo stack; the
+stack itself, and the "moves" and "overrides" commands in this test, are still owed.
+
 **AT-14 — Manual layout adjustment.**
 Given a workspace on a phone, when the user reorders components, changes a span/height,
 and switches a bar chart to a line chart (compatible binding), then changes persist across

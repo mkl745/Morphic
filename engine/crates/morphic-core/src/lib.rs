@@ -35,7 +35,10 @@ use thiserror::Error;
 /// v2 adds sessions, queryPage, metricData, and snapshot (M1.1 task 1.1.4).
 /// v5 adds applyCommands and componentPage (M1.3 task 1.3.3). Additive: every v4 entry point
 /// still exists with the same shape, so an older client keeps working.
-pub const API_VERSION: u32 = 6;
+/// v7 adds `ChangeComponentType` to the command vocabulary and `typeOptions` to the
+/// snapshot/import/apply payloads (M1.4 task 1.4.7). No entry point changed shape, but doc 02
+/// §4 says new commands are an additive contract change and are versioned with the bridge.
+pub const API_VERSION: u32 = 7;
 
 #[derive(Debug, Error)]
 pub enum CoreError {
@@ -125,6 +128,9 @@ pub struct ImportOutcome {
     pub doc: WorkspaceDoc,
     pub profile: DatasetProfile,
     pub report: ImportReport,
+    /// The engine's compatibility matrix, per component id. The UI must not offer a switch
+    /// the engine would refuse (docs/architecture/04 §4).
+    pub type_options: std::collections::BTreeMap<String, Vec<String>>,
 }
 
 /// A revisioned view of canonical state, as rendered by Flutter.
@@ -139,6 +145,8 @@ pub struct Snapshot {
     /// user can see what the workspace was, instead of getting a hard failure.
     pub degraded: bool,
     pub notice: Option<String>,
+    /// Empty in degraded mode, where no profile exists to validate a converted binding.
+    pub type_options: std::collections::BTreeMap<String, Vec<String>>,
 }
 
 /// The computed value behind one `metric_card`.
@@ -172,6 +180,9 @@ pub struct ApplyOutcome {
     /// False when every command set a value that was already set: no revision, no save.
     pub changed: bool,
     pub doc: WorkspaceDoc,
+    /// Recomputed after the batch, so a converted component immediately offers the switches
+    /// that are valid for its *new* type.
+    pub type_options: std::collections::BTreeMap<String, Vec<String>>,
 }
 
 /// An open workspace: canonical Rust state that Flutter only renders.
@@ -221,6 +232,31 @@ impl Session {
 pub struct Engine {
     store: FileStore,
     sessions: Mutex<HashMap<String, Session>>,
+}
+
+/// The UI's menu is engine-authoritative: it is exactly the set of switches whose converted
+/// binding the engine can validate against the live profile. Degraded mode has no profile,
+/// so it gets no switches rather than a menu that would fail on every tap.
+fn type_options(
+    doc: &WorkspaceDoc,
+    profile: Option<&morphic_model::DatasetProfile>,
+) -> std::collections::BTreeMap<String, Vec<String>> {
+    let Some(p) = profile else {
+        return std::collections::BTreeMap::new();
+    };
+    doc.workspace
+        .components
+        .iter()
+        .map(|c| {
+            (
+                c.id.clone(),
+                morphic_schema::component_type_options(c, p)
+                    .into_iter()
+                    .map(str::to_string)
+                    .collect(),
+            )
+        })
+        .collect()
 }
 
 impl Engine {
@@ -333,6 +369,7 @@ impl Engine {
             );
 
         Ok(ImportOutcome {
+            type_options: type_options(&doc, Some(&profile)),
             doc,
             profile,
             report,
@@ -400,6 +437,7 @@ impl Engine {
             profile: profile.clone(),
             degraded: table.is_none(),
             notice: notice.clone(),
+            type_options: type_options(&doc, profile.as_ref()),
         };
         self.sessions
             .lock()
@@ -444,6 +482,7 @@ impl Engine {
             profile: s.profile.clone(),
             degraded: s.table.is_none(),
             notice: s.notice.clone(),
+            type_options: type_options(&s.doc, s.profile.as_ref()),
         })
     }
 
@@ -500,13 +539,20 @@ impl Engine {
             .table
             .as_ref()
             .map(|t| t.columns.iter().map(|c| c.name.clone()).collect());
-        let applied = commands::apply(&s.doc, commands, fields.as_deref(), now_iso)?;
+        let applied = commands::apply(
+            &s.doc,
+            commands,
+            fields.as_deref(),
+            s.profile.as_ref(),
+            now_iso,
+        )?;
         if !applied.changed {
             return Ok(ApplyOutcome {
                 revision: s.doc.workspace.revision,
                 affected: Vec::new(),
                 changed: false,
                 doc: s.doc.clone(),
+                type_options: type_options(&s.doc, s.profile.as_ref()),
             });
         }
         self.store.save_workspace(&applied.doc)?;
@@ -522,6 +568,7 @@ impl Engine {
             affected: applied.affected,
             changed: true,
             doc: s.doc.clone(),
+            type_options: type_options(&s.doc, s.profile.as_ref()),
         })
     }
 
@@ -2372,6 +2419,140 @@ mod tests {
             engine.metric_data("w1", id).unwrap();
             assert_eq!(engine.compute_count("w1", id).unwrap(), 1);
         }
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    // --- M1.4 task 1.4.7: ChangeComponentType -------------------------------------------
+
+    fn component_id_of(doc: &WorkspaceDoc, kind: &str) -> String {
+        doc.workspace
+            .components
+            .iter()
+            .find(|c| c.component_type == kind)
+            .unwrap_or_else(|| panic!("no {kind} component in the generated document"))
+            .id
+            .clone()
+    }
+
+    #[test]
+    fn a_type_change_is_converted_persisted_and_explained() {
+        let (engine, root) = imported("type_change_ok");
+        let before = engine.snapshot("w1").unwrap().doc;
+        let table = component_id_of(&before, "data_table");
+        let out = engine
+            .apply(
+                "w1",
+                &[Command::ChangeComponentType {
+                    component_id: table.clone(),
+                    target_type: "metric_card".into(),
+                }],
+                NOW,
+            )
+            .unwrap();
+        assert!(out.changed);
+        assert_eq!(out.affected, vec![table.clone()]);
+        assert_eq!(out.revision, 2);
+        let c = out
+            .doc
+            .workspace
+            .components
+            .iter()
+            .find(|c| c.id == table)
+            .unwrap();
+        assert_eq!(c.component_type, "metric_card");
+        assert_eq!(c.binding.kind(), "metric_card");
+        let e = c.explanation.as_ref().unwrap();
+        assert_eq!(e.reason, morphic_schema::TYPE_CHANGE_REASON);
+        assert!(e.detail.contains("data_table"));
+        assert!(e.detail.contains("metric_card"));
+        assert!(morphic_schema::validate(&out.doc).is_empty());
+
+        // Persistence: a fresh engine reads the converted document back from disk.
+        let reopened = Engine::new(&root).unwrap();
+        let loaded = reopened.snapshot("w1").unwrap().doc;
+        let c2 = loaded
+            .workspace
+            .components
+            .iter()
+            .find(|c| c.id == table)
+            .unwrap();
+        assert_eq!(c2.component_type, "metric_card");
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn a_rejected_type_change_leaves_the_whole_batch_untouched() {
+        let (engine, root) = imported("type_change_reject");
+        let before = engine.snapshot("w1").unwrap().doc;
+        let table = component_id_of(&before, "data_table");
+        // SALES has no Timestamp column, so the matrix refuses a timeline. The first command
+        // in the batch is valid; atomicity means it must not land either.
+        let err = engine
+            .apply(
+                "w1",
+                &[
+                    Command::SetGlobalFilter {
+                        filters: vec![eq_filter("region", serde_json::json!("eu"))],
+                    },
+                    Command::ChangeComponentType {
+                        component_id: table.clone(),
+                        target_type: "timeline".into(),
+                    },
+                ],
+                NOW,
+            )
+            .unwrap_err();
+        assert!(err.to_string().contains("timestamp"), "{err}");
+        let after = engine.snapshot("w1").unwrap().doc;
+        assert_eq!(after.workspace.revision, before.workspace.revision);
+        assert!(after.workspace.global_filters.is_empty());
+        let c = after
+            .workspace
+            .components
+            .iter()
+            .find(|c| c.id == table)
+            .unwrap();
+        assert_eq!(c.component_type, "data_table");
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn a_no_op_type_change_does_not_bump_the_revision() {
+        let (engine, root) = imported("type_change_noop");
+        let before = engine.snapshot("w1").unwrap().doc;
+        let table = component_id_of(&before, "data_table");
+        let out = engine
+            .apply(
+                "w1",
+                &[Command::ChangeComponentType {
+                    component_id: table,
+                    target_type: "data_table".into(),
+                }],
+                NOW,
+            )
+            .unwrap();
+        assert!(!out.changed);
+        assert_eq!(out.revision, before.workspace.revision);
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn snapshot_type_options_are_engine_authoritative() {
+        let (engine, root) = imported("type_options");
+        let snap = engine.snapshot("w1").unwrap();
+        let table = component_id_of(&snap.doc, "data_table");
+        let opts = snap
+            .type_options
+            .get(&table)
+            .expect("every component must have a matrix entry");
+        assert!(
+            opts.iter().any(|t| t == "metric_card"),
+            "any -> data_table is always allowed: {opts:?}"
+        );
+        assert!(
+            !opts.iter().any(|t| t == "timeline"),
+            "SALES has no Timestamp column, so a timeline must not be offered: {opts:?}"
+        );
         std::fs::remove_dir_all(&root).ok();
     }
 }

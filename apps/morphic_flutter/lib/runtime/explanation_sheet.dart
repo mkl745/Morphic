@@ -35,6 +35,15 @@ const Map<String, String> ruleLabels = <String, String>{
   'R6_raw_table': 'Always included',
 };
 
+/// Reasons that are **not** planner rules. `ChangeComponentType` writes one of these when a
+/// person switches a view, so the sheet can still show a human heading without pretending the
+/// planner chose it. Kept separate from [ruleLabels]: the planner drift gate asserts that map
+/// covers exactly `RULE_TABLE`, and a compiler that never emits `user_type_change` must not be
+/// made to look as though it does.
+const Map<String, String> typeChangeLabels = <String, String>{
+  'user_type_change': 'You changed this view',
+};
+
 /// A tolerant read of a document's `explanation` object.
 ///
 /// Tolerant on purpose: the schema says `evidence` is a list of strings and `confidence` a
@@ -84,9 +93,12 @@ class ComponentExplanation {
   bool get isEmpty =>
       reason.isEmpty && detail.isEmpty && evidence.isEmpty && confidence == null;
 
-  /// Known rules get a heading; anything else is shown raw rather than guessed at.
+  /// Known rules — and the one non-planner conversion reason — get a heading; anything else
+  /// is shown raw rather than guessed at.
   String get heading =>
-      ruleLabels[reason] ?? (reason.isEmpty ? 'No rule recorded' : reason);
+      ruleLabels[reason] ??
+      typeChangeLabels[reason] ??
+      (reason.isEmpty ? 'No rule recorded' : reason);
 
   String? get confidencePercent {
     final c = confidence;

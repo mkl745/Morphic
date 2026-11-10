@@ -661,7 +661,7 @@ mod tests {
     fn engine_info_returns_json() {
         let v = json(morphic_engine_info());
         assert_eq!(v["engine"], "morphic");
-        assert_eq!(v["apiVersion"], 6);
+        assert_eq!(v["apiVersion"], 7);
     }
 
     #[test]
@@ -1593,6 +1593,56 @@ mod tests {
         );
         let ghost = unsafe { chart(&rp, &id, "ghost") };
         assert!(ghost["error"].is_string());
+        std::fs::remove_dir_all(&p).ok();
+    }
+
+    // --- M1.4 task 1.4.7: the command name must cross the JSON boundary ------------------
+    #[test]
+    fn change_component_type_command_is_accepted_over_ffi() {
+        let (p, rp) = root("changetype");
+        let id = c("w1");
+        let before = unsafe { import(&rp, &id, None) };
+        let comps = before["doc"]["workspace"]["components"].as_array().unwrap();
+        let table = comps
+            .iter()
+            .find(|c| c["type"] == "data_table")
+            .unwrap()["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let cmd = serde_json::json!([{
+            "kind": "changeComponentType",
+            "componentId": table.clone(),
+            "targetType": "metric_card",
+        }])
+        .to_string();
+        let v = unsafe { apply(&rp, &id, &cmd) };
+        assert_eq!(v["changed"], true, "{v}");
+        let after = v["doc"]["workspace"]["components"].as_array().unwrap();
+        let changed = after.iter().find(|c| c["id"] == table.as_str()).unwrap();
+        assert_eq!(changed["type"], "metric_card");
+        assert_eq!(changed["binding"]["kind"], "metric_card");
+        assert_eq!(changed["explanation"]["reason"], "user_type_change");
+
+        // The apply result carries the *new* matrix, and a fresh snapshot agrees with it.
+        // Both travel through the same FFI JSON shape the Dart controller parses.
+        let apply_opts = v["typeOptions"]
+            .as_object()
+            .unwrap_or_else(|| panic!("typeOptions missing: {v}"));
+        let targets = apply_opts[table.as_str()].as_array().unwrap();
+        assert!(
+            targets.iter().any(|x| x == "data_table"),
+            "the converted metric card must be able to switch back: {v}"
+        );
+        let snap = json(unsafe { morphic_snapshot(rp.as_ptr(), id.as_ptr()) });
+        let snap_opts = snap["typeOptions"]
+            .as_object()
+            .unwrap_or_else(|| panic!("typeOptions missing: {snap}"));
+        assert_eq!(
+            snap_opts[table.as_str()].as_array().unwrap(),
+            targets,
+            "snapshot and apply disagree about the available switches"
+        );
         std::fs::remove_dir_all(&p).ok();
     }
 }

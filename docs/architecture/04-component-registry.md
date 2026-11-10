@@ -66,6 +66,29 @@ Manual "switch visualization" is only offered when the binding can be re-express
 
 The engine validates the converted binding before applying; failure leaves state untouched.
 
+### 4.1 As implemented in M1.4 task 1.4.7
+
+`morphic-schema::convert_component_type` is the authority; `component_type_options` returns
+exactly the targets for which it succeeds against the live profile. The table above is the
+intent, with these clarifications:
+
+* **"temporal" means bucketable, not a Temporal *role*.** A line's `x` must be
+  `Timestamp`/`Int64`/`Float64`; a timeline's `time_field` must be `Timestamp`. Pass 3
+  (`validate_bindings`) accepts a `Utf8` column whose inferred role is Temporal, but
+  `series_scene`/`timeline_scene` refuse to bucket it. 1.4.5 found three generated charts that
+  validated and then failed at the first draw — a manual switch is a second way to build that
+  same broken document, so the matrix applies the **query layer's** rule.
+* `bar → line`, `line → bar`, `bar → metric`, `line → timeline`, `timeline → line`, and
+  `any → data_table` are the explicit pairs. `metric → chart` and `data_table → chart` propose
+  a default binding from the profile (preferring the columns the old view showed, ties by
+  name). Anything else is refused with a readable reason rather than a partial edit.
+* A conversion also rewrites `interactions`, `title` and `explanation` — pass 2 requires
+  `binding.kind()` to equal `type`, and pass 5 rejects state the new type cannot hold. State
+  that is cleared is **named in the new explanation**, which 1.4.6's sheet renders.
+* The command is atomic: it runs on a clone, the whole result is checked with all five passes
+  plus pass 3, and only then is it saved at one new revision. A rejected switch in a batch
+  discards the batch's other commands too.
+
 ## 5. Dart runtime rules
 
 1. Builders are pure functions of `(binding, state, data, theme)` — no hidden singletons.

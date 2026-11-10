@@ -18,6 +18,7 @@ import 'package:flutter/material.dart';
 import '../../design_system/tokens.dart';
 import '../../engine/engine_controller.dart';
 import '../../engine/interaction.dart';
+import '../change_type_button.dart';
 import '../component_registry.dart';
 import '../explanation_sheet.dart';
 import '../value_format.dart';
@@ -344,6 +345,11 @@ class _DataTableViewState extends State<DataTableView> {
                     id: widget.ctx.id,
                     title: widget.ctx.title,
                     explanation: widget.ctx.explanation,
+                  ),
+                  ChangeTypeButton(
+                    engine: widget.ctx.engine,
+                    id: widget.ctx.id,
+                    type: widget.ctx.type,
                   ),
                 ],
               ),

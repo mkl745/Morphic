@@ -14,6 +14,9 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+mod type_change;
+pub use type_change::{component_type_options, convert_component_type, TYPE_CHANGE_REASON};
+
 pub const SCHEMA_VERSION: &str = "1.0";
 pub const MAX_COMPONENTS: usize = 64;
 

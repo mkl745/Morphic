@@ -152,6 +152,18 @@ class Commands {
         'componentId': componentId,
         'text': text,
       };
+
+  /// Switch a component's visualization. The engine owns the compatibility matrix and will
+  /// reject a switch it cannot express; the rejection message is worth showing to the user.
+  static Map<String, dynamic> changeComponentType(
+    String componentId,
+    String targetType,
+  ) =>
+      {
+        'kind': 'changeComponentType',
+        'componentId': componentId,
+        'targetType': targetType,
+      };
 }
 
 /// Build a flat filter node — the wire shape both `morphic_schema::FilterExpr` and
