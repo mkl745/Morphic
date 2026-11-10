@@ -36,6 +36,7 @@ import '../../design_system/tokens.dart';
 import '../../engine/chart_scene.dart';
 import '../../engine/interaction.dart';
 import '../component_registry.dart';
+import '../explanation_sheet.dart';
 import 'chart_format.dart';
 import 'timeline_painter.dart';
 
@@ -355,6 +356,11 @@ class _TimelineViewState extends State<TimelineView> {
               height: 14,
               child: CircularProgressIndicator(strokeWidth: 2),
             ),
+          ExplanationButton(
+            id: widget.ctx.id,
+            title: widget.ctx.title,
+            explanation: widget.ctx.explanation,
+          ),
           IconButton(
             key: const Key('timeline-view-as-table'),
             tooltip: 'View as table',

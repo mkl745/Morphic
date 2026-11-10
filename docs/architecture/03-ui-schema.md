@@ -72,13 +72,21 @@ registry. AI (Phase 2+) may *propose* documents, but they pass the identical val
   "interactions": { "filter": true, "search": false, "sort": false, "select": false },
   "state": { /* type-specific persisted state, e.g. active sort */ },
   "explanation": {
-    "reason": "severity_field_detected",
-    "detail": "Field 'level' contains severity-like values (ERROR, WARN, INFO…). An error count is the fastest health signal for event data.",
-    "evidence": [ { "field": "level", "fact": "top_values", "value": ["ERROR","WARN","INFO"] } ],
-    "confidence": 0.97
+    "reason": "R2b_error_metric",              // a RULE_TABLE id, not free text
+    "detail": "'level' carries severity levels, so the count of error-level records is a headline number.",
+    "evidence": ["1 error-shaped level(s) observed"],  // strings, not objects
+    "confidence": 0.97                        // 0..1
   }
 }
 ```
+
+`Explanation` is `{ reason: String, detail: String, evidence: Vec<String>, confidence: f64 }`
+in `morphic-schema`. An earlier draft of this example drew `evidence` as an array of
+`{field, fact, value}` objects; the shipped type is a list of human-readable strings, and the
+"Why this view?" sheet (M1.4 task 1.4.6) renders those strings verbatim. `reason` is a
+`RULE_TABLE` id so a reader can trace a card back to the rule that fired; it is not prose.
+`confidence` is the planner's confidence in the *field readings* behind the choice, in `0..1`
+— not a rating of whether the chart is useful.
 
 ### 2.2 Bindings for the MVP five
 

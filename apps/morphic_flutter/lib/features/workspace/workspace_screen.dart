@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../design_system/tokens.dart';
 import '../../engine/engine_controller.dart';
 import '../../runtime/component_registry.dart';
+import '../../runtime/explanation_sheet.dart';
 import '../../runtime/workspace_view.dart';
 import 'perf_probe_screen.dart';
 import 'workspace_args.dart';
@@ -140,6 +141,7 @@ class _ComponentCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final type = component['type'] as String? ?? '?';
     final title = component['title'] as String? ?? type;
+    final id = component['id'] as String? ?? type;
     final explanation = component['explanation'] as Map<String, dynamic>?;
     return Card(
       child: Padding(
@@ -153,6 +155,11 @@ class _ComponentCard extends StatelessWidget {
                 const SizedBox(width: MorphicSpace.md),
                 Expanded(
                   child: Text(title, style: Theme.of(context).textTheme.titleSmall),
+                ),
+                ExplanationButton(
+                  id: id,
+                  title: title,
+                  explanation: explanation,
                 ),
                 Container(
                   padding: const EdgeInsets.symmetric(

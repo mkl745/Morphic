@@ -27,6 +27,7 @@ import '../../design_system/tokens.dart';
 import '../../engine/chart_scene.dart';
 import '../../engine/interaction.dart';
 import '../component_registry.dart';
+import '../explanation_sheet.dart';
 import 'bar_chart_painter.dart';
 
 class BarChartView extends StatefulWidget {
@@ -253,6 +254,11 @@ class _BarChartViewState extends State<BarChartView> {
               height: 14,
               child: CircularProgressIndicator(strokeWidth: 2),
             ),
+          ExplanationButton(
+            id: widget.ctx.id,
+            title: widget.ctx.title,
+            explanation: widget.ctx.explanation,
+          ),
           if (widget.ctx.canSort)
             IconButton(
               key: const Key('bar-sort-toggle'),

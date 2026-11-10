@@ -19,6 +19,7 @@ import '../../design_system/tokens.dart';
 import '../../engine/engine_controller.dart';
 import '../../engine/interaction.dart';
 import '../component_registry.dart';
+import '../explanation_sheet.dart';
 import '../value_format.dart';
 import 'row_detail_sheet.dart';
 import 'table_filter_menu.dart';
@@ -339,6 +340,11 @@ class _DataTableViewState extends State<DataTableView> {
                       height: 14,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     ),
+                  ExplanationButton(
+                    id: widget.ctx.id,
+                    title: widget.ctx.title,
+                    explanation: widget.ctx.explanation,
+                  ),
                 ],
               ),
               if (widget.ctx.canSearch) ...[

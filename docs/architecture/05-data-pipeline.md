@@ -185,3 +185,28 @@ Rules are data (a table of condition → component templates), unit-tested again
 corpus, and scored for selection accuracy (see [quality doc](../engineering/quality-and-performance.md)).
 This rule table is exactly what the Phase 2 AI provider will learn to beat — with the same
 validation gate.
+
+### 5.1 As implemented in M1.4 — deviations from the v1 intent above
+
+The rules above are the *intent*; `RULE_TABLE` in `morphic-compiler/src/lib.rs` is the contract
+that actually ships. Three deliberate differences, recorded rather than quietly absorbed
+(`docs/roadmap/m1.4-status.md` §11 has the measurements):
+
+1. **Rule 1 does not force a timeline.** A severity field earns a restricted error metric
+   (`R2b`). When the file also has a bucketable time axis *and* a measure, R3 emits a
+   **severity-split line chart** instead of a timeline; when it has a true Timestamp axis but
+   no measure, R4 emits a timeline. R3 and R4 are exclusive — one axis, one view. The
+   severity split is what makes the line chart's legend reachable from a generated document.
+2. **Rule 2 buckets a measure, not a count of events.** R3's y binding is `avg <measure>`
+   over the time axis; a count-over-time line is available through the binding but is not the
+   default. Time axes must be `Timestamp` or a numeric `Temporal` — a `Utf8` column with a
+   Temporal *role* is refused rather than handed to a query layer that cannot bucket text.
+3. **Rule 5's row-order line is deferred.** Numeric-only files get the summary metrics and
+   the projected table; the "line over row order with an explanatory note" was never built,
+   and v1 does not emit an ordinal x-axis. Scatter remains P2. This is a real gap, not a
+   rephrasing of a shipped feature.
+
+R5 also outlived its "top-12 by count" wording: selection keeps dimensions up to 50 distinct
+values, the *renderer* shows 12 bars and folds the remainder into `Other`. R6's cap is 6,
+the table is never dropped from it, and `layout.hints` stays empty until M1.5 — nothing in
+the Flutter runtime reads it yet.

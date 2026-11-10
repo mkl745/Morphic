@@ -14,6 +14,7 @@ import 'package:flutter/material.dart';
 import '../../design_system/tokens.dart';
 import '../../engine/interaction.dart';
 import '../component_registry.dart';
+import '../explanation_sheet.dart';
 import '../global_filter_bar.dart';
 import '../value_format.dart';
 
@@ -152,7 +153,18 @@ class _MetricCardViewState extends State<MetricCardView> {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(widget.ctx.title, style: theme.textTheme.titleSmall),
+          Row(
+            children: [
+              Expanded(
+                child: Text(widget.ctx.title, style: theme.textTheme.titleSmall),
+              ),
+              ExplanationButton(
+                id: widget.ctx.id,
+                title: widget.ctx.title,
+                explanation: widget.ctx.explanation,
+              ),
+            ],
+          ),
           const SizedBox(height: MorphicSpace.sm),
           _body(theme),
           if (label.isNotEmpty) ...[

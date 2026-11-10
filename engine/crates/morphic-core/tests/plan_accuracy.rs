@@ -24,7 +24,7 @@
 //! invisible to a selection score. So every generated chart is rendered here against its own
 //! fixture, and a render failure is reported next to the selection score.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 
 use morphic_compiler::compile;
@@ -460,6 +460,44 @@ fn every_generated_chart_renders_against_its_own_fixture() {
     assert!(
         failures.is_empty(),
         "the planner emitted bindings the query layer refuses:\n{}",
+        failures.join("\n")
+    );
+}
+
+/// AT-10's last clause — "each component has a non-empty explanation with evidence" — was
+/// never asserted anywhere. `Explanation` is `Option<>` in schema v1.0 and `validate()`
+/// deliberately does not require it, because v1.0 must still open hand-written and older
+/// documents. The guarantee therefore rests entirely on the compiler, and the only test that
+/// checked it built one synthetic profile. This checks every component of every corpus
+/// fixture — the whole generated set, not one convenient profile.
+#[test]
+fn at_10_every_generated_component_explains_itself_with_evidence() {
+    let known: BTreeSet<&str> = morphic_compiler::RULE_TABLE.iter().map(|r| r.id).collect();
+    let mut failures = Vec::new();
+    for f in labels().files {
+        let (doc, _) = plan_fixture(&f.path);
+        for c in &doc.workspace.components {
+            let Some(e) = c.explanation.as_ref() else {
+                failures.push(format!("{}: {} has no explanation", f.path, c.id));
+                continue;
+            };
+            if !known.contains(e.reason.as_str()) {
+                failures.push(format!("{}: {} cites unknown rule", f.path, c.id));
+            }
+            if e.detail.trim().is_empty() {
+                failures.push(format!("{}: {} has an empty detail", f.path, c.id));
+            }
+            if e.evidence.is_empty() || e.evidence.iter().any(|s| s.trim().is_empty()) {
+                failures.push(format!("{}: {} has no usable evidence", f.path, c.id));
+            }
+            if !(0.0..=1.0).contains(&e.confidence) {
+                failures.push(format!("{}: {} has bad confidence", f.path, c.id));
+            }
+        }
+    }
+    assert!(
+        failures.is_empty(),
+        "AT-10 explanation gate failed:\n{}",
         failures.join("\n")
     );
 }

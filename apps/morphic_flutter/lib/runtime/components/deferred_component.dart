@@ -15,6 +15,7 @@ import 'package:flutter/material.dart';
 
 import '../../design_system/tokens.dart';
 import '../component_registry.dart';
+import '../explanation_sheet.dart';
 
 class DeferredComponent extends StatelessWidget {
   const DeferredComponent({super.key, required this.ctx});
@@ -91,6 +92,19 @@ class DeferredComponent extends StatelessWidget {
             Text('Why this was generated: $explanation',
                 style: theme.textTheme.bodySmall),
           ],
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              key: Key('explain-${ctx.id}'),
+              icon: const Icon(Icons.info_outline, size: 18),
+              label: const Text('Why this view?'),
+              onPressed: () => showExplanationSheet(
+                context,
+                componentTitle: ctx.title,
+                explanation: ctx.explanation,
+              ),
+            ),
+          ),
         ],
       ),
     );
