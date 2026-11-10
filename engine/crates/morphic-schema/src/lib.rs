@@ -1030,7 +1030,9 @@ mod tests {
         });
         let issues = validate(&doc);
         assert!(issues.iter().any(|i| i.rule.contains("layout span")));
-        assert!(issues.iter().any(|i| i.rule.contains("unknown layout height")));
+        assert!(issues
+            .iter()
+            .any(|i| i.rule.contains("unknown layout height")));
     }
 
     #[test]

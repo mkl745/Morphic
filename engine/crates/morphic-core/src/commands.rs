@@ -236,12 +236,8 @@ pub(crate) fn apply(
                         "resize names neither a span nor a height".to_string(),
                     ));
                 }
-                layout_changed |= resize_layout_hint(
-                    &mut next,
-                    component_id.clone(),
-                    *span,
-                    height.clone(),
-                );
+                layout_changed |=
+                    resize_layout_hint(&mut next, component_id.clone(), *span, height.clone());
             }
             Command::OverrideFieldType { field, dtype } => {
                 check_override_field(field, fields).map_err(|m| at(i, m))?;
