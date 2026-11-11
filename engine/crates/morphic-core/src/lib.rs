@@ -1176,7 +1176,8 @@ impl Engine {
         doc.workspace.modified_at = now_iso.to_string();
         doc.workspace.revision = 1;
         self.store.save_workspace(&doc)?;
-        self.store.write_history(new_id, &HistoryState::seed(&doc))?;
+        self.store
+            .write_history(new_id, &HistoryState::seed(&doc))?;
         Ok(doc)
     }
 
