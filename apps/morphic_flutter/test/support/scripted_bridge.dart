@@ -95,6 +95,12 @@ class ScriptedBridge implements MorphicBridge {
   /// Stand-in for the engine's persisted `workspace.fieldOverrides` (M1.5 task 1.5.5).
   final List<Map<String, dynamic>> fieldOverrides = [];
 
+  /// Startup recovery report, injected by recovery-UI tests (M1.5 task 1.5.4).
+  RecoveryReport recovery = const RecoveryReport();
+
+  /// Every explicit autosave checkpoint the UI asked for.
+  final List<String> saveCalls = [];
+
   /// Behaviour switches.
   bool failMetric = false;
   bool failQuery = false;
@@ -260,7 +266,24 @@ class ScriptedBridge implements MorphicBridge {
 
   @override
   EngineInfo engineInfo() =>
-      const EngineInfo(apiVersion: 11, coreVersion: '0.1.0', engine: 'morphic');
+      const EngineInfo(apiVersion: 12, coreVersion: '0.1.0', engine: 'morphic');
+
+  @override
+  RecoveryReport recoveryReport(String storageRoot) => recovery;
+
+  @override
+  Map<String, dynamic> saveWorkspace({
+    required String storageRoot,
+    required String workspaceId,
+  }) {
+    saveCalls.add(workspaceId);
+    return {
+      'revision': _revision,
+      'stateHash': _stateHash(),
+      'dirty': false,
+      'compacted': true,
+    };
+  }
 
   @override
   Map<String, dynamic> profileCsv(Uint8List bytes) => profileJson();

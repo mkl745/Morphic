@@ -31,6 +31,83 @@ class EngineInfo {
   final String engine;
 }
 
+/// What startup recovery actually repaired when the engine was created (M1.5 task 1.5.4).
+/// Rust captures it once per process start, so the app shows one honest summary rather than
+/// silently fixing the disk behind the user's back.
+class RecoveryReport {
+  const RecoveryReport({
+    this.sweptTmp = 0,
+    this.tornJournalLines = 0,
+    this.restoredFromJournal = false,
+    this.quarantined = false,
+    this.migratedLegacySource = false,
+    this.rebuiltLibraryIndex = false,
+  });
+
+  factory RecoveryReport.fromJson(Map<String, dynamic> json) => RecoveryReport(
+        sweptTmp: (json['sweptTmp'] as num?)?.toInt() ?? 0,
+        tornJournalLines: (json['tornJournalLines'] as num?)?.toInt() ?? 0,
+        restoredFromJournal: json['restoredFromJournal'] as bool? ?? false,
+        quarantined: json['quarantined'] as bool? ?? false,
+        migratedLegacySource: json['migratedLegacySource'] as bool? ?? false,
+        rebuiltLibraryIndex: json['rebuiltLibraryIndex'] as bool? ?? false,
+      );
+
+  /// Interrupted atomic writes that were discarded.
+  final int sweptTmp;
+
+  /// Journal records left half-written by a crash, dropped without failing the journal.
+  final int tornJournalLines;
+
+  /// A revision reached the write-ahead journal but not the document; it was promoted.
+  final bool restoredFromJournal;
+
+  /// An unreadable document was kept as `workspace.corrupt.json` for diagnosis.
+  final bool quarantined;
+
+  /// A pre-1.1.6 in-workspace source was moved to the content-addressed store; a
+  /// `workspace.pre-v1.json.bak` rollback copy was kept.
+  final bool migratedLegacySource;
+
+  /// A missing or unreadable `library.json` was rebuilt from the workspace folders, so no
+  /// workspace was hidden by a torn index.
+  final bool rebuiltLibraryIndex;
+
+  bool get isClean =>
+      sweptTmp == 0 &&
+      tornJournalLines == 0 &&
+      !restoredFromJournal &&
+      !quarantined &&
+      !migratedLegacySource &&
+      !rebuiltLibraryIndex;
+
+  /// Human-language lines for the recovery banner. Nothing here is invented: every line
+  /// corresponds to a field the engine actually reported.
+  List<String> get messages => [
+        if (restoredFromJournal)
+          'Restored the last edit from the crash journal.',
+        if (sweptTmp > 0)
+          'Discarded $sweptTmp interrupted write${sweptTmp == 1 ? '' : 's'}.',
+        if (tornJournalLines > 0)
+          'Dropped $tornJournalLines incomplete journal record${tornJournalLines == 1 ? '' : 's'}.',
+        if (quarantined)
+          'Kept an unreadable workspace as workspace.corrupt.json for diagnosis.',
+        if (migratedLegacySource)
+          'Migrated an older data source; a rollback copy was kept.',
+        if (rebuiltLibraryIndex)
+          'Rebuilt the workspace index from the saved workspaces.',
+      ];
+
+  Map<String, dynamic> toJson() => {
+        'sweptTmp': sweptTmp,
+        'tornJournalLines': tornJournalLines,
+        'restoredFromJournal': restoredFromJournal,
+        'quarantined': quarantined,
+        'migratedLegacySource': migratedLegacySource,
+        'rebuiltLibraryIndex': rebuiltLibraryIndex,
+      };
+}
+
 /// The coarse-grained engine contract. Responses are decoded JSON maps/lists.
 abstract interface class MorphicBridge {
   EngineInfo engineInfo();
@@ -47,6 +124,17 @@ abstract interface class MorphicBridge {
     required String workspaceId,
   });
   List<dynamic> listWorkspaces(String storageRoot);
+
+  /// Startup recovery report, captured once when the engine for [storageRoot] was created.
+  RecoveryReport recoveryReport(String storageRoot);
+
+  /// Explicit autosave checkpoint: folds the journal and acknowledges the flush. Returns
+  /// `{revision, stateHash, dirty, compacted}`. Every command is already persisted by Rust,
+  /// so this never represents a window in which data could be lost.
+  Map<String, dynamic> saveWorkspace({
+    required String storageRoot,
+    required String workspaceId,
+  });
 
   /// Rename a persisted workspace. Returns the updated document; the engine bumps the
   /// revision and rewrites the library index and undo seed (M1.5 task 1.5.3).
@@ -284,6 +372,10 @@ class FfiBridge implements MorphicBridge {
       .lookupFunction<_LoadWorkspaceNative, _LoadWorkspaceDart>('morphic_load_workspace');
   late final _listWorkspaces = _lib
       .lookupFunction<_ListWorkspacesNative, _ListWorkspacesDart>('morphic_list_workspaces');
+  late final _recoveryReport = _lib
+      .lookupFunction<_ListWorkspacesNative, _ListWorkspacesDart>('morphic_recovery_report');
+  late final _saveWorkspace = _lib
+      .lookupFunction<_TwoStringNative, _TwoStringDart>('morphic_save_workspace');
   late final _renameWorkspace = _lib
       .lookupFunction<_FourStringNative, _FourStringDart>('morphic_rename_workspace');
   late final _duplicateWorkspace = _lib
@@ -406,6 +498,34 @@ class FfiBridge implements MorphicBridge {
       });
     } finally {
       calloc.free(root);
+    }
+  }
+
+  @override
+  RecoveryReport recoveryReport(String storageRoot) {
+    final root = storageRoot.toNativeUtf8();
+    try {
+      return _withResponse(
+        () => _recoveryReport(root),
+        (s) => RecoveryReport.fromJson(_decodeMap(s)),
+      );
+    } finally {
+      calloc.free(root);
+    }
+  }
+
+  @override
+  Map<String, dynamic> saveWorkspace({
+    required String storageRoot,
+    required String workspaceId,
+  }) {
+    final root = storageRoot.toNativeUtf8();
+    final id = workspaceId.toNativeUtf8();
+    try {
+      return _withResponse(() => _saveWorkspace(root, id), _decodeMap);
+    } finally {
+      calloc.free(root);
+      calloc.free(id);
     }
   }
 

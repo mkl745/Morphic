@@ -68,13 +68,26 @@ jobs:
         # --no-fail-fast: one failing target must not hide the others. Without it a golden
         # failure stopped the run before morphic-core's AT-02 scorer could write its scorecard.
         run: cargo test --workspace --no-fail-fast > /tmp/test.log 2>&1
+      # Named chaos gate for M1.5 task 1.5.4. The full suite above already contains these
+      # tests; running them by name makes a kill-mid-save regression legible in the commit
+      # comment instead of buried in the last workspace-crate tail.
+      - name: Kill-mid-save chaos suite
+        id: chaos
+        continue-on-error: true
+        run: |
+          (
+            set -e
+            cargo test -p morphic-workspace --lib startup_recovery -- --nocapture
+            cargo test -p morphic-workspace --lib an_explicit_checkpoint -- --nocapture
+            cargo test -p morphic-core --lib a_kill_between -- --nocapture
+          ) > /tmp/chaos.log 2>&1
       - name: Report output as commit comment
         if: always()
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           {
-            echo "## Rust CI — fmt: ${{ steps.fmt.outcome }} · clippy: ${{ steps.clippy.outcome }} · test: ${{ steps.test.outcome }}"
+            echo "## Rust CI — fmt: ${{ steps.fmt.outcome }} · clippy: ${{ steps.clippy.outcome }} · test: ${{ steps.test.outcome }} · chaos: ${{ steps.chaos.outcome }}"
             echo "### versions"
             echo '```'
             rustc --version; cargo --version
@@ -90,6 +103,10 @@ jobs:
             echo "### test (tail)"
             echo '```'
             tail -n 80 /tmp/test.log
+            echo '```'
+            echo "### Kill-mid-save chaos suite (1.5.4)"
+            echo '```'
+            tail -n 60 /tmp/chaos.log
             echo '```'
             echo "### test failures (extracted)"
             echo '```'
@@ -155,7 +172,7 @@ jobs:
             exit 1
           fi
       - name: Enforce checks
-        if: steps.fmt.outcome != 'success' || steps.clippy.outcome != 'success' || steps.test.outcome != 'success' || steps.goldens.outcome != 'success'
+        if: steps.fmt.outcome != 'success' || steps.clippy.outcome != 'success' || steps.test.outcome != 'success' || steps.chaos.outcome != 'success' || steps.goldens.outcome != 'success'
         run: exit 1
 
   artifacts-drift:

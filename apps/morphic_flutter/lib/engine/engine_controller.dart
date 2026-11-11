@@ -92,6 +92,12 @@ class EngineController extends ChangeNotifier {
   String? _error;
   String? get error => _error;
 
+  /// An explicit autosave checkpoint has not run since the last edit (M1.5 task 1.5.4).
+  /// This is **not** "unsaved data": Rust persists every command synchronously. It is the
+  /// flag the debounce timer and the app-lifecycle flush clear by calling [save].
+  bool _dirty = false;
+  bool get dirty => _dirty;
+
   /// The workspace-wide filters, as persisted by Rust. Every bound component's page and
   /// metric is computed against these, so the bar renders this list and nothing else.
   List<Map<String, dynamic>> get globalFilters {
@@ -195,6 +201,7 @@ class EngineController extends ChangeNotifier {
   }
 
   void _applySnapshot(Map<String, dynamic> snap) {
+    _dirty = false;
     _doc = snap['doc'] as Map<String, dynamic>?;
     _profile = snap['profile'] as Map<String, dynamic>?;
     _revision = (snap['revision'] as num?)?.toInt() ?? 0;
@@ -208,6 +215,7 @@ class EngineController extends ChangeNotifier {
   void adoptImport(Map<String, dynamic> outcome, String workspaceId) {
     _workspaceId = workspaceId;
     _error = null;
+    _dirty = true;
     _doc = outcome['doc'] as Map<String, dynamic>?;
     _profile = outcome['profile'] as Map<String, dynamic>?;
     _typeOptions = _parseTypeOptions(outcome['typeOptions']);
@@ -359,6 +367,7 @@ class EngineController extends ChangeNotifier {
       // A real engine recomputes the matrix for the *converted* type; a scripted bridge may
       // omit it, in which case the previous options remain the least wrong answer.
       _applyHistory(res);
+      if (res['changed'] != false) _dirty = true;
       notifyListeners();
       return (res['affected'] as List? ?? const []).whereType<String>().toList();
     } catch (e) {
@@ -396,12 +405,38 @@ class EngineController extends ChangeNotifier {
               nowIso: now,
             );
       _applyHistory(res);
+      if (res['changed'] != false) _dirty = true;
       notifyListeners();
       return res;
     } catch (e) {
       _error = e.toString();
       notifyListeners();
       return null;
+    }
+  }
+
+  /// Explicit autosave checkpoint. Rust already wrote the authoritative document on every
+  /// command; this folds the journal and acknowledges the flush, then clears [dirty].
+  /// Returns false when the bridge refused, leaving [dirty] set so the next lifecycle pause
+  /// tries again rather than silently dropping the checkpoint.
+  Future<bool> save() async {
+    final id = _workspaceId;
+    if (id == null) return false;
+    try {
+      final res = bridge.saveWorkspace(
+        storageRoot: storageRoot,
+        workspaceId: id,
+      );
+      _revision = (res['revision'] as num?)?.toInt() ?? _revision;
+      _stateHash = res['stateHash'] as String? ?? _stateHash;
+      _dirty = false;
+      _error = null;
+      notifyListeners();
+      return true;
+    } catch (e) {
+      _error = e.toString();
+      notifyListeners();
+      return false;
     }
   }
 
@@ -435,6 +470,9 @@ class EngineController extends ChangeNotifier {
   Future<void> closeWorkspace() async {
     final id = _workspaceId;
     if (id == null) return;
+    // closeSession flushes autosave (doc 02 §2.3). Rust persisted every command already,
+    // so this folds the journal before the in-memory session is released.
+    if (_dirty) await save();
     try {
       bridge.closeWorkspace(storageRoot: storageRoot, workspaceId: id);
     } catch (e) {

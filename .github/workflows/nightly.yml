@@ -32,6 +32,15 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo test --workspace --release --no-fail-fast
+      # M1.5 task 1.5.4: the named nightly chaos suite. The full release test above already
+      # includes these cases; running them by name gives the nightly log a clear signal for
+      # torn journals, interrupted writes, quarantine and crash-window replay.
+      - name: Kill-mid-save chaos suite
+        run: |
+          set -e
+          cargo test -p morphic-workspace --release --lib startup_recovery -- --nocapture
+          cargo test -p morphic-workspace --release --lib an_explicit_checkpoint -- --nocapture
+          cargo test -p morphic-core --release --lib a_kill_between -- --nocapture
       # The same seeded mutation harness CI runs on every push, with a much longer stream.
       # Coverage-guided fuzzing (cargo-fuzz) is still not adopted: it needs a nightly toolchain
       # and a corpus directory, and a fuzzer nobody runs is worth less than a smoke everybody

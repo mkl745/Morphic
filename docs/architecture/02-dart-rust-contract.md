@@ -90,8 +90,9 @@ additive contract change, so `API_VERSION` went from 6 to **7** (§5). No FFI en
 shape: the new command travels inside the existing `morphic_apply_commands` JSON array, and a
 failed batch still applies nothing.
 
-The shipped apply result is `{revision, affected, changed, doc, typeOptions}` — `recompilation`
-remains deferred to 1.5.5, while undo/redo landed in 1.5.1 (§2.4.2). `typeOptions` also appears
+The shipped apply result is `{revision, affected, changed, doc, typeOptions}` — targeted
+recompilation shipped later in 1.5.5 (§2.4.5), while undo/redo landed in 1.5.1 (§2.4.2).
+`typeOptions` also appears
 on `snapshot` and on the import outcome: a map from component id to the conversion targets the
 engine can validate against the **live** dataset profile. This keeps the UI's "Change view"
 menu engine-authoritative (docs/architecture/04 §4.1) instead of making Dart a second
@@ -110,10 +111,12 @@ way (AT-13).
 
 Rust owns the bounded stacks (cap 100), the journal's `inverseSummary` and the document
 restore; Dart only renders the returned document and shows the label. A new command batch
-truncates redo; a failed batch pushes nothing. `WorkspaceSnapshot.dirty`, explicit `save()`
-and `recompilation` remain deferred to 1.5.4 / 1.5.5, and the field-override commands do not
-yet trigger targeted recompilation — they persist and are undoable, which is what AT-13's
-mixed run needs.
+truncates redo; a failed batch pushes nothing. `WorkspaceSnapshot.dirty` is still an
+*aspirational* field, not part of the shipped JSON snapshot. The explicit `save()` checkpoint
+landed in 1.5.4 (§2.4.6); its response carries `dirty: false` because the checkpoint has folded
+the journal, while Dart tracks a separate internal pending-checkpoint flag. Targeted
+recompilation shipped in 1.5.5 (§2.4.5). The field-override commands in this 1.5.1 row did not
+yet trigger it — they persisted and were undoable, which is what AT-13's mixed run needed.
 
 #### 2.4.3 As shipped in M1.5.2 (task 1.5.2)
 
@@ -162,6 +165,31 @@ that reads the inferred and effective values from Rust, emits the three commands
 small badge on corrected columns. Undo and redo restore the whole authoritative document, so
 the inference and every recompiled binding return together. `API_VERSION` went **10 → 11**
 (§5); no entry point changed shape.
+
+#### 2.4.6 As shipped in M1.5.4 (task 1.5.4)
+
+`API_VERSION` went **11 → 12** (§5). Two additive FFI entry points join the bridge:
+`morphic_recovery_report(root)` returns the `RecoveryReport` captured once at `Engine::new`, and
+`morphic_save_workspace(root, id)` returns
+`{revision, stateHash, dirty, compacted}`. No existing entry point changed shape.
+
+Rust startup recovery now runs *before* any session is opened. It sweeps orphaned `*.tmp`
+files, replays a newer journal revision left behind by a kill between journal append and
+document rename, drops a torn trailing JSONL line without failing the journal, quarantines an
+unreadable `workspace.json` as `workspace.corrupt.json`, migrates a pre-1.1.6 in-workspace source
+while keeping `workspace.pre-v1.json.bak`, and rebuilds a torn `library.json` from the workspace
+folders. `RecoveryReport` is
+`{sweptTmp, tornJournalLines, restoredFromJournal, quarantined, migratedLegacySource,
+rebuiltLibraryIndex}`; a clean startup is all zeroes/false. `Engine::save` rewrites the
+authoritative document, refreshes the index and folds the journal. Its `dirty` field is always
+`false`: Rust has already persisted every command synchronously, so the 2 s Dart timer is a
+**checkpoint debounce**, not a window in which data could be lost.
+
+Flutter owns `AutosaveCoordinator`: it asks for a checkpoint 2 s after the last changed batch,
+flushes immediately on `AppLifecycleState.paused` / `hidden` / `detached`, and flushes before
+`closeWorkspace`. The app reads `recoveryReport` once at startup and shows a dialog listing only
+the lines the engine actually reported — no invented damage and no silent repair. The
+aspirational `WorkspaceSnapshot.dirty` above remains absent from the wire payload.
 
 ### 2.5 Data plane
 
@@ -244,6 +272,9 @@ Errors MUST NOT embed raw user data rows (privacy in logs); they carry positions
 - **v11 (M1.5 task 1.5.5)** adds `ClearFieldOverride` and targeted recompilation of the
   bindings that read a corrected field. It travels through the existing
   `morphic_apply_commands` array; no entry point changed shape.
+- **v12 (M1.5 task 1.5.4)** adds the startup recovery report and the explicit autosave
+  checkpoint entry points (`morphic_recovery_report`, `morphic_save_workspace`). Both are
+  additive; no existing entry point changed shape.
 - The FFI boundary is a hand-written JSON surface over `morphic_*` exports, not generated frb
   code. CI compiles and tests both sides, checks generated schema artifacts for drift, and
   builds an APK whose stamp is compared with the commit SHA (see

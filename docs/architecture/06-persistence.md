@@ -44,9 +44,22 @@ Every mutation of a persisted file: **write `*.tmp` → fsync → atomic rename 
 3. Replay journal entries newer than the last saved snapshot → restore pre-crash revision,
    then compact.
 
+Stale `.lock` detection is a design target, not shipped (§7): the single-process app has no
+concurrent writer. Shipped startup recovery additionally quarantines unreadable documents,
+rebuilds a torn index, migrates legacy sources and returns the report described in §7.
+
 Autosave policy (engine-owned): debounce 2 s after last command **and** immediate flush on
 app lifecycle pause (Dart sends `closeSession`/`save` on `AppLifecycleState.paused`).
 Explicit save compacts the journal into `workspace.json`.
+
+**As shipped in 1.5.4:** every command already writes the authoritative document and its
+write-ahead journal entry synchronously; the 2 s timer is therefore a *checkpoint* debounce,
+not a data-loss window. `AutosaveCoordinator` calls `saveWorkspace` after the debounce and
+immediately on `paused` / `hidden` / `detached`; `closeWorkspace` also flushes before
+releasing the session. `Engine::save` rewrites the document, refreshes the index, folds the
+journal and returns `{revision, stateHash, dirty:false, compacted:true}`. Startup calls
+`recover_startup()` before any session is opened, so the recovery report is captured once per
+process start.
 
 ## 3. Undo / redo
 
@@ -93,12 +106,17 @@ the two UI entry points.
 
 - `workspace.json` carries `schemaVersion` + `lastMigratedFrom`; migration chain per
   [UI Schema §4](03-ui-schema.md). Migration writes a new file atomically; the pre-migration
-  copy is kept as `workspace.pre-vN.json.bak` for one version (rollback safety).
+  copy is kept as `workspace.pre-vN.json.bak` for one version (rollback safety). **1.5.4**
+  exercises this path: the legacy in-workspace source migration writes
+  `workspace.pre-v1.json.bak` *before* repointing `datasetId`, then checkpoints the document,
+  and a chaos test asserts the backup exists.
 - `snapshot.bin` carries format magic + version + checksum (xxhash/blake3 — picked in
   Phase 0, recorded in ADR-0007 addendum). Corrupt snapshot → transparent re-ingest from
   `source.*`; corrupt source too → degraded mode, never a crash.
 - Corrupted workspace JSON → attempt journal reconstruction; else quarantine file and show
-  recovery UI (spec §15 reliability tests cover all of these).
+  recovery UI (spec §15 reliability tests cover all of these). **1.5.4** also rebuilds a torn
+  `library.json` from the workspace folders, so an unreadable index cannot hide saved
+  workspaces, and reports the repair rather than doing it silently.
 
 ## 6. Privacy notes
 
@@ -124,6 +142,11 @@ This document is the target contract. What the file backend actually implements 
 | Legacy in-workspace `source.csv` | **Built** | Loads via fallback, migrated on first open without a revision bump |
 | `history.json` undo/redo stacks | **Built (1.5.1)** | Bounded to 100 frames; reconciled on open so a crash cannot resurrect a future redo state |
 | Library rename / duplicate / delete | **Built (1.5.3)** | Engine-owned document + index + history seed; duplicate shares the dataset; four additive FFI entry points (contract doc 02 §2.4.4) |
+| Startup recovery report + recovery UI | **Built (1.5.4)** | `recover_startup()` runs before any session opens; `morphic_recovery_report` exposes the once-captured report; a Flutter dialog lists only the repairs the engine actually made |
+| Explicit autosave checkpoint + lifecycle flush | **Built (1.5.4)** | `checkpoint` / `Engine::save` / `morphic_save_workspace`; 2 s Dart checkpoint debounce plus immediate flush on pause/hidden/detached and before `closeWorkspace` |
+| Migration rollback copy | **Built (1.5.4)** | `workspace.pre-v1.json.bak` is written before `datasetId` is repointed; a chaos test asserts it survives |
+| Torn `library.json` rebuilt from folders | **Built (1.5.4)** | `workspace_ids()` ignores the index; `recover_startup()` reindexes every authoritative doc and reports `rebuiltLibraryIndex` |
+| Kill-mid-save chaos suite | **Built (1.5.4)** | Named CI and nightly steps cover interrupted writes, torn journal lines, journal promotion, quarantine, legacy migration and torn-index repair |
 | Hash-verified degraded re-link | **Built (1.5.3)** | `relink_workspace` compares the picked bytes' SHA-256 with the document's `datasetId`, then reopens the session; different bytes are rejected |
 | Persisted `fieldOverrides` | **Built (1.5.5)** | One record per field, with `dtype` and/or `role`; stored in `workspace.json`, validated against the closed vocabularies, and included in every history frame, so undo restores the original inference and the recompiled bindings together (contract doc 02 §2.4.5) |
 | `snapshot.bin` columnar cache | **Deferred** | Reopen re-ingests the source. The cache is a perf optimization for a 10 MB budget that is still unmeasured on hardware; a versioned binary format before that data exists is speculative risk |
@@ -132,5 +155,8 @@ This document is the target contract. What the file backend actually implements 
 | Dataset garbage collection | **Not built** | Deleting a workspace deliberately keeps its dataset: another workspace may share the hash |
 
 `RecoveryReport` (`sweptTmp`, `tornJournalLines`, `restoredFromJournal`, `quarantined`,
-`migratedLegacySource`) exists so recovery can be *reported* to the user rather than performed
-silently. Surfacing it in the UI is 1.1.7+ work; today it is returned and tested.
+`migratedLegacySource`, `rebuiltLibraryIndex`) exists so recovery can be *reported* to the user
+rather than performed silently. **1.5.4** surfaces it in the recovery dialog; a clean startup
+shows nothing. The named CI and nightly chaos steps exercise the crash windows by fault
+injection — reproducing the exact on-disk state a kill would leave — rather than waiting for a
+cron that has never fired.

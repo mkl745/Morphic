@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 
 import '../../design_system/tokens.dart';
+import '../../engine/autosave.dart';
 import '../../engine/engine_controller.dart';
 import '../../engine/file_source.dart';
 import '../../runtime/component_registry.dart';
@@ -55,6 +56,9 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
     final args = ModalRoute.of(context)?.settings.arguments;
     final argsObj = args is WorkspaceArgs ? args : null;
     final ctl = widget.controller ?? argsObj?.controller;
+    // Bind the app-level checkpoint timer to the open controller. Idempotent and does not
+    // notify listeners, so calling it from build is safe (M1.5 task 1.5.4).
+    AutosaveScope.of(context)?.watch(ctl);
     final notices = widget.warnings.isNotEmpty
         ? widget.warnings
         : (argsObj?.warnings ?? const []);

@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import 'design_system/tokens.dart';
+import 'engine/autosave.dart';
 import 'engine/bridge.dart';
 import 'engine/bridge_scope.dart';
 import 'engine/file_source.dart';
@@ -11,7 +14,7 @@ import 'features/poc/poc_screen.dart';
 import 'features/settings/settings_screen.dart';
 import 'features/workspace/workspace_screen.dart';
 
-class MorphicApp extends StatelessWidget {
+class MorphicApp extends StatefulWidget {
   const MorphicApp({
     super.key,
     required this.bridge,
@@ -30,25 +33,87 @@ class MorphicApp extends StatelessWidget {
   final PlatformFileSource? fileSource;
 
   @override
+  State<MorphicApp> createState() => _MorphicAppState();
+}
+
+/// Owns the autosave lifecycle observer (M1.5 task 1.5.4). A stateful wrapper is required
+/// because the observer must be registered once and disposed with the app, not rebuilt.
+class _MorphicAppState extends State<MorphicApp>
+    with WidgetsBindingObserver {
+  final _autosave = AutosaveCoordinator();
+  bool _recoveryShown = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    // Captured once at process start. An FFI failure here must never stop the app from
+    // opening; an empty app is strictly worse than an unshown recovery banner.
+    try {
+      _autosave.recovery =
+          widget.bridge.recoveryReport(widget.storageRoot);
+    } catch (_) {
+      _autosave.recovery = const RecoveryReport();
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden ||
+        state == AppLifecycleState.detached) {
+      // Immediate flush, not a debounce: the process may never resume (doc 06 §2).
+      unawaited(_autosave.flushNow());
+    }
+  }
+
+  @override
+  void dispose() {
+    unawaited(_autosave.flushNow());
+    _autosave.dispose();
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return BridgeScope(
-      bridge: bridge,
-      storageRoot: storageRoot,
-      importRunner: importRunner,
-      child: MaterialApp(
-        title: 'MORPHIC',
-        debugShowCheckedModeBanner: false,
-        theme: MorphicTheme.light(),
-        darkTheme: MorphicTheme.dark(),
-        themeMode: ThemeMode.dark,
-        initialRoute: '/',
-        routes: {
-          '/': (_) => HomeScreen(fileSource: fileSource),
-          '/poc': (_) => const PocScreen(),
-          '/import': (_) => const ImportScreen(),
-          '/workspace': (_) => WorkspaceScreen(fileSource: fileSource),
-          '/settings': (_) => const SettingsScreen(),
-        },
+    // Schedule after this build finishes: the banner is shown with the app's navigator,
+    // and pushing a route during build would be a framework error.
+    if (!_recoveryShown && !_autosave.recovery.isClean) {
+      _recoveryShown = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        final nav = _autosave.navigatorKey.currentState;
+        if (nav == null) return;
+        unawaited(showRecoveryDialog(
+          context: nav.context,
+          report: _autosave.recovery,
+        ));
+      });
+    }
+    return AutosaveScope(
+      coordinator: _autosave,
+      child: BridgeScope(
+        bridge: widget.bridge,
+        storageRoot: widget.storageRoot,
+        importRunner: widget.importRunner,
+        child: MaterialApp(
+          navigatorKey: _autosave.navigatorKey,
+          title: 'MORPHIC',
+          debugShowCheckedModeBanner: false,
+          theme: MorphicTheme.light(),
+          darkTheme: MorphicTheme.dark(),
+          themeMode: ThemeMode.dark,
+          initialRoute: '/',
+          routes: {
+            '/': (_) => HomeScreen(fileSource: widget.fileSource),
+            '/poc': (_) => const PocScreen(),
+            '/import': (_) => const ImportScreen(),
+            '/workspace': (_) =>
+                WorkspaceScreen(fileSource: widget.fileSource),
+            '/settings': (_) => const SettingsScreen(),
+          },
+        ),
       ),
     );
   }

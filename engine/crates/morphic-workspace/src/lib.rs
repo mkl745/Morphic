@@ -245,6 +245,8 @@ pub struct RecoveryReport {
     pub restored_from_journal: bool,
     pub quarantined: bool,
     pub migrated_legacy_source: bool,
+    /// A missing or unreadable `library.json` was rebuilt from the workspace folders.
+    pub rebuilt_library_index: bool,
 }
 
 impl RecoveryReport {
@@ -575,19 +577,58 @@ impl FileStore {
         let mut doc = self.load_workspace(id)?;
         let bytes = fs::read(&legacy)?;
         let hash = self.put_dataset(&bytes)?;
-        if let Some(ds) = doc.workspace.data_sources.first_mut() {
+        {
+            let Some(ds) = doc.workspace.data_sources.first() else {
+                return Ok(false);
+            };
             if ds.dataset_id == hash {
                 // Already repointed (a previous migration was interrupted after the write).
                 fs::remove_file(&legacy)?;
                 return Ok(false);
             }
-            ds.dataset_id = hash;
-        } else {
-            return Ok(false);
         }
-        self.save_workspace(&doc)?;
+        // One-version rollback copy (docs/architecture/06 §5). Write it *before* the
+        // datasetId is repointed: if the process dies between these two atomic writes the
+        // original document is still recoverable by hand, rather than being overwritten.
+        let backup = self.workspace_dir(id).join("workspace.pre-v1.json.bak");
+        if !backup.exists() {
+            atomic_write(&backup, &serde_json::to_vec_pretty(&doc)?)?;
+        }
+        doc.workspace.data_sources[0].dataset_id = hash;
+        self.checkpoint(&doc)?;
         fs::remove_file(&legacy)?;
         Ok(true)
+    }
+
+    /// An explicit autosave checkpoint (M1.5 task 1.5.4). The engine already writes the
+    /// authoritative document on every command, so this does not introduce a debounced write
+    /// window that could lose data; it rewrites the document, refreshes the index and folds
+    /// the journal, then acknowledges the flush to the UI.
+    pub fn checkpoint(&self, doc: &WorkspaceDoc) -> Result<(), StoreError> {
+        let id = &doc.workspace.id;
+        fs::create_dir_all(self.workspace_dir(id))?;
+        atomic_write(&self.doc_path(id), &serde_json::to_vec_pretty(doc)?)?;
+        self.index(doc)?;
+        self.compact_journal(id, HISTORY_LIMIT)?;
+        Ok(())
+    }
+
+    /// Ids of every workspace folder on disk, sorted. Reading the folders rather than
+    /// `library.json` means a torn index cannot hide a workspace from startup recovery.
+    pub fn workspace_ids(&self) -> Result<Vec<String>, StoreError> {
+        let dir = self.root.join("workspaces");
+        if !dir.exists() {
+            return Ok(Vec::new());
+        }
+        let mut ids = Vec::new();
+        for entry in fs::read_dir(&dir)? {
+            let entry = entry?;
+            if entry.path().is_dir() {
+                ids.push(entry.file_name().to_string_lossy().into_owned());
+            }
+        }
+        ids.sort();
+        Ok(ids)
     }
 
     /// Remove orphaned `*.tmp` files left by interrupted writes. Returns the count swept.
@@ -596,6 +637,51 @@ impl FileStore {
         let mut swept = 0;
         sweep_tmp(&self.root, &mut swept)?;
         Ok(swept)
+    }
+
+    /// Full startup recovery across the whole store (M1.5 task 1.5.4). Sweeps interrupted
+    /// writes, replays newer journal revisions, quarantines unreadable documents, migrates
+    /// pre-1.1.6 sources and rebuilds a torn index from the folders on disk — then returns
+    /// *what it did* so the app can show it instead of silently repairing. Idempotent: a
+    /// second call on a healthy store reports clean.
+    pub fn recover_startup(&self) -> Result<RecoveryReport, StoreError> {
+        let mut report = RecoveryReport::default();
+        sweep_tmp(&self.root, &mut report.swept_tmp)?;
+        let ids = self.workspace_ids()?;
+        let torn_index = self.library_is_torn() && !ids.is_empty();
+        for id in ids {
+            match self.recover_workspace(&id) {
+                Ok(found) => {
+                    report.torn_journal_lines += found.torn_journal_lines;
+                    report.restored_from_journal |= found.restored_from_journal;
+                    report.quarantined |= found.quarantined;
+                }
+                // `resolve` quarantines the bad bytes *before* returning Corrupt, so the
+                // startup sweep still has to tell the user it happened.
+                Err(StoreError::Corrupt(_)) => report.quarantined = true,
+                Err(_) => {}
+            }
+            if let Ok(true) = self.migrate_legacy_source(&id) {
+                report.migrated_legacy_source = true;
+            }
+            // Rebuild the index from authoritative docs. `read_library` tolerates a torn
+            // index by returning an empty one, which would otherwise hide every workspace
+            // until its next save. Doing this here makes startup repair complete.
+            if let Ok(doc) = self.load_workspace(&id) {
+                self.index(&doc)?;
+            }
+        }
+        report.rebuilt_library_index = torn_index;
+        Ok(report)
+    }
+
+    /// Whether `library.json` is missing or unparseable. A missing index on an empty store is
+    /// not damage; the caller only reports a rebuild when workspace folders exist.
+    fn library_is_torn(&self) -> bool {
+        match fs::read(self.library_path()) {
+            Ok(bytes) => serde_json::from_slice::<Library>(&bytes).is_err(),
+            Err(e) => e.kind() == std::io::ErrorKind::NotFound,
+        }
     }
 }
 
@@ -1088,6 +1174,107 @@ mod tests {
         // And the next save rebuilds the index.
         s.save_workspace(&doc("w2")).unwrap();
         assert!(s.list_workspaces().unwrap().iter().any(|w| w.id == "w2"));
+        fs::remove_dir_all(&root).ok();
+    }
+
+    // --- M1.5 task 1.5.4: kill-mid-save chaos suite -------------------------------------
+
+    /// Fault injection, not a literal process kill: each case reproduces the exact on-disk
+    /// state a crash at that point would leave, then asks startup recovery to repair it.
+    /// Running this in CI is stronger than a nightly cron that has never fired.
+    #[test]
+    fn startup_recovery_reports_every_crash_window() {
+        let (s, root) = store();
+        s.save_workspace(&doc("w1")).unwrap();
+        // A kill after the journal append but before the document rename.
+        s.journal_revision(&doc_at("w1", 7, "2026-11-05T07:00:00Z"))
+            .unwrap();
+        // A torn trailing line from a write interrupted halfway.
+        let journal = s.journal_path("w1");
+        let mut bytes = fs::read(&journal).unwrap();
+        bytes.extend(b"{\"revision\":8,\"doc\":");
+        fs::write(&journal, bytes).unwrap();
+        // An orphaned tmp file from an interrupted atomic rename.
+        let orphan = root.join("datasets").join("partial.tmp");
+        fs::write(&orphan, b"partial").unwrap();
+        // A pre-1.1.6 workspace whose source still lives beside the document.
+        let mut old = doc("w_legacy");
+        old.workspace.data_sources[0].dataset_id = "w_legacy".into();
+        fs::create_dir_all(s.workspace_dir("w_legacy")).unwrap();
+        fs::write(
+            s.doc_path("w_legacy"),
+            serde_json::to_vec_pretty(&old).unwrap(),
+        )
+        .unwrap();
+        fs::write(s.legacy_source_path("w_legacy"), b"a,b\n1,2\n").unwrap();
+
+        let report = s.recover_startup().unwrap();
+        assert_eq!(report.swept_tmp, 1, "the interrupted write is discarded");
+        assert_eq!(report.torn_journal_lines, 1, "the torn record is counted");
+        assert!(report.restored_from_journal, "the lost revision is promoted");
+        assert!(report.migrated_legacy_source, "the legacy source is migrated");
+        assert_eq!(s.load_workspace("w1").unwrap().workspace.revision, 7);
+        assert!(
+            s.workspace_dir("w_legacy")
+                .join("workspace.pre-v1.json.bak")
+                .exists(),
+            "a one-version rollback copy is kept"
+        );
+        // Recovery is idempotent: a second startup on a healthy store reports nothing.
+        assert!(s.recover_startup().unwrap().is_clean());
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn startup_recovery_rebuilds_a_torn_library_index() {
+        let (s, root) = store();
+        s.save_workspace(&doc("w1")).unwrap();
+        s.save_workspace(&doc("w2")).unwrap();
+        fs::write(s.root.join("library.json"), b"{ torn").unwrap();
+
+        let report = s.recover_startup().unwrap();
+        assert!(
+            report.rebuilt_library_index,
+            "a torn index must be reported as repaired"
+        );
+        assert_eq!(
+            s.list_workspaces().unwrap().len(),
+            2,
+            "every folder must be visible again"
+        );
+        assert!(s.recover_startup().unwrap().is_clean());
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn startup_recovery_quarantines_an_unreadable_document() {
+        let (s, root) = store();
+        s.save_workspace(&doc("w_bad")).unwrap();
+        fs::write(s.doc_path("w_bad"), b"{ not json").unwrap();
+        fs::remove_file(s.journal_path("w_bad")).unwrap();
+
+        let report = s.recover_startup().unwrap();
+        assert!(report.quarantined, "startup must report the quarantine");
+        assert!(
+            s.workspace_dir("w_bad")
+                .join("workspace.corrupt.json")
+                .exists(),
+            "the bad bytes are kept for diagnosis"
+        );
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn an_explicit_checkpoint_leaves_no_torn_journal() {
+        let (s, root) = store();
+        let mut d = doc("w1");
+        s.save_workspace(&d).unwrap();
+        d.workspace.revision = 5;
+        s.checkpoint(&d).unwrap();
+        let (entries, torn) = s.read_journal("w1").unwrap();
+        assert_eq!(torn, 0);
+        assert_eq!(entries.len(), 1, "the journal stays bounded");
+        assert_eq!(s.load_workspace("w1").unwrap().workspace.revision, 5);
         fs::remove_dir_all(&root).ok();
     }
 

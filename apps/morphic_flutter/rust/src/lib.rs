@@ -632,6 +632,49 @@ pub unsafe extern "C" fn morphic_list_workspaces(storage_root: *const c_char) ->
     })
 }
 
+/// What startup recovery actually repaired when this engine instance was created. The report
+/// is captured once, so the app shows exactly one honest summary per process start.
+///
+/// # Safety
+/// `storage_root` must be a valid C string.
+#[no_mangle]
+pub unsafe extern "C" fn morphic_recovery_report(
+    storage_root: *const c_char,
+) -> *mut c_char {
+    guarded(|| {
+        let root = match unsafe { cstr(storage_root) } {
+            Some(r) => r,
+            None => return err("invalid storage_root"),
+        };
+        with_engine(&root, |engine| to_json(&engine.recovery_report()))
+    })
+}
+
+/// Explicit autosave checkpoint. Every command is already persisted, so this folds the journal
+/// and acknowledges the flush rather than introducing a window that could lose data.
+///
+/// # Safety
+/// Both pointers must be valid C strings.
+#[no_mangle]
+pub unsafe extern "C" fn morphic_save_workspace(
+    storage_root: *const c_char,
+    workspace_id: *const c_char,
+) -> *mut c_char {
+    guarded(|| {
+        let root = match unsafe { cstr(storage_root) } {
+            Some(r) => r,
+            None => return err("invalid storage_root"),
+        };
+        let id = match unsafe { cstr(workspace_id) } {
+            Some(i) => i,
+            None => return err("invalid workspace_id"),
+        };
+        with_engine(&root, |engine| {
+            to_json(&engine.save(&id).map_err(|e| e.to_string())?)
+        })
+    })
+}
+
 /// Rename a persisted workspace. Returns the new `WorkspaceDoc`.
 ///
 /// # Safety
@@ -852,7 +895,7 @@ mod tests {
     fn engine_info_returns_json() {
         let v = json(morphic_engine_info());
         assert_eq!(v["engine"], "morphic");
-        assert_eq!(v["apiVersion"], 11);
+        assert_eq!(v["apiVersion"], 12);
     }
 
     #[test]
@@ -1921,6 +1964,39 @@ mod tests {
             targets,
             "snapshot and apply disagree about the available switches"
         );
+        std::fs::remove_dir_all(&p).ok();
+    }
+
+    // --- M1.5 task 1.5.4: recovery report and explicit checkpoint over FFI ---------------
+
+    #[test]
+    fn recovery_report_crosses_the_ffi_boundary() {
+        let (p, rp) = root("recoveryreport");
+        // Plant an interrupted write *before* the engine is created, so startup recovery has
+        // something real to report. with_engine caches per root, and this root is unique.
+        std::fs::create_dir_all(p.join("datasets")).unwrap();
+        std::fs::write(p.join("datasets").join("interrupted.tmp"), b"partial").unwrap();
+        let v = json(unsafe { morphic_recovery_report(rp.as_ptr()) });
+        assert_eq!(v["sweptTmp"], 1, "{v}");
+        assert_eq!(v["restoredFromJournal"], false, "{v}");
+        assert_eq!(v["quarantined"], false, "{v}");
+        assert_eq!(v["rebuiltLibraryIndex"], false, "{v}");
+        // A second call must not sweep the same file twice.
+        let again = json(unsafe { morphic_recovery_report(rp.as_ptr()) });
+        assert_eq!(again["sweptTmp"], 1, "the report is captured once: {again}");
+        std::fs::remove_dir_all(&p).ok();
+    }
+
+    #[test]
+    fn explicit_save_checkpoint_returns_a_clean_flush() {
+        let (p, rp) = root("checkpoint");
+        let id = c("w1");
+        unsafe { import(&rp, &id, None) };
+        let v = json(unsafe { morphic_save_workspace(rp.as_ptr(), id.as_ptr()) });
+        assert_eq!(v["dirty"], false, "{v}");
+        assert_eq!(v["compacted"], true, "{v}");
+        assert!(v["revision"].as_u64().unwrap() >= 1, "{v}");
+        assert!(v["stateHash"].as_str().unwrap().len() >= 32, "{v}");
         std::fs::remove_dir_all(&p).ok();
     }
 }

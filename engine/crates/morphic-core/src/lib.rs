@@ -25,7 +25,8 @@ pub use commands::Command;
 use morphic_model::{DatasetProfile, ImportReport, Table};
 use morphic_schema::WorkspaceDoc;
 use morphic_workspace::{
-    state_hash, FileStore, HistoryFrame, HistoryState, StoreError, WorkspaceStore,
+    state_hash, FileStore, HistoryFrame, HistoryState, RecoveryReport, StoreError,
+    WorkspaceStore,
 };
 
 /// Re-exported so the FFI bridge can create and trip a cancellation token without taking a
@@ -44,9 +45,11 @@ use thiserror::Error;
 /// snapshot/import/apply (M1.5 task 1.5.1). v9 adds `ResizeComponent` and its persisted
 /// `layout.hints` record (M1.5 task 1.5.2). v10 adds the library lifecycle and source re-link
 /// entry points (M1.5 task 1.5.3). v11 adds `ClearFieldOverride` and targeted recompilation of
-/// the bindings affected by a field correction (M1.5 task 1.5.5). New entry points and commands
-/// are additive contract changes and are versioned with the bridge (doc 02 §4).
-pub const API_VERSION: u32 = 11;
+/// the bindings affected by a field correction (M1.5 task 1.5.5). v12 adds the startup
+/// recovery report and the explicit autosave checkpoint entry points (M1.5 task 1.5.4). New
+/// entry points and commands are additive contract changes and are versioned with the bridge
+/// (doc 02 §4).
+pub const API_VERSION: u32 = 12;
 
 #[derive(Debug, Error)]
 pub enum CoreError {
@@ -210,6 +213,18 @@ pub struct ApplyOutcome {
     pub label: String,
 }
 
+/// The acknowledgement behind an explicit autosave checkpoint.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveOutcome {
+    pub revision: u64,
+    pub state_hash: String,
+    /// Always false: the checkpoint has folded the journal. Dart uses this to clear its own
+    /// "unflushed checkpoint" flag; it never means "data was unsaved".
+    pub dirty: bool,
+    pub compacted: bool,
+}
+
 /// An open workspace: canonical Rust state that Flutter only renders.
 struct Session {
     doc: WorkspaceDoc,
@@ -318,6 +333,9 @@ fn frame_for(
 pub struct Engine {
     store: FileStore,
     sessions: Mutex<HashMap<String, Session>>,
+    /// What startup recovery actually did. Captured once at construction, not recomputed on
+    /// every call, so the app can show the user exactly one honest report per process start.
+    recovery: RecoveryReport,
 }
 
 /// The UI's menu is engine-authoritative: it is exactly the set of switches whose converted
@@ -348,11 +366,44 @@ fn type_options(
 impl Engine {
     pub fn new(storage_root: impl AsRef<Path>) -> Result<Self, CoreError> {
         let store = FileStore::new(storage_root)?;
-        // Crash-recovery sweep before anything is opened (docs/architecture/06 §2).
-        store.recover()?;
+        // Full startup recovery before anything is opened (docs/architecture/06 §2). The
+        // report is retained so the UI can tell the user what was repaired rather than
+        // silently fixing it (M1.5 task 1.5.4).
+        let recovery = store.recover_startup()?;
         Ok(Self {
             store,
             sessions: Mutex::new(HashMap::new()),
+            recovery,
+        })
+    }
+
+    /// What startup recovery did on this engine instance. Clean means nothing needed repair.
+    pub fn recovery_report(&self) -> RecoveryReport {
+        self.recovery.clone()
+    }
+
+    /// Explicit autosave checkpoint (docs/architecture/06 §2). Every command already writes
+    /// the authoritative document, so this does **not** introduce a debounced write window
+    /// that could lose data: it rewrites the document, refreshes the index, folds the journal
+    /// and acknowledges the flush. Dart calls it after its debounce and immediately on
+    /// `AppLifecycleState.paused`.
+    pub fn save(&self, workspace_id: &str) -> Result<SaveOutcome, CoreError> {
+        if !self.has_session(workspace_id) {
+            self.open_session(workspace_id)?;
+        }
+        let sessions = self
+            .sessions
+            .lock()
+            .map_err(|_| CoreError::SessionPoisoned)?;
+        let s = sessions
+            .get(workspace_id)
+            .ok_or_else(|| CoreError::SessionNotFound(workspace_id.into()))?;
+        self.store.checkpoint(&s.doc)?;
+        Ok(SaveOutcome {
+            revision: s.doc.workspace.revision,
+            state_hash: state_hash(&s.doc),
+            dirty: false,
+            compacted: true,
         })
     }
 
@@ -1898,6 +1949,66 @@ mod tests {
             engine.metric_data("w1", "total_records").unwrap().value,
             serde_json::json!(5)
         );
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    // --- M1.5 task 1.5.4: startup recovery, explicit checkpoint, kill-mid-save -----------
+
+    #[test]
+    fn startup_recovery_is_reported_once_and_a_checkpoint_acknowledges_the_flush() {
+        let root = temp_root("startup-report");
+        // An interrupted atomic rename left a temp file behind before this process started.
+        std::fs::create_dir_all(root.join("datasets")).unwrap();
+        std::fs::write(root.join("datasets").join("interrupted.tmp"), b"partial").unwrap();
+
+        let engine = Engine::new(&root).unwrap();
+        let report = engine.recovery_report();
+        assert_eq!(report.swept_tmp, 1);
+        assert!(!report.is_clean());
+        // The report is a snapshot of startup, not a live query: repeating the call does not
+        // re-sweep or silently claim a second repair.
+        assert_eq!(engine.recovery_report(), report);
+
+        engine
+            .import_csv(SALES, "Sales", "w1", "2026-11-05T00:00:00Z", &mut |_| {})
+            .unwrap();
+        let saved = engine.save("w1").unwrap();
+        assert!(!saved.dirty);
+        assert!(saved.compacted);
+        assert_eq!(
+            saved.state_hash,
+            state_hash(&engine.load_workspace("w1").unwrap())
+        );
+
+        drop(engine);
+        assert!(Engine::new(&root).unwrap().recovery_report().is_clean());
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn a_kill_between_journal_and_rename_is_repaired_at_startup() {
+        let root = temp_root("kill-mid-save");
+        let engine = Engine::new(&root).unwrap();
+        let out = engine
+            .import_csv(SALES, "Sales", "w1", "2026-11-05T00:00:00Z", &mut |_| {})
+            .unwrap();
+        drop(engine);
+
+        // Fault injection: the write-ahead journal reached disk, but the process died before
+        // the authoritative document rename. A second store handle writes only the journal.
+        let store = FileStore::new(&root).unwrap();
+        let mut newer = out.doc.clone();
+        newer.workspace.revision = 6;
+        newer.workspace.modified_at = "2026-11-05T06:00:00Z".into();
+        store.journal_revision(&newer).unwrap();
+
+        let reopened = Engine::new(&root).unwrap();
+        assert!(
+            reopened.recovery_report().restored_from_journal,
+            "startup must report the promoted revision"
+        );
+        let snap = reopened.open_session("w1").unwrap();
+        assert_eq!(snap.revision, 6, "the interrupted save was not lost");
         std::fs::remove_dir_all(&root).ok();
     }
 
