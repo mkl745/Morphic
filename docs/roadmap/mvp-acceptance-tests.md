@@ -133,10 +133,25 @@ Given ≥ 3 workspaces, when renaming, duplicating, and deleting, then the libra
 changes immediately, duplication shares the dataset (no file duplication on disk), and
 deletion never removes a dataset referenced elsewhere. *(automated)*
 
+*1.5.3 note.* **Green** in CI run 42970337214 (`e87a7e6`). The Rust test
+`rename_duplicate_and_delete_update_the_library_and_share_the_dataset` imports one workspace,
+renames it, duplicates it twice into three library entries, asserts a single dataset directory
+on disk, deletes the original and proves both surviving copies reopen non-degraded. Dart widget
+tests prove the home menu sends rename/duplicate/delete through the bridge and reloads the list;
+a cancelled dialog makes no call. AT-15 makes no device claim, so no physical-device half is owed.
+
 **AT-16 — Missing source resilience.**
 Given a workspace whose dataset snapshot is deleted/corrupted, when opened, then it opens
 in degraded mode (definitions visible, clear recovery affordance); re-importing the same
 content re-links by hash and restores full function. *(automated chaos)*
+
+*1.5.3 note.* The automated half is **green** in the same run. Rust deletes the dataset file,
+confirms `open_session` reports `degraded`, refuses a different file, then re-links the exact
+original bytes by SHA-256 and confirms `metric_data` returns the row count again. The degraded
+notice now carries a **Restore source file** button alongside an app-bar action, and four Dart
+widget tests cover both entry points, a rejected re-link and a healthy workspace. The
+kill-mid-save / corrupted-index **chaos suite** is task 1.5.4 and has not run, so AT-16 is not
+yet formally green.
 
 **AT-17 — User corrections.**
 Given a misdetected field (e.g. numeric-looking ids typed as int), when the user overrides
