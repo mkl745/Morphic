@@ -1,7 +1,11 @@
+import 'dart:io';
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 
 import '../../design_system/tokens.dart';
 import '../../engine/engine_controller.dart';
+import '../../engine/file_source.dart';
 import '../../runtime/component_registry.dart';
 import '../../runtime/explanation_sheet.dart';
 import '../../runtime/workspace_view.dart';
@@ -21,6 +25,7 @@ class WorkspaceScreen extends StatefulWidget {
     this.controller,
     this.registry,
     this.warnings = const [],
+    this.fileSource,
   });
 
   /// Optional injected document (structural view / tests); otherwise read from route args.
@@ -32,6 +37,9 @@ class WorkspaceScreen extends StatefulWidget {
 
   /// Ingest warnings carried over from the import, surfaced rather than discarded.
   final List<String> warnings;
+
+  /// Injectable picker for the degraded-mode "Restore source file" action.
+  final PlatformFileSource? fileSource;
 
   @override
   State<WorkspaceScreen> createState() => _WorkspaceScreenState();
@@ -65,6 +73,15 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
               actions: [
                 _historyButton(context, ctl, undo: true),
                 _historyButton(context, ctl, undo: false),
+                // AT-16: degraded mode must offer a recovery action, not just an explanation.
+                // The engine verifies the picked bytes against the document's dataset hash.
+                if (ctl.degraded)
+                  IconButton(
+                    key: const Key('restore-source-button'),
+                    tooltip: 'Restore source file',
+                    icon: const Icon(Icons.link),
+                    onPressed: () => _restoreSource(context, ctl),
+                  ),
                 IconButton(
                   key: const Key('layout-edit-button'),
                   tooltip:
@@ -111,6 +128,9 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
                     onRetry: ctl.workspaceId == null
                         ? null
                         : () => ctl.open(ctl.workspaceId!),
+                    onRestoreSource: ctl.degraded
+                        ? () => _restoreSource(context, ctl)
+                        : null,
                     layoutEditing: _editingLayout,
                     focusMode: _focusMode,
                     focusIndex: _focusIndex,
@@ -158,6 +178,34 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
               ],
             ),
     );
+  }
+
+  /// Re-link a degraded workspace to its original source bytes, then reopen so the table,
+  /// profile and metrics are rehydrated. A different file is refused by Rust, and that error
+  /// is shown rather than leaving the user guessing.
+  Future<void> _restoreSource(BuildContext context, EngineController ctl) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final id = ctl.workspaceId;
+    if (id == null) return;
+    try {
+      final picked = await (widget.fileSource ?? const FilePickerSource()).pick();
+      if (picked == null) return; // cancelled, not an error
+      final Uint8List bytes =
+          picked.bytes ?? await File(picked.path!).readAsBytes();
+      ctl.bridge.relinkWorkspace(
+        bytes: bytes,
+        storageRoot: ctl.storageRoot,
+        workspaceId: id,
+      );
+      await ctl.open(id);
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Source data restored')),
+      );
+    } catch (e) {
+      messenger.showSnackBar(
+        SnackBar(content: Text('Could not restore source: $e')),
+      );
+    }
   }
 
   /// Engine-owned undo/redo control. Disabled when Rust says the depth is zero; the label

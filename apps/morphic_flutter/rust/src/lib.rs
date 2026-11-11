@@ -632,6 +632,138 @@ pub unsafe extern "C" fn morphic_list_workspaces(storage_root: *const c_char) ->
     })
 }
 
+/// Rename a persisted workspace. Returns the new `WorkspaceDoc`.
+///
+/// # Safety
+/// All four pointers must be valid C strings.
+#[no_mangle]
+pub unsafe extern "C" fn morphic_rename_workspace(
+    storage_root: *const c_char,
+    workspace_id: *const c_char,
+    title: *const c_char,
+    now_iso: *const c_char,
+) -> *mut c_char {
+    guarded(|| {
+        let root = match unsafe { cstr(storage_root) } {
+            Some(r) => r,
+            None => return err("invalid storage_root"),
+        };
+        let id = match unsafe { cstr(workspace_id) } {
+            Some(i) => i,
+            None => return err("invalid workspace_id"),
+        };
+        let title = match unsafe { cstr(title) } {
+            Some(t) => t,
+            None => return err("invalid title"),
+        };
+        let now = unsafe { cstr(now_iso) }.unwrap_or_else(|| "1970-01-01T00:00:00Z".into());
+        with_engine(&root, |engine| {
+            let doc = engine
+                .rename_workspace(&id, &title, &now)
+                .map_err(|e| e.to_string())?;
+            to_json(&doc)
+        })
+    })
+}
+
+/// Duplicate a workspace document under a new id, sharing the content-addressed dataset.
+///
+/// # Safety
+/// All five pointers must be valid C strings.
+#[no_mangle]
+pub unsafe extern "C" fn morphic_duplicate_workspace(
+    storage_root: *const c_char,
+    source_id: *const c_char,
+    new_id: *const c_char,
+    title: *const c_char,
+    now_iso: *const c_char,
+) -> *mut c_char {
+    guarded(|| {
+        let root = match unsafe { cstr(storage_root) } {
+            Some(r) => r,
+            None => return err("invalid storage_root"),
+        };
+        let source = match unsafe { cstr(source_id) } {
+            Some(i) => i,
+            None => return err("invalid source workspace_id"),
+        };
+        let new = match unsafe { cstr(new_id) } {
+            Some(i) => i,
+            None => return err("invalid new workspace_id"),
+        };
+        let title = match unsafe { cstr(title) } {
+            Some(t) => t,
+            None => return err("invalid title"),
+        };
+        let now = unsafe { cstr(now_iso) }.unwrap_or_else(|| "1970-01-01T00:00:00Z".into());
+        with_engine(&root, |engine| {
+            let doc = engine
+                .duplicate_workspace(&source, &new, &title, &now)
+                .map_err(|e| e.to_string())?;
+            to_json(&doc)
+        })
+    })
+}
+
+/// Delete a workspace. Datasets are kept because another workspace may share them.
+///
+/// # Safety
+/// Both pointers must be valid C strings.
+#[no_mangle]
+pub unsafe extern "C" fn morphic_delete_workspace(
+    storage_root: *const c_char,
+    workspace_id: *const c_char,
+) -> *mut c_char {
+    guarded(|| {
+        let root = match unsafe { cstr(storage_root) } {
+            Some(r) => r,
+            None => return err("invalid storage_root"),
+        };
+        let id = match unsafe { cstr(workspace_id) } {
+            Some(i) => i,
+            None => return err("invalid workspace_id"),
+        };
+        with_engine(&root, |engine| {
+            engine.delete_workspace(&id).map_err(|e| e.to_string())?;
+            Ok(r#"{"deleted":true}"#.to_string())
+        })
+    })
+}
+
+/// Restore a degraded workspace's source bytes. The bytes must hash to the dataset id already
+/// referenced by the document; a different file is refused.
+///
+/// # Safety
+/// `data` must point to `len` readable bytes; the string pointers must be valid C strings.
+#[no_mangle]
+pub unsafe extern "C" fn morphic_relink_workspace(
+    data: *const u8,
+    len: usize,
+    storage_root: *const c_char,
+    workspace_id: *const c_char,
+) -> *mut c_char {
+    guarded(|| {
+        if data.is_null() {
+            return err("null input");
+        }
+        let bytes = unsafe { std::slice::from_raw_parts(data, len) };
+        let root = match unsafe { cstr(storage_root) } {
+            Some(r) => r,
+            None => return err("invalid storage_root"),
+        };
+        let id = match unsafe { cstr(workspace_id) } {
+            Some(i) => i,
+            None => return err("invalid workspace_id"),
+        };
+        with_engine(&root, |engine| {
+            engine
+                .relink_workspace(&id, bytes)
+                .map_err(|e| e.to_string())?;
+            Ok(r#"{"relinked":true}"#.to_string())
+        })
+    })
+}
+
 /// Load a persisted workspace document by id.
 ///
 /// # Safety
@@ -720,7 +852,7 @@ mod tests {
     fn engine_info_returns_json() {
         let v = json(morphic_engine_info());
         assert_eq!(v["engine"], "morphic");
-        assert_eq!(v["apiVersion"], 9);
+        assert_eq!(v["apiVersion"], 10);
     }
 
     #[test]
@@ -907,6 +1039,62 @@ mod tests {
             )
         });
         assert_eq!(v["workspace"]["id"], "w_legacy");
+        std::fs::remove_dir_all(&p).ok();
+    }
+
+    #[test]
+    fn library_lifecycle_and_relink_cross_the_json_boundary() {
+        let (p, rp) = root("library_lifecycle");
+        let w1 = c("w1");
+        let w2 = c("w2");
+        unsafe { import(&rp, &w1, None) };
+
+        let renamed = unsafe {
+            json(morphic_rename_workspace(
+                rp.as_ptr(),
+                w1.as_ptr(),
+                c("Renamed").as_ptr(),
+                c("2026-11-10T10:00:00Z").as_ptr(),
+            ))
+        };
+        assert_eq!(renamed["workspace"]["title"], "Renamed");
+
+        let duplicate = unsafe {
+            json(morphic_duplicate_workspace(
+                rp.as_ptr(),
+                w1.as_ptr(),
+                w2.as_ptr(),
+                c("Renamed copy").as_ptr(),
+                c("2026-11-10T10:01:00Z").as_ptr(),
+            ))
+        };
+        assert_eq!(duplicate["workspace"]["id"], "w2");
+        let list = unsafe { json(morphic_list_workspaces(rp.as_ptr())) };
+        assert_eq!(list.as_array().unwrap().len(), 2);
+
+        let dataset = duplicate["workspace"]["dataSources"][0]["datasetId"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        std::fs::remove_file(p.join("datasets").join(dataset).join("source.csv")).unwrap();
+        let degraded = unsafe { json(morphic_snapshot(rp.as_ptr(), w2.as_ptr())) };
+        assert_eq!(degraded["degraded"], true);
+        let relinked = unsafe {
+            json(morphic_relink_workspace(
+                CSV.as_ptr(),
+                CSV.len(),
+                rp.as_ptr(),
+                w2.as_ptr(),
+            ))
+        };
+        assert_eq!(relinked["relinked"], true);
+        let healthy = unsafe { json(morphic_snapshot(rp.as_ptr(), w2.as_ptr())) };
+        assert_eq!(healthy["degraded"], false);
+
+        let deleted = unsafe { json(morphic_delete_workspace(rp.as_ptr(), w2.as_ptr())) };
+        assert_eq!(deleted["deleted"], true);
+        let list = unsafe { json(morphic_list_workspaces(rp.as_ptr())) };
+        assert_eq!(list.as_array().unwrap().len(), 1);
         std::fs::remove_dir_all(&p).ok();
     }
 

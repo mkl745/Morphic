@@ -126,6 +126,20 @@ Flutter's long-press drag handle emits the existing `MoveComponent`; its pinch-f
 document. `typeOptions` and the history fields keep their v8 shapes. `API_VERSION` went
 **8 → 9** (§5); no entry point changed shape.
 
+#### 2.4.4 As shipped in M1.5.3 (task 1.5.3)
+
+The library lifecycle is now real rather than aspirational. Four additive FFI entry points
+joined the bridge: `morphic_rename_workspace(root, id, title, now)` and
+`morphic_duplicate_workspace(root, sourceId, newId, title, now)` return the new `WorkspaceDoc`;
+`morphic_delete_workspace(root, id)` returns `{deleted:true}`;
+`morphic_relink_workspace(bytes, len, root, id)` returns `{relinked:true}`. Rust owns the
+document, library index and undo seed: rename is a persisted edit with a revision bump,
+duplication copies the document under a fresh id and revision but **shares** the
+content-addressed dataset, deletion never removes a dataset another workspace may reference,
+and re-link refuses bytes whose SHA-256 does not equal the dataset id already in the document.
+All four drop any open session so the next snapshot rehydrates from disk. `API_VERSION` went
+**9 → 10** (§5); no existing entry point changed shape.
+
 ### 2.5 Data plane
 
 ```dart
@@ -201,6 +215,9 @@ Errors MUST NOT embed raw user data rows (privacy in logs); they carry positions
   entry point changed shape; older clients see extra response fields and two more exports.
 - **v9 (M1.5 task 1.5.2)** adds `ResizeComponent` and the persisted `layout.hints` record.
   It travels through the existing `morphic_apply_commands` array; no entry point changed shape.
+- **v10 (M1.5 task 1.5.3)** adds four library-lifecycle entry points (rename, duplicate,
+  delete and hash-verified source re-link). No existing entry point changed shape; older
+  clients simply see four more exports.
 - The FFI boundary is a hand-written JSON surface over `morphic_*` exports, not generated frb
   code. CI compiles and tests both sides, checks generated schema artifacts for drift, and
   builds an APK whose stamp is compared with the commit SHA (see

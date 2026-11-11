@@ -42,9 +42,10 @@ use thiserror::Error;
 /// snapshot/import/apply payloads (M1.4 task 1.4.7). v8 adds `MoveComponent`,
 /// `OverrideFieldType`, `OverrideFieldRole`, undo/redo entry points and history metadata on
 /// snapshot/import/apply (M1.5 task 1.5.1). v9 adds `ResizeComponent` and its persisted
-/// `layout.hints` record (M1.5 task 1.5.2). New commands are additive contract changes and
-/// are versioned with the bridge (doc 02 §4).
-pub const API_VERSION: u32 = 9;
+/// `layout.hints` record (M1.5 task 1.5.2). v10 adds the library lifecycle and source re-link
+/// entry points (M1.5 task 1.5.3). New entry points and commands are additive contract changes
+/// and are versioned with the bridge (doc 02 §4).
+pub const API_VERSION: u32 = 10;
 
 #[derive(Debug, Error)]
 pub enum CoreError {
@@ -1126,11 +1127,88 @@ impl Engine {
         Ok(self.store.list_workspaces()?)
     }
 
+    /// Rename a workspace. This is a real persisted edit: the document, library index and
+    /// undo seed all move together, and any open session is dropped so the next snapshot reads
+    /// the new title from disk rather than serving stale in-memory state.
+    pub fn rename_workspace(
+        &self,
+        id: &str,
+        title: &str,
+        now_iso: &str,
+    ) -> Result<WorkspaceDoc, CoreError> {
+        let title = title.trim();
+        if title.is_empty() {
+            return Err(CoreError::Validation("workspace title is empty".into()));
+        }
+        let mut doc = self.store.load_workspace(id)?;
+        doc.workspace.title = title.to_string();
+        doc.workspace.revision = doc.workspace.revision.saturating_add(1);
+        doc.workspace.modified_at = now_iso.to_string();
+        self.store.save_workspace(&doc)?;
+        self.store.write_history(id, &HistoryState::seed(&doc))?;
+        self.close_session(id)?;
+        Ok(doc)
+    }
+
+    /// Duplicate a workspace document under a new id. The content-addressed dataset is shared,
+    /// not copied: `save_workspace` writes only the new document/journal/history. A fresh
+    /// revision and undo seed make the copy an independent workspace from here on.
+    pub fn duplicate_workspace(
+        &self,
+        source_id: &str,
+        new_id: &str,
+        title: &str,
+        now_iso: &str,
+    ) -> Result<WorkspaceDoc, CoreError> {
+        let title = title.trim();
+        if title.is_empty() || new_id.trim().is_empty() {
+            let msg = "duplicate needs a title and a new id".to_string();
+            return Err(CoreError::Validation(msg));
+        }
+        if self.store.exists(new_id) {
+            let msg = format!("workspace '{new_id}' already exists");
+            return Err(CoreError::Validation(msg));
+        }
+        let mut doc = self.store.load_workspace(source_id)?;
+        doc.workspace.id = new_id.to_string();
+        doc.workspace.title = title.to_string();
+        doc.workspace.created_at = now_iso.to_string();
+        doc.workspace.modified_at = now_iso.to_string();
+        doc.workspace.revision = 1;
+        self.store.save_workspace(&doc)?;
+        self.store.write_history(new_id, &HistoryState::seed(&doc))?;
+        Ok(doc)
+    }
+
     /// Delete a workspace and drop its session. The content-addressed dataset is kept:
     /// another workspace may reference the same bytes (docs/architecture/06 §1).
     pub fn delete_workspace(&self, id: &str) -> Result<(), CoreError> {
         self.close_session(id)?;
         self.store.delete_workspace(id)?;
+        Ok(())
+    }
+
+    /// Restore a degraded workspace by re-adding its source bytes. The bytes must hash to the
+    /// dataset id the document already references; a different file is refused rather than
+    /// silently changing what the workspace means. The session is dropped so the next open
+    /// rehydrates the table, profile and metrics from the restored source.
+    pub fn relink_workspace(&self, id: &str, bytes: &[u8]) -> Result<(), CoreError> {
+        let doc = self.store.load_workspace(id)?;
+        let expected = doc
+            .workspace
+            .data_sources
+            .first()
+            .map(|d| d.dataset_id.as_str())
+            .unwrap_or("");
+        let actual = morphic_workspace::content_hash(bytes);
+        if expected.is_empty() || actual != expected {
+            let msg = format!(
+                "source does not match workspace '{id}': expected {expected}, got {actual}"
+            );
+            return Err(CoreError::Validation(msg));
+        }
+        self.store.put_dataset(bytes)?;
+        self.close_session(id)?;
         Ok(())
     }
 
@@ -1742,6 +1820,80 @@ mod tests {
         assert!(
             !ids.contains(&"metric_n"),
             "with no name evidence, a perfectly unique integer is still treated as a key"
+        );
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    // --- M1.5 task 1.5.3: library lifecycle + source re-link ----------------------------
+
+    #[test]
+    fn rename_duplicate_and_delete_update_the_library_and_share_the_dataset() {
+        let (engine, root) = imported("library_lifecycle");
+        let renamed = engine
+            .rename_workspace("w1", "  Quarterly sales  ", "2026-11-10T10:00:00Z")
+            .unwrap();
+        assert_eq!(renamed.workspace.title, "Quarterly sales");
+        assert_eq!(renamed.workspace.revision, 2);
+        let reopened = engine.snapshot("w1").unwrap();
+        assert_eq!(reopened.doc.workspace.title, "Quarterly sales");
+        assert_eq!(
+            engine
+                .list_workspaces()
+                .unwrap()
+                .iter()
+                .find(|w| w.id == "w1")
+                .unwrap()
+                .title,
+            "Quarterly sales"
+        );
+
+        let duplicate = engine
+            .duplicate_workspace("w1", "w2", "Quarterly sales copy", "2026-11-10T10:01:00Z")
+            .unwrap();
+        assert_eq!(duplicate.workspace.id, "w2");
+        assert_eq!(duplicate.workspace.revision, 1);
+        assert_eq!(
+            duplicate.workspace.data_sources[0].dataset_id,
+            renamed.workspace.data_sources[0].dataset_id
+        );
+        // AT-15: three library entries, one dataset. A third copy exercises the "immediately
+        // reflects changes" part with more than one surviving sibling.
+        engine
+            .duplicate_workspace("w1", "w3", "Third copy", "2026-11-10T10:02:00Z")
+            .unwrap();
+        let datasets: Vec<_> = std::fs::read_dir(root.join("datasets")).unwrap().collect();
+        assert_eq!(datasets.len(), 1, "duplication must not copy source bytes");
+        assert_eq!(engine.list_workspaces().unwrap().len(), 3);
+
+        engine.delete_workspace("w1").unwrap();
+        assert_eq!(engine.list_workspaces().unwrap().len(), 2);
+        // Deleting one workspace must not break either surviving copy's shared dataset.
+        assert!(!engine.snapshot("w2").unwrap().degraded);
+        assert!(!engine.snapshot("w3").unwrap().degraded);
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn relinking_requires_the_exact_original_bytes() {
+        let (engine, root) = imported("relink_exact");
+        let original = SALES;
+        let doc = engine.load_workspace("w1").unwrap();
+        let dataset = doc.workspace.data_sources[0].dataset_id.clone();
+        let path = root.join("datasets").join(&dataset).join("source.csv");
+        std::fs::remove_file(&path).unwrap();
+        assert!(engine.open_session("w1").unwrap().degraded);
+        assert!(engine
+            .relink_workspace("w1", b"region,amount\neu,999\n")
+            .is_err());
+        assert!(engine.open_session("w1").unwrap().degraded);
+        engine.relink_workspace("w1", original).unwrap();
+        let snap = engine.open_session("w1").unwrap();
+        assert!(!snap.degraded);
+        // "Restores full function" (AT-16): the table and metrics work again, not just the
+        // document. A degraded session would return a typed SourceUnavailable error here.
+        assert_eq!(
+            engine.metric_data("w1", "total_records").unwrap().value,
+            serde_json::json!(5)
         );
         std::fs::remove_dir_all(&root).ok();
     }

@@ -318,6 +318,12 @@ impl FileStore {
         self.root.join("library.json")
     }
 
+    /// Whether an authoritative document exists for this id. Used by library duplication to
+    /// refuse an id collision before any file is written.
+    pub fn exists(&self, id: &str) -> bool {
+        self.doc_path(id).exists()
+    }
+
     fn read_library(&self) -> Result<Library, StoreError> {
         let path = self.library_path();
         if !path.exists() {

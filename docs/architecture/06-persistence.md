@@ -79,6 +79,16 @@ Phone focus mode is view-only and deliberately leaves no journal entry.
 | missing dataset | open in **degraded mode**: layout/definitions visible, data panels show "source unavailable" + re-link flow (re-import same content restores by hash) |
 | export (P1 stretch) | `.morphic` zip = workspace.json + referenced dataset snapshots + manifest |
 
+*As shipped in 1.5.3:* rename is a **persisted document edit** (title, `revision + 1`,
+`modifiedAt`) that rewrites `library.json` and re-seeds `history.json` — not a meta-only
+undoable command. Duplicate writes a second document with a fresh id, `createdAt`,
+`modifiedAt` and `revision = 1`, plus its own empty journal/history; it copies no dataset
+bytes. Delete removes the workspace folder and index entry but deliberately leaves the shared
+dataset. Re-link re-adds source bytes only when their SHA-256 equals the `datasetId` already
+in the document; a different file is refused. All four drop the in-memory session so the next
+`snapshot` rehydrates from disk. The home library menu and the degraded-mode app-bar action are
+the two UI entry points.
+
 ## 5. Migration & integrity
 
 - `workspace.json` carries `schemaVersion` + `lastMigratedFrom`; migration chain per
@@ -113,6 +123,8 @@ This document is the target contract. What the file backend actually implements 
 | Recents newest-first | **Built** | `modifiedAt` desc, id tiebreak |
 | Legacy in-workspace `source.csv` | **Built** | Loads via fallback, migrated on first open without a revision bump |
 | `history.json` undo/redo stacks | **Built (1.5.1)** | Bounded to 100 frames; reconciled on open so a crash cannot resurrect a future redo state |
+| Library rename / duplicate / delete | **Built (1.5.3)** | Engine-owned document + index + history seed; duplicate shares the dataset; four additive FFI entry points (contract doc 02 §2.4.4) |
+| Hash-verified degraded re-link | **Built (1.5.3)** | `relink_workspace` compares the picked bytes' SHA-256 with the document's `datasetId`, then reopens the session; different bytes are rejected |
 | `snapshot.bin` columnar cache | **Deferred** | Reopen re-ingests the source. The cache is a perf optimization for a 10 MB budget that is still unmeasured on hardware; a versioned binary format before that data exists is speculative risk |
 | `.lock` session files | **Deferred** | Single-process app, sessions already mutex-serialized; a stale-lock protocol would add failure modes with no concurrent writer to guard |
 | `inverseSummary` / undo journal (§3) | **Built (1.5.1)** | Engine-owned stacks, app-bar controls and snackbars shipped; `history.json` is reconciled against the doc hash |

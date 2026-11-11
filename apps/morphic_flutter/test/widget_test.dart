@@ -77,7 +77,7 @@ class FakeBridge implements MorphicBridge {
 
   @override
   EngineInfo engineInfo() =>
-      const EngineInfo(apiVersion: 9, coreVersion: '0.1.0', engine: 'morphic');
+      const EngineInfo(apiVersion: 10, coreVersion: '0.1.0', engine: 'morphic');
 
   @override
   Map<String, dynamic> profileCsv(Uint8List bytes) => {
@@ -111,6 +111,40 @@ class FakeBridge implements MorphicBridge {
 
   @override
   List<dynamic> listWorkspaces(String storageRoot) => [];
+
+  @override
+  Map<String, dynamic> renameWorkspace({
+    required String storageRoot,
+    required String workspaceId,
+    required String title,
+    required String nowIso,
+  }) =>
+      _sampleDoc();
+
+  @override
+  Map<String, dynamic> duplicateWorkspace({
+    required String storageRoot,
+    required String workspaceId,
+    required String newWorkspaceId,
+    required String title,
+    required String nowIso,
+  }) =>
+      _sampleDoc();
+
+  @override
+  Map<String, dynamic> deleteWorkspace({
+    required String storageRoot,
+    required String workspaceId,
+  }) =>
+      {'deleted': true};
+
+  @override
+  Map<String, dynamic> relinkWorkspace({
+    required Uint8List bytes,
+    required String storageRoot,
+    required String workspaceId,
+  }) =>
+      {'relinked': true};
 
   @override
   Map<String, dynamic> importFile({

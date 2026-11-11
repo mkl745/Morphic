@@ -48,6 +48,39 @@ abstract interface class MorphicBridge {
   });
   List<dynamic> listWorkspaces(String storageRoot);
 
+  /// Rename a persisted workspace. Returns the updated document; the engine bumps the
+  /// revision and rewrites the library index and undo seed (M1.5 task 1.5.3).
+  Map<String, dynamic> renameWorkspace({
+    required String storageRoot,
+    required String workspaceId,
+    required String title,
+    required String nowIso,
+  });
+
+  /// Copy a workspace document under a new id. The content-addressed dataset is shared, so
+  /// this copies layout/edits, not source bytes. Returns the new document.
+  Map<String, dynamic> duplicateWorkspace({
+    required String storageRoot,
+    required String workspaceId,
+    required String newWorkspaceId,
+    required String title,
+    required String nowIso,
+  });
+
+  /// Delete a workspace. Shared datasets survive so other workspaces keep their data.
+  Map<String, dynamic> deleteWorkspace({
+    required String storageRoot,
+    required String workspaceId,
+  });
+
+  /// Re-link a degraded workspace to its original source bytes. The engine verifies the
+  /// content hash against the dataset id in the document and refuses a different file.
+  Map<String, dynamic> relinkWorkspace({
+    required Uint8List bytes,
+    required String storageRoot,
+    required String workspaceId,
+  });
+
   /// Import a file and open a session. Returns `{doc, profile, report}`.
   ///
   /// The engine detects the format from the content. [formatHint] (`csv`, `json`, `jsonl`,
@@ -206,6 +239,16 @@ typedef _ComponentPageNative = Pointer<Utf8> Function(
 typedef _ComponentPageDart = Pointer<Utf8> Function(
     Pointer<Utf8>, Pointer<Utf8>, Pointer<Utf8>, int, int);
 
+typedef _FiveStringNative = Pointer<Utf8> Function(
+    Pointer<Utf8>, Pointer<Utf8>, Pointer<Utf8>, Pointer<Utf8>, Pointer<Utf8>);
+typedef _FiveStringDart = Pointer<Utf8> Function(
+    Pointer<Utf8>, Pointer<Utf8>, Pointer<Utf8>, Pointer<Utf8>, Pointer<Utf8>);
+
+typedef _RelinkNative = Pointer<Utf8> Function(
+    Pointer<Uint8>, IntPtr, Pointer<Utf8>, Pointer<Utf8>);
+typedef _RelinkDart = Pointer<Utf8> Function(
+    Pointer<Uint8>, int, Pointer<Utf8>, Pointer<Utf8>);
+
 typedef _FreeStringNative = Void Function(Pointer<Utf8>);
 typedef _FreeStringDart = void Function(Pointer<Utf8>);
 
@@ -241,6 +284,14 @@ class FfiBridge implements MorphicBridge {
       .lookupFunction<_LoadWorkspaceNative, _LoadWorkspaceDart>('morphic_load_workspace');
   late final _listWorkspaces = _lib
       .lookupFunction<_ListWorkspacesNative, _ListWorkspacesDart>('morphic_list_workspaces');
+  late final _renameWorkspace = _lib
+      .lookupFunction<_FourStringNative, _FourStringDart>('morphic_rename_workspace');
+  late final _duplicateWorkspace = _lib
+      .lookupFunction<_FiveStringNative, _FiveStringDart>('morphic_duplicate_workspace');
+  late final _deleteWorkspace = _lib
+      .lookupFunction<_TwoStringNative, _TwoStringDart>('morphic_delete_workspace');
+  late final _relinkWorkspace = _lib
+      .lookupFunction<_RelinkNative, _RelinkDart>('morphic_relink_workspace');
   late final _cancelImport = _lib
       .lookupFunction<_CancelImportNative, _CancelImportDart>('morphic_cancel_import');
   late final _importFile =
@@ -355,6 +406,88 @@ class FfiBridge implements MorphicBridge {
       });
     } finally {
       calloc.free(root);
+    }
+  }
+
+  @override
+  Map<String, dynamic> renameWorkspace({
+    required String storageRoot,
+    required String workspaceId,
+    required String title,
+    required String nowIso,
+  }) {
+    final root = storageRoot.toNativeUtf8();
+    final id = workspaceId.toNativeUtf8();
+    final t = title.toNativeUtf8();
+    final now = nowIso.toNativeUtf8();
+    try {
+      return _withResponse(
+          () => _renameWorkspace(root, id, t, now), _decodeMap);
+    } finally {
+      calloc.free(root);
+      calloc.free(id);
+      calloc.free(t);
+      calloc.free(now);
+    }
+  }
+
+  @override
+  Map<String, dynamic> duplicateWorkspace({
+    required String storageRoot,
+    required String workspaceId,
+    required String newWorkspaceId,
+    required String title,
+    required String nowIso,
+  }) {
+    final root = storageRoot.toNativeUtf8();
+    final source = workspaceId.toNativeUtf8();
+    final newId = newWorkspaceId.toNativeUtf8();
+    final t = title.toNativeUtf8();
+    final now = nowIso.toNativeUtf8();
+    try {
+      return _withResponse(
+          () => _duplicateWorkspace(root, source, newId, t, now), _decodeMap);
+    } finally {
+      calloc.free(root);
+      calloc.free(source);
+      calloc.free(newId);
+      calloc.free(t);
+      calloc.free(now);
+    }
+  }
+
+  @override
+  Map<String, dynamic> deleteWorkspace({
+    required String storageRoot,
+    required String workspaceId,
+  }) {
+    final root = storageRoot.toNativeUtf8();
+    final id = workspaceId.toNativeUtf8();
+    try {
+      return _withResponse(() => _deleteWorkspace(root, id), _decodeMap);
+    } finally {
+      calloc.free(root);
+      calloc.free(id);
+    }
+  }
+
+  @override
+  Map<String, dynamic> relinkWorkspace({
+    required Uint8List bytes,
+    required String storageRoot,
+    required String workspaceId,
+  }) {
+    final buf = calloc<Uint8>(bytes.length);
+    final root = storageRoot.toNativeUtf8();
+    final id = workspaceId.toNativeUtf8();
+    try {
+      buf.asTypedList(bytes.length).setAll(0, bytes);
+      return _withResponse(
+          () => _relinkWorkspace(buf, bytes.length, root, id), _decodeMap);
+    } finally {
+      calloc.free(buf);
+      calloc.free(root);
+      calloc.free(id);
     }
   }
 

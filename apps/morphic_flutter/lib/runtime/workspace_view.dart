@@ -31,6 +31,7 @@ class WorkspaceView extends StatelessWidget {
     required this.controller,
     required this.registry,
     this.onRetry,
+    this.onRestoreSource,
     this.layoutEditing = false,
     this.focusMode = false,
     this.focusIndex = 0,
@@ -40,6 +41,10 @@ class WorkspaceView extends StatelessWidget {
   final EngineController controller;
   final ComponentRegistry registry;
   final VoidCallback? onRetry;
+
+  /// Optional degraded-mode recovery action. Supplied by the host screen, which owns the
+  /// bridge call; the notice only renders the affordance (M1.5 task 1.5.3, AT-16).
+  final VoidCallback? onRestoreSource;
 
   /// App-bar-owned layout editing mode. Off by default so the 54 component goldens and the
   /// existing runtime tests see the exact widget tree they did before 1.5.2.
@@ -117,7 +122,11 @@ class WorkspaceView extends StatelessWidget {
         const gap = MorphicSpace.md;
         final cardWidth = (width - gap * (columns - 1)) / columns;
         final header = <Widget>[
-          if (controller.degraded) DegradedNotice(message: controller.notice),
+          if (controller.degraded)
+            DegradedNotice(
+              message: controller.notice,
+              onRestoreSource: onRestoreSource,
+            ),
           GlobalFilterBar(engine: controller),
         ];
 
@@ -399,9 +408,10 @@ class WorkspaceView extends StatelessWidget {
 /// Shown when a workspace reopened without its source data. The engine's wording is used
 /// verbatim so the UI never guesses at a cause.
 class DegradedNotice extends StatelessWidget {
-  const DegradedNotice({super.key, this.message});
+  const DegradedNotice({super.key, this.message, this.onRestoreSource});
 
   final String? message;
+  final VoidCallback? onRestoreSource;
 
   @override
   Widget build(BuildContext context) {
@@ -419,12 +429,28 @@ class DegradedNotice extends StatelessWidget {
           Icon(Icons.warning_amber_rounded, color: scheme.onErrorContainer),
           const SizedBox(width: MorphicSpace.sm),
           Expanded(
-            child: Text(
-              message ?? 'This workspace opened without its source data.',
-              style: Theme.of(context)
-                  .textTheme
-                  .bodyMedium
-                  ?.copyWith(color: scheme.onErrorContainer),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  message ?? 'This workspace opened without its source data.',
+                  style: Theme.of(context)
+                      .textTheme
+                      .bodyMedium
+                      ?.copyWith(color: scheme.onErrorContainer),
+                ),
+                if (onRestoreSource != null)
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton.icon(
+                      key: const Key('restore-source-notice-button'),
+                      onPressed: onRestoreSource,
+                      icon: const Icon(Icons.link, size: 18),
+                      label: const Text('Restore source file'),
+                    ),
+                  ),
+              ],
             ),
           ),
         ],

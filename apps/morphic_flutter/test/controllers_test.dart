@@ -145,8 +145,50 @@ class RecordingBridge implements MorphicBridge {
       };
 
   @override
+  Map<String, dynamic> renameWorkspace({
+    required String storageRoot,
+    required String workspaceId,
+    required String title,
+    required String nowIso,
+  }) {
+    calls.add('rename:$workspaceId:$title');
+    return _doc();
+  }
+
+  @override
+  Map<String, dynamic> duplicateWorkspace({
+    required String storageRoot,
+    required String workspaceId,
+    required String newWorkspaceId,
+    required String title,
+    required String nowIso,
+  }) {
+    calls.add('duplicate:$workspaceId:$newWorkspaceId:$title');
+    return _doc();
+  }
+
+  @override
+  Map<String, dynamic> deleteWorkspace({
+    required String storageRoot,
+    required String workspaceId,
+  }) {
+    calls.add('delete:$workspaceId');
+    return {'deleted': true};
+  }
+
+  @override
+  Map<String, dynamic> relinkWorkspace({
+    required Uint8List bytes,
+    required String storageRoot,
+    required String workspaceId,
+  }) {
+    calls.add('relink:$workspaceId:${bytes.length}');
+    return {'relinked': true};
+  }
+
+  @override
   EngineInfo engineInfo() =>
-      const EngineInfo(apiVersion: 9, coreVersion: '0.1.0', engine: 'morphic');
+      const EngineInfo(apiVersion: 10, coreVersion: '0.1.0', engine: 'morphic');
 
   @override
   Map<String, dynamic> profileCsv(Uint8List bytes) => {'rowCount': 3, 'fieldCount': 2};

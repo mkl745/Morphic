@@ -83,6 +83,15 @@ class ScriptedBridge implements MorphicBridge {
   /// Persisted `layout.hints`, mirroring the Rust command handler for widget tests.
   final List<Map<String, dynamic>> hints;
 
+  /// A small stand-in for the engine's library index (M1.5 task 1.5.3). Widget tests
+  /// mutate it through the same four bridge calls the home screen uses.
+  final List<Map<String, dynamic>> workspaceIndex = [
+    {'id': 'w1', 'title': 'Saved workspace'},
+  ];
+  final List<String> libraryCalls = [];
+  Uint8List? lastRelinkBytes;
+  bool rejectRelink = false;
+
   /// Behaviour switches.
   bool failMetric = false;
   bool failQuery = false;
@@ -241,7 +250,7 @@ class ScriptedBridge implements MorphicBridge {
 
   @override
   EngineInfo engineInfo() =>
-      const EngineInfo(apiVersion: 9, coreVersion: '0.1.0', engine: 'morphic');
+      const EngineInfo(apiVersion: 10, coreVersion: '0.1.0', engine: 'morphic');
 
   @override
   Map<String, dynamic> profileCsv(Uint8List bytes) => profileJson();
@@ -264,9 +273,69 @@ class ScriptedBridge implements MorphicBridge {
       doc();
 
   @override
-  List<dynamic> listWorkspaces(String storageRoot) => [
-        {'id': 'w1', 'title': 'Saved workspace'},
-      ];
+  List<dynamic> listWorkspaces(String storageRoot) =>
+      workspaceIndex.map((e) => Map<String, dynamic>.from(e)).toList();
+
+  @override
+  Map<String, dynamic> renameWorkspace({
+    required String storageRoot,
+    required String workspaceId,
+    required String title,
+    required String nowIso,
+  }) {
+    libraryCalls.add('rename:$workspaceId:$title');
+    if (title.trim().isEmpty) {
+      throw const MorphicBridgeException('generated workspace failed validation: '
+          'workspace title is empty');
+    }
+    for (final e in workspaceIndex) {
+      if (e['id'] == workspaceId) e['title'] = title.trim();
+    }
+    return doc();
+  }
+
+  @override
+  Map<String, dynamic> duplicateWorkspace({
+    required String storageRoot,
+    required String workspaceId,
+    required String newWorkspaceId,
+    required String title,
+    required String nowIso,
+  }) {
+    libraryCalls.add('duplicate:$workspaceId:$newWorkspaceId:$title');
+    if (workspaceIndex.any((e) => e['id'] == newWorkspaceId)) {
+      throw const MorphicBridgeException("workspace 'w2' already exists");
+    }
+    workspaceIndex.add({'id': newWorkspaceId, 'title': title});
+    return doc();
+  }
+
+  @override
+  Map<String, dynamic> deleteWorkspace({
+    required String storageRoot,
+    required String workspaceId,
+  }) {
+    libraryCalls.add('delete:$workspaceId');
+    workspaceIndex.removeWhere((e) => e['id'] == workspaceId);
+    return {'deleted': true};
+  }
+
+  @override
+  Map<String, dynamic> relinkWorkspace({
+    required Uint8List bytes,
+    required String storageRoot,
+    required String workspaceId,
+  }) {
+    libraryCalls.add('relink:$workspaceId');
+    lastRelinkBytes = bytes;
+    if (rejectRelink || bytes.isEmpty) {
+      throw const MorphicBridgeException(
+          'generated workspace failed validation: source does not match workspace');
+    }
+    degraded = false;
+    notice = null;
+    return {'relinked': true};
+  }
 
   @override
   Map<String, dynamic> importFile({
