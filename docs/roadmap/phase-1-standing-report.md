@@ -1,4 +1,4 @@
-# Phase 1 standing report — 2026-11-06, updated 2026-11-11
+# Phase 1 standing report — 2026-11-06, updated for 1.5.4
 
 Written after task **1.2.5** went CI-green (run **42256267974**, commit **`fccec5c`**, all six
 jobs success). Every number below was read from the plan, the source tree, or a CI report —
