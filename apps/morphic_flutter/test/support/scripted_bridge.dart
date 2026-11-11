@@ -101,6 +101,22 @@ class ScriptedBridge implements MorphicBridge {
   /// Every explicit autosave checkpoint the UI asked for.
   final List<String> saveCalls = [];
 
+  /// Bundle export/import calls (M1.5 task 1.5.6).
+  final List<String> bundleCalls = [];
+  Map<String, dynamic> bundleExportResult = {
+    'bundleJson': '{"format":"morphic/workspace-bundle/1"}',
+    'bytes': 43,
+    'manifest': {
+      'format': 'morphic/workspace-bundle/1',
+      'schemaVersion': '1.0',
+      'workspaceId': 'w1',
+      'title': 'Saved workspace',
+      'exportedAt': '2026-11-05T00:00:00Z',
+      'datasetCount': 1,
+    },
+  };
+  Object? bundleImportFailure;
+
   /// Behaviour switches.
   bool failMetric = false;
   bool failQuery = false;
@@ -266,7 +282,7 @@ class ScriptedBridge implements MorphicBridge {
 
   @override
   EngineInfo engineInfo() =>
-      const EngineInfo(apiVersion: 12, coreVersion: '0.1.0', engine: 'morphic');
+      const EngineInfo(apiVersion: 13, coreVersion: '0.1.0', engine: 'morphic');
 
   @override
   RecoveryReport recoveryReport(String storageRoot) => recovery;
@@ -282,6 +298,34 @@ class ScriptedBridge implements MorphicBridge {
       'stateHash': _stateHash(),
       'dirty': false,
       'compacted': true,
+    };
+  }
+
+  @override
+  Map<String, dynamic> exportBundle({
+    required String storageRoot,
+    required String workspaceId,
+    required String nowIso,
+  }) {
+    bundleCalls.add('export:$workspaceId');
+    return bundleExportResult;
+  }
+
+  @override
+  Map<String, dynamic> importBundle({
+    required Uint8List bytes,
+    required String storageRoot,
+    required String workspaceId,
+    required String title,
+    required String nowIso,
+  }) {
+    bundleCalls.add('import:$workspaceId:$title');
+    if (bundleImportFailure != null) throw bundleImportFailure!;
+    workspaceIndex.add({'id': workspaceId, 'title': title});
+    return {
+      'doc': doc(),
+      'sourceTitle': title,
+      'datasetCount': 1,
     };
   }
 

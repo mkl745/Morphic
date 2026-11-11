@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -6,6 +7,7 @@ import 'package:flutter/material.dart';
 import '../../design_system/tokens.dart';
 import '../../engine/bridge.dart';
 import '../../engine/bridge_scope.dart';
+import '../../engine/bundle_location.dart';
 import '../../engine/engine_controller.dart';
 import '../../engine/file_source.dart';
 import '../workspace/workspace_args.dart';
@@ -14,13 +16,22 @@ import '../workspace/workspace_args.dart';
 /// and recent workspaces. The workspace itself is the product, not this screen.
 ///
 /// M1.5 task 1.5.3 adds the library lifecycle: each row has a menu for rename, duplicate,
-/// delete and re-linking a degraded source. All four go through the Rust bridge — Dart never
-/// edits the library index or the document itself.
+/// delete and re-linking a degraded source. M1.5 task 1.5.6 adds `.morphic` bundle
+/// export/import. Every action goes through the Rust bridge — Dart never edits the library
+/// index or the document itself.
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key, this.fileSource});
+  const HomeScreen({
+    super.key,
+    this.fileSource,
+    this.bundlePathResolver,
+  });
 
-  /// Injectable so widget tests can exercise "re-link" without the platform file picker.
+  /// Injectable so widget tests can exercise "re-link" and bundle import without the
+  /// platform file picker.
   final PlatformFileSource? fileSource;
+
+  /// Injectable so widget tests can exercise bundle export without `path_provider`.
+  final BundlePathResolver? bundlePathResolver;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -47,6 +58,53 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() {
       _workspaces = Future(() => scope.bridge.listWorkspaces(scope.storageRoot));
     });
+  }
+
+  /// Import a `.morphic` bundle picked by the user. Rust verifies the manifest and every
+  /// dataset hash; Dart only chooses the file and reports the outcome.
+  Future<void> _importBundle(BuildContext context) async {
+    final scope = BridgeScope.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    final source = widget.fileSource ?? const FilePickerSource();
+    String message;
+    var imported = false;
+    try {
+      final picked = await source.pickBundle();
+      if (picked == null) return; // cancelled, not an error
+      final bytes = await _readBundleBytes(picked);
+      final now = DateTime.now().toUtc();
+      scope.bridge.importBundle(
+        bytes: bytes,
+        storageRoot: scope.storageRoot,
+        workspaceId: 'w_${now.microsecondsSinceEpoch}',
+        title: _bundleTitle(picked.name),
+        nowIso: now.toIso8601String(),
+      );
+      message = 'Imported ${_bundleTitle(picked.name)}';
+      imported = true;
+    } catch (e) {
+      message = 'Could not import bundle: $e';
+    }
+    if (!context.mounted) return;
+    if (imported) _reloadWorkspaces();
+    messenger.showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<Uint8List> _readBundleBytes(PickedFile file) async {
+    final bytes = file.bytes;
+    if (bytes != null) return bytes;
+    final path = file.path;
+    if (path == null) {
+      throw const FileSelectionException('the bundle picker returned nothing readable');
+    }
+    return File(path).readAsBytes();
+  }
+
+  String _bundleTitle(String name) {
+    const suffix = '.morphic';
+    return name.toLowerCase().endsWith(suffix) && name.length > suffix.length
+        ? name.substring(0, name.length - suffix.length)
+        : name;
   }
 
   @override
@@ -92,12 +150,21 @@ class _HomeScreenState extends State<HomeScreen> {
             icon: const Icon(Icons.auto_awesome),
             label: const Text('Run proof of concept'),
           ),
+          const SizedBox(height: MorphicSpace.sm),
+          OutlinedButton.icon(
+            key: const Key('import-bundle-button'),
+            onPressed: () => _importBundle(context),
+            icon: const Icon(Icons.inventory_2_outlined),
+            label: const Text('Import .morphic bundle'),
+          ),
           const SizedBox(height: MorphicSpace.xl),
           Text('Recent workspaces', style: Theme.of(context).textTheme.titleSmall),
           const SizedBox(height: MorphicSpace.sm),
           _WorkspaceList(
             future: _workspaces,
             fileSource: widget.fileSource ?? const FilePickerSource(),
+            bundlePathResolver:
+                widget.bundlePathResolver ?? const DocumentsBundlePathResolver(),
             onChanged: _reloadWorkspaces,
           ),
           const SizedBox(height: MorphicSpace.xl),
@@ -182,17 +249,19 @@ class _EngineStatusCard extends StatelessWidget {
 
 /// The actions offered for one workspace row. `PopupMenuItem<String>` values are also the
 /// labels in the menu, so tests and the UI agree on one vocabulary.
-enum _WorkspaceAction { rename, duplicate, delete, relink }
+enum _WorkspaceAction { rename, duplicate, delete, relink, export }
 
 class _WorkspaceList extends StatelessWidget {
   const _WorkspaceList({
     required this.future,
     required this.fileSource,
+    required this.bundlePathResolver,
     required this.onChanged,
   });
 
   final Future<List<dynamic>>? future;
   final PlatformFileSource fileSource;
+  final BundlePathResolver bundlePathResolver;
   final VoidCallback onChanged;
 
   @override
@@ -255,6 +324,10 @@ class _WorkspaceList extends StatelessWidget {
                       PopupMenuItem<_WorkspaceAction>(
                         value: _WorkspaceAction.relink,
                         child: Text('Re-link source file'),
+                      ),
+                      PopupMenuItem<_WorkspaceAction>(
+                        value: _WorkspaceAction.export,
+                        child: Text('Export .morphic bundle'),
                       ),
                     ],
                   ),
@@ -338,6 +411,19 @@ class _WorkspaceList extends StatelessWidget {
             workspaceId: id,
           );
           message = 'Source restored for $title';
+        case _WorkspaceAction.export:
+          final result = scope.bridge.exportBundle(
+            storageRoot: scope.storageRoot,
+            workspaceId: id,
+            nowIso: _nowIso,
+          );
+          final bundle = result['bundleJson'] as String?;
+          if (bundle == null) {
+            throw const FormatException('engine returned no bundleJson');
+          }
+          final path = await bundlePathResolver.exportPath(id);
+          await File(path).writeAsBytes(utf8.encode(bundle));
+          message = 'Exported $title to $path';
       }
     } catch (e) {
       message = 'Could not ${_verb(action)}: $e';
@@ -351,6 +437,7 @@ class _WorkspaceList extends StatelessWidget {
         _WorkspaceAction.duplicate => 'duplicate',
         _WorkspaceAction.delete => 'delete',
         _WorkspaceAction.relink => 're-link',
+        _WorkspaceAction.export => 'export',
       };
 
   Future<Uint8List> _read(PickedFile file) async {

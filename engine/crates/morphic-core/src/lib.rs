@@ -25,7 +25,8 @@ pub use commands::Command;
 use morphic_model::{DatasetProfile, ImportReport, Table};
 use morphic_schema::WorkspaceDoc;
 use morphic_workspace::{
-    state_hash, FileStore, HistoryFrame, HistoryState, RecoveryReport, StoreError, WorkspaceStore,
+    state_hash, BundleExport, BundleImportOutcome, BundleManifest, FileStore, HistoryFrame,
+    HistoryState, RecoveryReport, StoreError, WorkspaceStore,
 };
 
 /// Re-exported so the FFI bridge can create and trip a cancellation token without taking a
@@ -45,10 +46,10 @@ use thiserror::Error;
 /// `layout.hints` record (M1.5 task 1.5.2). v10 adds the library lifecycle and source re-link
 /// entry points (M1.5 task 1.5.3). v11 adds `ClearFieldOverride` and targeted recompilation of
 /// the bindings affected by a field correction (M1.5 task 1.5.5). v12 adds the startup
-/// recovery report and the explicit autosave checkpoint entry points (M1.5 task 1.5.4). New
-/// entry points and commands are additive contract changes and are versioned with the bridge
-/// (doc 02 §4).
-pub const API_VERSION: u32 = 12;
+/// recovery report and the explicit autosave checkpoint entry points (M1.5 task 1.5.4). v13 adds
+/// `.morphic` bundle export/import (M1.5 task 1.5.6). New entry points and commands are additive
+/// contract changes and are versioned with the bridge (doc 02 §4).
+pub const API_VERSION: u32 = 13;
 
 #[derive(Debug, Error)]
 pub enum CoreError {
@@ -210,6 +211,15 @@ pub struct ApplyOutcome {
     pub redo_label: String,
     /// Short description of what this result did, shown by the app bar's snackbar.
     pub label: String,
+}
+
+/// A self-contained `.morphic` bundle, ready to be written to disk by Flutter.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BundleExportOutcome {
+    pub bundle_json: String,
+    pub bytes: usize,
+    pub manifest: BundleManifest,
 }
 
 /// The acknowledgement behind an explicit autosave checkpoint.
@@ -374,6 +384,42 @@ impl Engine {
             sessions: Mutex::new(HashMap::new()),
             recovery,
         })
+    }
+
+    /// Export a workspace and every source it references as a `.morphic` JSON envelope.
+    /// The UI writes `bundleJson` to a `.morphic` file; Rust owns the manifest and the hash
+    /// verification on the way back in.
+    pub fn export_bundle(
+        &self,
+        workspace_id: &str,
+        now_iso: &str,
+    ) -> Result<BundleExportOutcome, CoreError> {
+        let BundleExport {
+            json,
+            manifest,
+            bytes,
+        } = self.store.export_bundle(workspace_id, now_iso)?;
+        Ok(BundleExportOutcome {
+            bundle_json: json,
+            bytes,
+            manifest,
+        })
+    }
+
+    /// Import a `.morphic` envelope under a fresh id, then rehydrate the session so a broken
+    /// bundle fails here rather than on the first data read.
+    pub fn import_bundle(
+        &self,
+        bytes: &[u8],
+        new_id: &str,
+        title: &str,
+        now_iso: &str,
+    ) -> Result<BundleImportOutcome, CoreError> {
+        let outcome = self
+            .store
+            .import_bundle(bytes, new_id, title, now_iso)?;
+        self.open_session(new_id)?;
+        Ok(outcome)
     }
 
     /// What startup recovery did on this engine instance. Clean means nothing needed repair.
@@ -2008,6 +2054,74 @@ mod tests {
         );
         let snap = reopened.open_session("w1").unwrap();
         assert_eq!(snap.revision, 6, "the interrupted save was not lost");
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    // --- M1.5 task 1.5.6: .morphic bundle export/import ----------------------------------
+
+    #[test]
+    fn a_bundle_roundtrips_through_the_engine_and_reopens_healthy() {
+        let root = temp_root("bundle-roundtrip");
+        let engine = Engine::new(&root).unwrap();
+        engine
+            .import_csv(SALES, "Sales", "w1", "2026-11-05T00:00:00Z", &mut |_| {})
+            .unwrap();
+
+        let export = engine
+            .export_bundle("w1", "2026-11-05T08:00:00Z")
+            .unwrap();
+        assert_eq!(export.manifest.format, "morphic/workspace-bundle/1");
+        assert_eq!(export.manifest.dataset_count, 1);
+        assert!(export.bytes > 0);
+        assert!(export.bundle_json.contains("contentHex"));
+
+        let imported = engine
+            .import_bundle(
+                export.bundle_json.as_bytes(),
+                "w2",
+                "Restored Sales",
+                "2026-11-05T09:00:00Z",
+            )
+            .unwrap();
+        assert_eq!(imported.doc.workspace.id, "w2");
+        assert_eq!(imported.doc.workspace.title, "Restored Sales");
+        assert_eq!(imported.doc.workspace.revision, 1);
+        assert_eq!(imported.dataset_count, 1);
+
+        let snap = engine.open_session("w2").unwrap();
+        assert!(!snap.degraded, "the bundled source must rehydrate");
+        assert_eq!(snap.revision, 1);
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn a_tampered_source_is_rejected_before_a_bundle_is_imported() {
+        let root = temp_root("bundle-tampered");
+        let engine = Engine::new(&root).unwrap();
+        engine
+            .import_csv(SALES, "Sales", "w1", "2026-11-05T00:00:00Z", &mut |_| {})
+            .unwrap();
+        let export = engine
+            .export_bundle("w1", "2026-11-05T08:00:00Z")
+            .unwrap();
+
+        let mut envelope: serde_json::Value =
+            serde_json::from_str(&export.bundle_json).unwrap();
+        envelope["datasets"][0]["contentHex"] = serde_json::json!("00ff");
+        let bad = serde_json::to_string(&envelope).unwrap();
+        let err = engine
+            .import_bundle(
+                bad.as_bytes(),
+                "w2",
+                "Bad",
+                "2026-11-05T09:00:00Z",
+            )
+            .unwrap_err();
+        assert!(
+            matches!(err, CoreError::Store(StoreError::Bundle(_))),
+            "expected a typed bundle error, got {err}"
+        );
+        assert!(engine.load_workspace("w2").is_err());
         std::fs::remove_dir_all(&root).ok();
     }
 

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import 'design_system/tokens.dart';
 import 'engine/autosave.dart';
+import 'engine/bundle_location.dart';
 import 'engine/bridge.dart';
 import 'engine/bridge_scope.dart';
 import 'engine/file_source.dart';
@@ -21,6 +22,7 @@ class MorphicApp extends StatefulWidget {
     required this.storageRoot,
     this.importRunner,
     this.fileSource,
+    this.bundlePathResolver,
   });
 
   final MorphicBridge bridge;
@@ -29,8 +31,12 @@ class MorphicApp extends StatefulWidget {
   /// Overrides where imports run. Production leaves this null (worker isolate).
   final ImportRunner? importRunner;
 
-  /// Overrides the file picker used by the home library's "Re-link source file" action.
+  /// Overrides the file picker used by the home library's "Re-link source file" action and
+  /// the `.morphic` bundle import action.
   final PlatformFileSource? fileSource;
+
+  /// Overrides where exported `.morphic` bundles are written. Production leaves this null.
+  final BundlePathResolver? bundlePathResolver;
 
   @override
   State<MorphicApp> createState() => _MorphicAppState();
@@ -106,7 +112,10 @@ class _MorphicAppState extends State<MorphicApp>
           themeMode: ThemeMode.dark,
           initialRoute: '/',
           routes: {
-            '/': (_) => HomeScreen(fileSource: widget.fileSource),
+            '/': (_) => HomeScreen(
+              fileSource: widget.fileSource,
+              bundlePathResolver: widget.bundlePathResolver,
+            ),
             '/poc': (_) => const PocScreen(),
             '/import': (_) => const ImportScreen(),
             '/workspace': (_) =>

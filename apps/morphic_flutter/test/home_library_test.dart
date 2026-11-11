@@ -1,17 +1,19 @@
 /// Home library lifecycle (M1.5 task 1.5.3).
 ///
 /// These tests pin the important boundary: the screen asks the Rust bridge to rename,
-/// duplicate, delete and re-link, then reloads the library from the engine. It never edits
-/// the index in Dart. A bridge rejection is surfaced, never swallowed, and a cancelled
-/// dialog or file picker makes no call at all.
+/// duplicate, delete, re-link and `.morphic` bundle export/import, then reloads the library
+/// from the engine. It never edits the index in Dart. A bridge rejection is surfaced, never
+/// swallowed, and a cancelled dialog or file picker makes no call at all.
 library;
 
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:morphic_flutter/app.dart';
+import 'package:morphic_flutter/engine/bundle_location.dart';
 import 'package:morphic_flutter/engine/file_source.dart';
 
 import 'support/fake_import.dart';
@@ -23,11 +25,13 @@ Future<void> pumpHome(
   WidgetTester tester,
   ScriptedBridge bridge, {
   PlatformFileSource? fileSource,
+  BundlePathResolver? bundlePathResolver,
 }) async {
   await tester.pumpWidget(MorphicApp(
     bridge: bridge,
     storageRoot: '/tmp/morphic-home-test',
     fileSource: fileSource ?? FakeFileSource(),
+    bundlePathResolver: bundlePathResolver,
   ));
   await tester.pumpAndSettle();
 }
@@ -45,7 +49,7 @@ void main() {
     await pumpHome(tester, bridge);
     expect(find.text('Saved workspace'), findsOneWidget);
     expect(find.text('w1'), findsOneWidget);
-    expect(find.textContaining('bridge API v12'), findsOneWidget);
+    expect(find.textContaining('bridge API v13'), findsOneWidget);
   });
 
   testWidgets('rename sends the new title and reloads the library', (tester) async {
@@ -134,5 +138,87 @@ void main() {
     expect(find.textContaining('Could not re-link'), findsOneWidget);
     expect(bridge.workspaceIndex.length, 1);
     expect(find.text('Saved workspace'), findsOneWidget);
+  });
+
+  // --- M1.5 task 1.5.6: .morphic bundle export/import ----------------------------------
+
+  testWidgets('import .morphic sends the picked bytes and reloads the library',
+      (tester) async {
+    final bridge = ScriptedBridge();
+    final bytes = Uint8List.fromList(utf8.encode('{"format":"morphic"}'));
+    final source = FakeFileSource(
+      bundleFile: PickedFile(name: 'sales.morphic', bytes: bytes),
+    );
+    await pumpHome(tester, bridge, fileSource: source);
+
+    await tester.tap(find.byKey(const Key('import-bundle-button')));
+    await tester.pumpAndSettle();
+
+    expect(source.bundleCalls, 1);
+    expect(bridge.bundleCalls.length, 1);
+    expect(bridge.bundleCalls.single, startsWith('import:w_'));
+    expect(bridge.bundleCalls.single, endsWith(':sales'));
+    expect(bridge.workspaceIndex.length, 2);
+    expect(find.textContaining('Imported sales'), findsOneWidget);
+    expect(find.text('sales'), findsOneWidget);
+  });
+
+  testWidgets('a cancelled bundle pick makes no bridge call', (tester) async {
+    final bridge = ScriptedBridge();
+    final source = FakeFileSource();
+    await pumpHome(tester, bridge, fileSource: source);
+
+    await tester.tap(find.byKey(const Key('import-bundle-button')));
+    await tester.pumpAndSettle();
+
+    expect(source.bundleCalls, 1);
+    expect(bridge.bundleCalls, isEmpty);
+    expect(bridge.workspaceIndex.length, 1);
+  });
+
+  testWidgets('an invalid bundle is shown as a failure and changes nothing',
+      (tester) async {
+    final bridge = ScriptedBridge()
+      ..bundleImportFailure = StateError('bad bundle');
+    final source = FakeFileSource(
+      bundleFile: PickedFile(
+        name: 'bad.morphic',
+        bytes: Uint8List.fromList(utf8.encode('not a bundle')),
+      ),
+    );
+    await pumpHome(tester, bridge, fileSource: source);
+
+    await tester.tap(find.byKey(const Key('import-bundle-button')));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Could not import bundle'), findsOneWidget);
+    expect(bridge.workspaceIndex.length, 1);
+    expect(find.text('Saved workspace'), findsOneWidget);
+  });
+
+  testWidgets('export .morphic writes the engine bundle to the resolved path',
+      (tester) async {
+    final path =
+        '${Directory.systemTemp.path}/morphic-bundle-${DateTime.now().microsecondsSinceEpoch}.morphic';
+    final file = File(path);
+    addTearDown(() {
+      if (file.existsSync()) file.deleteSync();
+    });
+    final bridge = ScriptedBridge();
+    await pumpHome(
+      tester,
+      bridge,
+      bundlePathResolver: FakeBundlePathResolver(path),
+    );
+
+    await choose(tester, 'Export .morphic bundle');
+
+    expect(bridge.bundleCalls, ['export:w1']);
+    expect(await file.exists(), isTrue);
+    expect(await file.readAsString(), bridge.bundleExportResult['bundleJson']);
+    expect(
+      find.textContaining('Exported Saved workspace to'),
+      findsOneWidget,
+    );
   });
 }

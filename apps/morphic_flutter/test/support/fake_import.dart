@@ -10,6 +10,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:morphic_flutter/engine/bundle_location.dart';
 import 'package:morphic_flutter/engine/clipboard_source.dart';
 import 'package:morphic_flutter/engine/file_source.dart';
 import 'package:morphic_flutter/engine/import_progress.dart';
@@ -86,12 +87,14 @@ ClipboardContent clipboardText(String text) =>
 
 /// A picker that returns a scripted answer, or throws like the real one does.
 class FakeFileSource implements PlatformFileSource {
-  FakeFileSource({this.file, this.failure});
+  FakeFileSource({this.file, this.bundleFile, this.failure});
 
   final PickedFile? file;
+  final PickedFile? bundleFile;
   final Object? failure;
 
   int calls = 0;
+  int bundleCalls = 0;
 
   @override
   Future<PickedFile?> pick() async {
@@ -99,6 +102,23 @@ class FakeFileSource implements PlatformFileSource {
     if (failure != null) throw failure!;
     return file;
   }
+
+  @override
+  Future<PickedFile?> pickBundle() async {
+    bundleCalls++;
+    if (failure != null) throw failure!;
+    return bundleFile;
+  }
+}
+
+/// A fixed export destination so bundle widget tests never call `path_provider`.
+class FakeBundlePathResolver implements BundlePathResolver {
+  const FakeBundlePathResolver(this.path);
+
+  final String path;
+
+  @override
+  Future<String> exportPath(String workspaceId) async => path;
 }
 
 const List<ImportProgress> kProgressEvents = [

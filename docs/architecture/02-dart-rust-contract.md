@@ -191,6 +191,24 @@ flushes immediately on `AppLifecycleState.paused` / `hidden` / `detached`, and f
 the lines the engine actually reported — no invented damage and no silent repair. The
 aspirational `WorkspaceSnapshot.dirty` above remains absent from the wire payload.
 
+#### 2.4.7 As shipped in M1.5.6 (task 1.5.6)
+
+`API_VERSION` went **12 → 13** (§5). Two additive FFI entry points join the bridge:
+`morphic_export_bundle(root, id, now)` returns `{bundleJson, bytes, manifest}`, and
+`morphic_import_bundle(bytes, len, root, newId, title, now)` returns the imported workspace
+document, its source title and the verified dataset count. No existing entry point changed shape.
+
+The design sketch in doc 06 called for a ZIP. The shipped `.morphic` file is instead a single
+UTF-8 JSON envelope — manifest, authoritative `WorkspaceDoc`, and hex-encoded source bytes —
+because the repo has no ZIP dependency and adding one for three small files would widen the
+supply-chain surface without user-visible gain. Rust verifies the manifest format, the
+workspace/schema identity, every declared byte count and every SHA-256 content hash *before*
+writing a dataset or a workspace. Import re-seeds the document at revision 1 under a fresh id
+and rehydrates the session, so a broken bundle fails at the boundary rather than on the first
+data read. Flutter picks a `.morphic` file through the same injectable file-source seam used by
+re-link, and writes exports into the app-private documents directory through an injectable path
+resolver. Errors, cancellations and engine rejections are surfaced, never swallowed.
+
 ### 2.5 Data plane
 
 ```dart
@@ -275,6 +293,9 @@ Errors MUST NOT embed raw user data rows (privacy in logs); they carry positions
 - **v12 (M1.5 task 1.5.4)** adds the startup recovery report and the explicit autosave
   checkpoint entry points (`morphic_recovery_report`, `morphic_save_workspace`). Both are
   additive; no existing entry point changed shape.
+- **v13 (M1.5 task 1.5.6)** adds `.morphic` bundle export/import
+  (`morphic_export_bundle`, `morphic_import_bundle`). Both are additive; no existing entry point
+  changed shape.
 - The FFI boundary is a hand-written JSON surface over `morphic_*` exports, not generated frb
   code. CI compiles and tests both sides, checks generated schema artifacts for drift, and
   builds an APK whose stamp is compared with the commit SHA (see

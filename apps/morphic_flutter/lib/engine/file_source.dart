@@ -72,6 +72,10 @@ class FileSelectionException implements Exception {
 abstract interface class PlatformFileSource {
   /// Returns null when the user cancels — cancelling is not an error.
   Future<PickedFile?> pick();
+
+  /// Pick a `.morphic` workspace bundle rather than a raw data file (M1.5 task 1.5.6).
+  /// Returns null when the user cancels — cancelling is not an error.
+  Future<PickedFile?> pickBundle();
 }
 
 /// SAF-backed picker. Needs no storage permission and no network permission.
@@ -148,6 +152,45 @@ class FilePickerSource implements PlatformFileSource {
       bytes = await file.readAsBytes();
     } catch (e) {
       throw FileSelectionException('could not read the chosen file: $e');
+    }
+    return PickedFile(name: file.name, bytes: bytes, sizeBytes: size);
+  }
+
+  @override
+  Future<PickedFile?> pickBundle() async {
+    final PlatformFile? file;
+    try {
+      file = await FilePicker.pickFile(
+        dialogTitle: 'Choose a .morphic bundle',
+        type: FileType.custom,
+        allowedExtensions: const ['morphic'],
+      );
+    } catch (e) {
+      throw FileSelectionException('could not open the bundle picker: $e');
+    }
+    if (file == null) return null;
+    final int size;
+    try {
+      size = await file.length();
+    } catch (e) {
+      throw FileSelectionException('could not determine the bundle size: $e');
+    }
+    if (size > maxBytes) {
+      final mb = (size / (1024 * 1024)).toStringAsFixed(1);
+      final limit = (maxBytes / (1024 * 1024)).round();
+      throw FileSelectionException(
+        'That bundle is $mb MB. This build reads up to $limit MB at once.',
+      );
+    }
+    final path = file.path;
+    if (path != null) {
+      return PickedFile(name: file.name, path: path, sizeBytes: size);
+    }
+    final Uint8List bytes;
+    try {
+      bytes = await file.readAsBytes();
+    } catch (e) {
+      throw FileSelectionException('could not read the chosen bundle: $e');
     }
     return PickedFile(name: file.name, bytes: bytes, sizeBytes: size);
   }

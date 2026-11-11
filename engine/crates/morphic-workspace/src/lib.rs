@@ -45,6 +45,12 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
+pub mod bundle;
+pub use bundle::{
+    decode_bundle, encode_bundle, hex_decode, hex_encode, BundleDataset, BundleEnvelope,
+    BundleExport, BundleImportOutcome, BundleManifest, BUNDLE_FORMAT,
+};
+
 #[derive(Debug, Error)]
 pub enum StoreError {
     #[error("io error: {0}")]
@@ -57,6 +63,8 @@ pub enum StoreError {
     Corrupt(String),
     #[error("source data for workspace '{0}' is unavailable")]
     SourceUnavailable(String),
+    #[error("invalid .morphic bundle: {0}")]
+    Bundle(String),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -598,6 +606,69 @@ impl FileStore {
         self.checkpoint(&doc)?;
         fs::remove_file(&legacy)?;
         Ok(true)
+    }
+
+    /// Export one workspace plus every source it references as a self-contained `.morphic`
+    /// JSON envelope (M1.5 task 1.5.6). Dataset bytes are hex-encoded and hash-verified on
+    /// import; no ZIP dependency is added to the supply chain.
+    pub fn export_bundle(
+        &self,
+        id: &str,
+        exported_at: &str,
+    ) -> Result<BundleExport, StoreError> {
+        let doc = self.load_workspace(id)?;
+        let mut datasets = Vec::new();
+        for ds in &doc.workspace.data_sources {
+            let path = self.dataset_path(&ds.dataset_id);
+            let bytes = fs::read(&path).map_err(|_| {
+                StoreError::SourceUnavailable(id.to_string())
+            })?;
+            datasets.push((ds.dataset_id.clone(), bytes));
+        }
+        encode_bundle(&doc, &datasets, exported_at)
+    }
+
+    /// Import a `.morphic` envelope under a fresh workspace id. The bundle's manifest is
+    /// checked, every dataset hash is verified, and the document is re-seeded at revision 1.
+    pub fn import_bundle(
+        &self,
+        bytes: &[u8],
+        new_id: &str,
+        title: &str,
+        now_iso: &str,
+    ) -> Result<BundleImportOutcome, StoreError> {
+        let (manifest, workspace, datasets) = decode_bundle(bytes)?;
+        if new_id.trim().is_empty() || title.trim().is_empty() {
+            return Err(StoreError::Bundle(
+                "import needs a workspace id and title".into(),
+            ));
+        }
+        if self.exists(new_id) {
+            return Err(StoreError::Bundle(format!(
+                "workspace '{new_id}' already exists"
+            )));
+        }
+        for (hash, data) in &datasets {
+            let stored = self.put_dataset(data)?;
+            if stored != *hash {
+                return Err(StoreError::Bundle(format!(
+                    "dataset '{hash}' was stored under a different hash"
+                )));
+            }
+        }
+        let mut doc = workspace;
+        doc.workspace.id = new_id.to_string();
+        doc.workspace.title = title.trim().to_string();
+        doc.workspace.created_at = now_iso.to_string();
+        doc.workspace.modified_at = now_iso.to_string();
+        doc.workspace.revision = 1;
+        self.save_workspace(&doc)?;
+        self.write_history(new_id, &HistoryState::seed(&doc))?;
+        Ok(BundleImportOutcome {
+            doc,
+            source_title: manifest.title,
+            dataset_count: manifest.dataset_count,
+        })
     }
 
     /// An explicit autosave checkpoint (M1.5 task 1.5.4). The engine already writes the
@@ -1281,6 +1352,75 @@ mod tests {
         assert_eq!(torn, 0);
         assert_eq!(entries.len(), 1, "the journal stays bounded");
         assert_eq!(s.load_workspace("w1").unwrap().workspace.revision, 5);
+        fs::remove_dir_all(&root).ok();
+    }
+
+    // --- M1.5 task 1.5.6: .morphic bundle export/import ----------------------------------
+
+    #[test]
+    fn hex_roundtrip_is_exact_and_rejects_bad_input() {
+        let bytes = b"\x00\x0f\x10\xff,eu\n";
+        assert_eq!(hex_decode(&hex_encode(bytes)).unwrap(), bytes.to_vec());
+        assert!(hex_decode("abc").is_err(), "odd length is rejected");
+        assert!(hex_decode("zz").is_err(), "non-hex is rejected");
+    }
+
+    #[test]
+    fn a_bundle_roundtrip_restores_the_document_and_source_bytes() {
+        let (s, root) = store();
+        let source = b"region,amount\neu,10\nus,20\n";
+        let hash = s.put_dataset(source).unwrap();
+        let mut d = doc("w1");
+        d.workspace.data_sources[0].dataset_id = hash.clone();
+        s.save_workspace(&d).unwrap();
+
+        let export = s
+            .export_bundle("w1", "2026-11-05T08:00:00Z")
+            .unwrap();
+        assert_eq!(export.manifest.format, BUNDLE_FORMAT);
+        assert_eq!(export.manifest.dataset_count, 1);
+        assert_eq!(export.manifest.workspace_id, "w1");
+        assert!(export.json.contains(BUNDLE_FORMAT));
+
+        let imported = s
+            .import_bundle(
+                export.json.as_bytes(),
+                "w2",
+                "Imported workspace",
+                "2026-11-05T09:00:00Z",
+            )
+            .unwrap();
+        assert_eq!(imported.doc.workspace.id, "w2");
+        assert_eq!(imported.doc.workspace.title, "Imported workspace");
+        assert_eq!(imported.doc.workspace.revision, 1);
+        assert_eq!(imported.source_title, "Workspace w1");
+        assert_eq!(imported.dataset_count, 1);
+        assert_eq!(s.load_source("w2").unwrap(), source.to_vec());
+        assert!(s.exists("w2"));
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn a_tampered_bundle_is_refused_before_any_workspace_is_written() {
+        let (s, root) = store();
+        let source = b"region,amount\neu,10\n";
+        let hash = s.put_dataset(source).unwrap();
+        let mut d = doc("w1");
+        d.workspace.data_sources[0].dataset_id = hash;
+        s.save_workspace(&d).unwrap();
+        let export = s.export_bundle("w1", "2026-11-05T08:00:00Z").unwrap();
+
+        let mut envelope: BundleEnvelope = serde_json::from_str(&export.json).unwrap();
+        envelope.datasets[0].content_hex = hex_encode(b"tampered,source\n1,2\n");
+        let bad = serde_json::to_string(&envelope).unwrap();
+        let err = s
+            .import_bundle(bad.as_bytes(), "w2", "Bad", "2026-11-05T09:00:00Z")
+            .unwrap_err();
+        assert!(
+            matches!(err, StoreError::Bundle(_)),
+            "expected a typed bundle error, got {err}"
+        );
+        assert!(!s.exists("w2"), "a bad bundle must write nothing");
         fs::remove_dir_all(&root).ok();
     }
 

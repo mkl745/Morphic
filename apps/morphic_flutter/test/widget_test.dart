@@ -77,7 +77,7 @@ class FakeBridge implements MorphicBridge {
 
   @override
   EngineInfo engineInfo() =>
-      const EngineInfo(apiVersion: 12, coreVersion: '0.1.0', engine: 'morphic');
+      const EngineInfo(apiVersion: 13, coreVersion: '0.1.0', engine: 'morphic');
 
   @override
   RecoveryReport recoveryReport(String storageRoot) => const RecoveryReport();
@@ -93,6 +93,24 @@ class FakeBridge implements MorphicBridge {
         'dirty': false,
         'compacted': true,
       };
+
+  @override
+  Map<String, dynamic> exportBundle({
+    required String storageRoot,
+    required String workspaceId,
+    required String nowIso,
+  }) =>
+      {'bundleJson': '{}', 'bytes': 2, 'manifest': {}};
+
+  @override
+  Map<String, dynamic> importBundle({
+    required Uint8List bytes,
+    required String storageRoot,
+    required String workspaceId,
+    required String title,
+    required String nowIso,
+  }) =>
+      {'doc': _sampleDoc(), 'sourceTitle': title, 'datasetCount': 0};
 
   @override
   Map<String, dynamic> profileCsv(Uint8List bytes) => {

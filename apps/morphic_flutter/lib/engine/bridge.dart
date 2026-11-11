@@ -136,6 +136,24 @@ abstract interface class MorphicBridge {
     required String workspaceId,
   });
 
+  /// Export a workspace plus its content-addressed sources as a `.morphic` JSON envelope.
+  /// Returns `{bundleJson, bytes, manifest}`; the UI writes `bundleJson` to disk.
+  Map<String, dynamic> exportBundle({
+    required String storageRoot,
+    required String workspaceId,
+    required String nowIso,
+  });
+
+  /// Import a `.morphic` envelope under a fresh id. Rust verifies every dataset hash before
+  /// persisting anything.
+  Map<String, dynamic> importBundle({
+    required Uint8List bytes,
+    required String storageRoot,
+    required String workspaceId,
+    required String title,
+    required String nowIso,
+  });
+
   /// Rename a persisted workspace. Returns the updated document; the engine bumps the
   /// revision and rewrites the library index and undo seed (M1.5 task 1.5.3).
   Map<String, dynamic> renameWorkspace({
@@ -332,6 +350,11 @@ typedef _FiveStringNative = Pointer<Utf8> Function(
 typedef _FiveStringDart = Pointer<Utf8> Function(
     Pointer<Utf8>, Pointer<Utf8>, Pointer<Utf8>, Pointer<Utf8>, Pointer<Utf8>);
 
+typedef _ImportBundleNative = Pointer<Utf8> Function(
+    Pointer<Uint8>, IntPtr, Pointer<Utf8>, Pointer<Utf8>, Pointer<Utf8>, Pointer<Utf8>);
+typedef _ImportBundleDart = Pointer<Utf8> Function(
+    Pointer<Uint8>, int, Pointer<Utf8>, Pointer<Utf8>, Pointer<Utf8>, Pointer<Utf8>);
+
 typedef _RelinkNative = Pointer<Utf8> Function(
     Pointer<Uint8>, IntPtr, Pointer<Utf8>, Pointer<Utf8>);
 typedef _RelinkDart = Pointer<Utf8> Function(
@@ -376,6 +399,10 @@ class FfiBridge implements MorphicBridge {
       .lookupFunction<_ListWorkspacesNative, _ListWorkspacesDart>('morphic_recovery_report');
   late final _saveWorkspace = _lib
       .lookupFunction<_TwoStringNative, _TwoStringDart>('morphic_save_workspace');
+  late final _exportBundle = _lib
+      .lookupFunction<_ThreeStringNative, _ThreeStringDart>('morphic_export_bundle');
+  late final _importBundle = _lib
+      .lookupFunction<_ImportBundleNative, _ImportBundleDart>('morphic_import_bundle');
   late final _renameWorkspace = _lib
       .lookupFunction<_FourStringNative, _FourStringDart>('morphic_rename_workspace');
   late final _duplicateWorkspace = _lib
@@ -526,6 +553,50 @@ class FfiBridge implements MorphicBridge {
     } finally {
       calloc.free(root);
       calloc.free(id);
+    }
+  }
+
+  @override
+  Map<String, dynamic> exportBundle({
+    required String storageRoot,
+    required String workspaceId,
+    required String nowIso,
+  }) {
+    final root = storageRoot.toNativeUtf8();
+    final id = workspaceId.toNativeUtf8();
+    final now = nowIso.toNativeUtf8();
+    try {
+      return _withResponse(() => _exportBundle(root, id, now), _decodeMap);
+    } finally {
+      calloc.free(root);
+      calloc.free(id);
+      calloc.free(now);
+    }
+  }
+
+  @override
+  Map<String, dynamic> importBundle({
+    required Uint8List bytes,
+    required String storageRoot,
+    required String workspaceId,
+    required String title,
+    required String nowIso,
+  }) {
+    final buf = calloc<Uint8>(bytes.length);
+    final root = storageRoot.toNativeUtf8();
+    final id = workspaceId.toNativeUtf8();
+    final t = title.toNativeUtf8();
+    final now = nowIso.toNativeUtf8();
+    try {
+      buf.asTypedList(bytes.length).setAll(0, bytes);
+      return _withResponse(
+          () => _importBundle(buf, bytes.length, root, id, t, now), _decodeMap);
+    } finally {
+      calloc.free(buf);
+      calloc.free(root);
+      calloc.free(id);
+      calloc.free(t);
+      calloc.free(now);
     }
   }
 

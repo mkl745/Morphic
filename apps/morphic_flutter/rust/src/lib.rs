@@ -673,6 +673,74 @@ pub unsafe extern "C" fn morphic_save_workspace(
     })
 }
 
+/// Export a workspace plus its content-addressed sources as a `.morphic` JSON envelope.
+/// Returns `{bundleJson, bytes, manifest}`; Flutter writes `bundleJson` to a `.morphic` file.
+///
+/// # Safety
+/// All three pointers must be valid C strings.
+#[no_mangle]
+pub unsafe extern "C" fn morphic_export_bundle(
+    storage_root: *const c_char,
+    workspace_id: *const c_char,
+    now_iso: *const c_char,
+) -> *mut c_char {
+    guarded(|| {
+        let root = match unsafe { cstr(storage_root) } {
+            Some(r) => r,
+            None => return err("invalid storage_root"),
+        };
+        let id = match unsafe { cstr(workspace_id) } {
+            Some(i) => i,
+            None => return err("invalid workspace_id"),
+        };
+        let now = unsafe { cstr(now_iso) }
+            .unwrap_or_else(|| "1970-01-01T00:00:00Z".into());
+        with_engine(&root, |engine| {
+            to_json(&engine.export_bundle(&id, &now).map_err(|e| e.to_string())?)
+        })
+    })
+}
+
+/// Import a `.morphic` envelope under a fresh workspace id. Returns the imported workspace
+/// document, its source title and the verified dataset count.
+///
+/// # Safety
+/// `data` must point to `len` readable bytes; the four string pointers must be valid C strings.
+#[no_mangle]
+pub unsafe extern "C" fn morphic_import_bundle(
+    data: *const u8,
+    len: usize,
+    storage_root: *const c_char,
+    workspace_id: *const c_char,
+    title: *const c_char,
+    now_iso: *const c_char,
+) -> *mut c_char {
+    guarded(|| {
+        if data.is_null() {
+            return err("null input");
+        }
+        let bytes = unsafe { std::slice::from_raw_parts(data, len) };
+        let root = match unsafe { cstr(storage_root) } {
+            Some(r) => r,
+            None => return err("invalid storage_root"),
+        };
+        let id = match unsafe { cstr(workspace_id) } {
+            Some(i) => i,
+            None => return err("invalid workspace_id"),
+        };
+        let title = unsafe { cstr(title) }.unwrap_or_else(|| "Untitled".into());
+        let now = unsafe { cstr(now_iso) }
+            .unwrap_or_else(|| "1970-01-01T00:00:00Z".into());
+        with_engine(&root, |engine| {
+            to_json(
+                &engine
+                    .import_bundle(bytes, &id, &title, &now)
+                    .map_err(|e| e.to_string())?,
+            )
+        })
+    })
+}
+
 /// Rename a persisted workspace. Returns the new `WorkspaceDoc`.
 ///
 /// # Safety
@@ -893,7 +961,7 @@ mod tests {
     fn engine_info_returns_json() {
         let v = json(morphic_engine_info());
         assert_eq!(v["engine"], "morphic");
-        assert_eq!(v["apiVersion"], 12);
+        assert_eq!(v["apiVersion"], 13);
     }
 
     #[test]
@@ -1995,6 +2063,47 @@ mod tests {
         assert_eq!(v["compacted"], true, "{v}");
         assert!(v["revision"].as_u64().unwrap() >= 1, "{v}");
         assert!(v["stateHash"].as_str().unwrap().len() >= 32, "{v}");
+        std::fs::remove_dir_all(&p).ok();
+    }
+
+    // --- M1.5 task 1.5.6: .morphic bundles over FFI ---------------------------------------
+
+    #[test]
+    fn bundle_export_import_crosses_the_json_boundary() {
+        let (p, rp) = root("bundle");
+        let w1 = c("w1");
+        let w2 = c("w2");
+        let title = c("Restored Sales");
+        let now = c("2026-11-05T09:00:00Z");
+        unsafe { import(&rp, &w1, None) };
+
+        let export = json(unsafe {
+            morphic_export_bundle(rp.as_ptr(), w1.as_ptr(), now.as_ptr())
+        });
+        assert_eq!(export["manifest"]["format"], "morphic/workspace-bundle/1");
+        assert_eq!(export["manifest"]["datasetCount"], 1);
+        let bundle = export["bundleJson"]
+            .as_str()
+            .expect("bundleJson missing")
+            .to_string();
+        assert!(bundle.contains("contentHex"));
+
+        let bytes = bundle.as_bytes();
+        let imported = json(unsafe {
+            morphic_import_bundle(
+                bytes.as_ptr(),
+                bytes.len(),
+                rp.as_ptr(),
+                w2.as_ptr(),
+                title.as_ptr(),
+                now.as_ptr(),
+            )
+        });
+        assert_eq!(imported["doc"]["workspace"]["id"], "w2");
+        assert_eq!(imported["doc"]["workspace"]["title"], "Restored Sales");
+        assert_eq!(imported["datasetCount"], 1);
+        let snap = json(unsafe { morphic_snapshot(rp.as_ptr(), w2.as_ptr()) });
+        assert_eq!(snap["degraded"], false, "{snap}");
         std::fs::remove_dir_all(&p).ok();
     }
 }
