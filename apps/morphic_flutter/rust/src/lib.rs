@@ -852,7 +852,7 @@ mod tests {
     fn engine_info_returns_json() {
         let v = json(morphic_engine_info());
         assert_eq!(v["engine"], "morphic");
-        assert_eq!(v["apiVersion"], 10);
+        assert_eq!(v["apiVersion"], 11);
     }
 
     #[test]

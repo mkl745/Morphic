@@ -285,6 +285,56 @@ impl Binding {
             Binding::Timeline { .. } => "timeline",
         }
     }
+
+    /// Every dataset field this binding reads. M1.5 task 1.5.5 uses this to recompile only
+    /// the components a field correction can actually affect, instead of rebuilding the whole
+    /// document (and discarding the user's edits) on every override.
+    pub fn fields(&self) -> Vec<&str> {
+        let mut out: Vec<&str> = Vec::new();
+        match self {
+            Binding::MetricCard { aggregation } => {
+                if let Some(f) = aggregation.field.as_deref() {
+                    out.push(f);
+                }
+            }
+            Binding::DataTable { columns, .. } => {
+                out.extend(columns.iter().map(String::as_str));
+            }
+            Binding::BarChart {
+                dimension, measure, ..
+            } => {
+                out.push(dimension);
+                if let Some(f) = measure.field.as_deref() {
+                    out.push(f);
+                }
+            }
+            Binding::LineChart { x, y, group_by } => {
+                out.push(x);
+                for agg in y {
+                    if let Some(f) = agg.field.as_deref() {
+                        out.push(f);
+                    }
+                }
+                if let Some(g) = group_by.as_deref() {
+                    out.push(g);
+                }
+            }
+            Binding::Timeline {
+                time_field,
+                group_by,
+                severity_field,
+            } => {
+                out.push(time_field);
+                if let Some(g) = group_by.as_deref() {
+                    out.push(g);
+                }
+                if let Some(s) = severity_field.as_deref() {
+                    out.push(s);
+                }
+            }
+        }
+        out
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -1005,6 +1055,47 @@ mod tests {
     #[test]
     fn minimal_doc_validates() {
         assert!(validate(&minimal_doc()).is_empty());
+    }
+
+    #[test]
+    fn binding_fields_names_every_column_a_component_reads() {
+        let count = Aggregation {
+            op: "count".into(),
+            field: None,
+            filter: None,
+        };
+        let avg = Aggregation {
+            op: "avg".into(),
+            field: Some("amount".into()),
+            filter: None,
+        };
+        let metric = Binding::MetricCard { aggregation: count };
+        assert!(metric.fields().is_empty());
+        let table = Binding::DataTable {
+            columns: vec!["region".into(), "note".into()],
+            page_size: 256,
+        };
+        assert_eq!(table.fields(), vec!["region", "note"]);
+        let bar = Binding::BarChart {
+            dimension: "region".into(),
+            measure: avg.clone(),
+            limit: 12,
+        };
+        assert_eq!(bar.fields(), vec!["region", "amount"]);
+        let line = Binding::LineChart {
+            x: "ts".into(),
+            y: vec![avg.clone()],
+            group_by: Some("region".into()),
+        };
+        assert_eq!(line.fields(), vec!["ts", "amount", "region"]);
+        let timeline = Binding::Timeline {
+            time_field: "ts".into(),
+            group_by: None,
+            severity_field: Some("level".into()),
+        };
+        assert_eq!(timeline.fields(), vec!["ts", "level"]);
+        let metric_amount = Binding::MetricCard { aggregation: avg };
+        assert_eq!(metric_amount.fields(), vec!["amount"]);
     }
 
     #[test]

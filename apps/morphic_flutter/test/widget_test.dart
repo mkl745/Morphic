@@ -77,7 +77,7 @@ class FakeBridge implements MorphicBridge {
 
   @override
   EngineInfo engineInfo() =>
-      const EngineInfo(apiVersion: 10, coreVersion: '0.1.0', engine: 'morphic');
+      const EngineInfo(apiVersion: 11, coreVersion: '0.1.0', engine: 'morphic');
 
   @override
   Map<String, dynamic> profileCsv(Uint8List bytes) => {

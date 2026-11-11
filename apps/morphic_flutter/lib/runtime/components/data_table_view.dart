@@ -21,6 +21,7 @@ import '../../engine/interaction.dart';
 import '../change_type_button.dart';
 import '../component_registry.dart';
 import '../explanation_sheet.dart';
+import '../field_corrections.dart';
 import '../value_format.dart';
 import 'row_detail_sheet.dart';
 import 'table_filter_menu.dart';
@@ -103,6 +104,25 @@ class _DataTableViewState extends State<DataTableView> {
         .toList();
     return fields.map((f) => f['name'] as String? ?? '').where((n) => n.isNotEmpty).toList();
   }
+
+  /// Fields with a persisted correction, shown as a small badge in the header.
+  Set<String> get _corrected {
+    final ws = widget.ctx.engine.doc?['workspace'];
+    if (ws is! Map) return const <String>{};
+    return (ws['fieldOverrides'] as List? ?? const [])
+        .whereType<Map<String, dynamic>>()
+        .map((o) => o['field'] as String? ?? '')
+        .where((name) => name.isNotEmpty)
+        .toSet();
+  }
+
+  /// AT-17: the header is the correction entry point. A long press opens the sheet for that
+  /// column; a tap still sorts.
+  Future<void> _openCorrections(String column) => showFieldCorrectionsSheet(
+        context,
+        engine: widget.ctx.engine,
+        field: column,
+      );
 
   @override
   void initState() {
@@ -516,9 +536,11 @@ class _DataTableViewState extends State<DataTableView> {
               interaction: _interaction,
               canSort: widget.ctx.canSort,
               canFilter: widget.ctx.canFilter,
+              corrected: _corrected,
               busy: _commandBusy,
               onSort: _toggleSort,
               onFilter: _openFilter,
+              onCorrect: _openCorrections,
             ),
             const Divider(height: 1),
             Expanded(
@@ -589,9 +611,11 @@ class _HeaderRow extends StatelessWidget {
     required this.interaction,
     required this.canSort,
     required this.canFilter,
+    required this.corrected,
     required this.busy,
     required this.onSort,
     required this.onFilter,
+    required this.onCorrect,
   });
 
   final List<String> columns;
@@ -599,9 +623,11 @@ class _HeaderRow extends StatelessWidget {
   final ComponentInteraction interaction;
   final bool canSort;
   final bool canFilter;
+  final Set<String> corrected;
   final bool busy;
   final void Function(String) onSort;
   final void Function(String) onFilter;
+  final Future<void> Function(String) onCorrect;
 
   static String _sortLabel(SortRule rule) =>
       rule.dir == SortDir.asc ? 'Sorted ascending' : 'Sorted descending';
@@ -622,6 +648,7 @@ class _HeaderRow extends StatelessWidget {
                     child: InkWell(
                       key: Key('sort-$c'),
                       onTap: canSort && !busy ? () => onSort(c) : null,
+                      onLongPress: busy ? null : () => onCorrect(c),
                       child: Padding(
                         padding:
                             const EdgeInsets.symmetric(horizontal: MorphicSpace.sm),
@@ -634,6 +661,13 @@ class _HeaderRow extends StatelessWidget {
                                 style: theme.textTheme.labelMedium,
                               ),
                             ),
+                            if (corrected.contains(c))
+                              Icon(
+                                Icons.tune,
+                                key: Key('corrected-$c'),
+                                size: 12,
+                                semanticLabel: 'Corrected field: $c',
+                              ),
                             if (interaction.sortFor(c) != null)
                               Icon(
                                 interaction.sortFor(c)!.dir == SortDir.asc

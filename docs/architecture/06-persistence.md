@@ -125,6 +125,7 @@ This document is the target contract. What the file backend actually implements 
 | `history.json` undo/redo stacks | **Built (1.5.1)** | Bounded to 100 frames; reconciled on open so a crash cannot resurrect a future redo state |
 | Library rename / duplicate / delete | **Built (1.5.3)** | Engine-owned document + index + history seed; duplicate shares the dataset; four additive FFI entry points (contract doc 02 §2.4.4) |
 | Hash-verified degraded re-link | **Built (1.5.3)** | `relink_workspace` compares the picked bytes' SHA-256 with the document's `datasetId`, then reopens the session; different bytes are rejected |
+| Persisted `fieldOverrides` | **Built (1.5.5)** | One record per field, with `dtype` and/or `role`; stored in `workspace.json`, validated against the closed vocabularies, and included in every history frame, so undo restores the original inference and the recompiled bindings together (contract doc 02 §2.4.5) |
 | `snapshot.bin` columnar cache | **Deferred** | Reopen re-ingests the source. The cache is a perf optimization for a 10 MB budget that is still unmeasured on hardware; a versioned binary format before that data exists is speculative risk |
 | `.lock` session files | **Deferred** | Single-process app, sessions already mutex-serialized; a stale-lock protocol would add failure modes with no concurrent writer to guard |
 | `inverseSummary` / undo journal (§3) | **Built (1.5.1)** | Engine-owned stacks, app-bar controls and snackbars shipped; `history.json` is reconciled against the doc hash |

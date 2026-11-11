@@ -92,6 +92,9 @@ class ScriptedBridge implements MorphicBridge {
   Uint8List? lastRelinkBytes;
   bool rejectRelink = false;
 
+  /// Stand-in for the engine's persisted `workspace.fieldOverrides` (M1.5 task 1.5.5).
+  final List<Map<String, dynamic>> fieldOverrides = [];
+
   /// Behaviour switches.
   bool failMetric = false;
   bool failQuery = false;
@@ -228,6 +231,7 @@ class ScriptedBridge implements MorphicBridge {
             if (hints.isNotEmpty) 'hints': hints,
           },
           'globalFilters': _globalFilters,
+          if (fieldOverrides.isNotEmpty) 'fieldOverrides': fieldOverrides,
           'components': components,
         },
       };
@@ -240,6 +244,12 @@ class ScriptedBridge implements MorphicBridge {
             {
               'name': f,
               'dtype': dtypes[f] ?? 'utf8',
+              'inference': {
+                'role': (dtypes[f] == 'int64' || dtypes[f] == 'float64')
+                    ? 'measure'
+                    : 'dimension',
+                'confidence': 0.9,
+              },
               if (topValues[f] != null)
                 'topValues': [
                   for (final v in topValues[f]!) {'value': v, 'count': 1},
@@ -250,7 +260,7 @@ class ScriptedBridge implements MorphicBridge {
 
   @override
   EngineInfo engineInfo() =>
-      const EngineInfo(apiVersion: 10, coreVersion: '0.1.0', engine: 'morphic');
+      const EngineInfo(apiVersion: 11, coreVersion: '0.1.0', engine: 'morphic');
 
   @override
   Map<String, dynamic> profileCsv(Uint8List bytes) => profileJson();
@@ -494,8 +504,26 @@ class ScriptedBridge implements MorphicBridge {
           if (field.isEmpty || value.isEmpty) {
             throw const MorphicBridgeException('empty override');
           }
+          Map<String, dynamic>? existing;
+          for (final o in fieldOverrides) {
+            if (o['field'] == field) existing = o;
+          }
+          final key = cmd['role'] != null ? 'role' : 'dtype';
+          if (existing == null) {
+            fieldOverrides.add({'field': field, key: value});
+          } else {
+            existing[key] = value;
+          }
           affected.addAll(order);
           changed = true;
+        case 'clearFieldOverride':
+          final field = cmd['field'] as String? ?? '';
+          final countBefore = fieldOverrides.length;
+          fieldOverrides.removeWhere((o) => o['field'] == field);
+          if (fieldOverrides.length != countBefore) {
+            changed = true;
+            affected.addAll(order);
+          }
         default:
           throw MorphicBridgeException('unknown command ${cmd['kind']}');
       }

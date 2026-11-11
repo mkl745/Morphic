@@ -43,9 +43,10 @@ use thiserror::Error;
 /// `OverrideFieldType`, `OverrideFieldRole`, undo/redo entry points and history metadata on
 /// snapshot/import/apply (M1.5 task 1.5.1). v9 adds `ResizeComponent` and its persisted
 /// `layout.hints` record (M1.5 task 1.5.2). v10 adds the library lifecycle and source re-link
-/// entry points (M1.5 task 1.5.3). New entry points and commands are additive contract changes
-/// and are versioned with the bridge (doc 02 §4).
-pub const API_VERSION: u32 = 10;
+/// entry points (M1.5 task 1.5.3). v11 adds `ClearFieldOverride` and targeted recompilation of
+/// the bindings affected by a field correction (M1.5 task 1.5.5). New entry points and commands
+/// are additive contract changes and are versioned with the bridge (doc 02 §4).
+pub const API_VERSION: u32 = 11;
 
 #[derive(Debug, Error)]
 pub enum CoreError {
@@ -293,6 +294,7 @@ fn command_label(commands: &[Command]) -> String {
         Command::ResizeComponent { .. } => "Resized component".into(),
         Command::OverrideFieldType { .. } => "Overrode field type".into(),
         Command::OverrideFieldRole { .. } => "Overrode field role".into(),
+        Command::ClearFieldOverride { .. } => "Cleared field correction".into(),
     }
 }
 
@@ -1895,6 +1897,129 @@ mod tests {
         assert_eq!(
             engine.metric_data("w1", "total_records").unwrap().value,
             serde_json::json!(5)
+        );
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    // --- M1.5 task 1.5.5: targeted recompilation after a field correction ---------------
+
+    #[test]
+    fn an_override_recompiles_only_the_bindings_that_read_that_field() {
+        let (engine, root) = imported("targeted_recompile");
+        let before = engine.load_workspace("w1").unwrap();
+        let binding = |doc: &morphic_schema::WorkspaceDoc, id: &str| {
+            serde_json::to_value(
+                &doc.workspace
+                    .components
+                    .iter()
+                    .find(|c| c.id == id)
+                    .unwrap()
+                    .binding,
+            )
+            .unwrap()
+        };
+        let average = binding(&before, "metric_amount");
+        let records = binding(&before, "total_records");
+        assert_eq!(average["aggregation"]["op"], "avg");
+
+        let outcome = engine
+            .apply(
+                "w1",
+                &[Command::OverrideFieldType {
+                    field: "amount".into(),
+                    dtype: "utf8".into(),
+                }],
+                "2026-11-10T11:00:00Z",
+            )
+            .unwrap();
+        assert!(outcome.changed);
+        let after = outcome.doc;
+        assert_eq!(
+            binding(&after, "metric_amount")["aggregation"]["op"],
+            "count",
+            "an average over a now-text field must be recompiled into a row count"
+        );
+        assert_eq!(
+            binding(&after, "total_records"),
+            records,
+            "the untouched record count must stay byte-identical"
+        );
+        assert_eq!(
+            after.workspace.field_overrides[0].dtype.as_deref(),
+            Some("utf8")
+        );
+        // The correction is persisted, not just applied to the in-memory session.
+        engine.close_session("w1").unwrap();
+        let reopened = engine.load_workspace("w1").unwrap();
+        assert_eq!(
+            binding(&reopened, "metric_amount")["aggregation"]["op"],
+            "count"
+        );
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn undo_restores_the_original_inference_and_bindings() {
+        let (engine, root) = imported("override_undo");
+        let before = engine.load_workspace("w1").unwrap();
+        engine
+            .apply(
+                "w1",
+                &[Command::OverrideFieldRole {
+                    field: "region".into(),
+                    role: "identifier".into(),
+                }],
+                "2026-11-10T11:01:00Z",
+            )
+            .unwrap();
+        let undone = engine.undo("w1", "2026-11-10T11:02:00Z").unwrap();
+        // History frames hold the full authoritative document, so undo restores both the
+        // inferred role and every binding the correction recompiled. Revision and modifiedAt
+        // are bookkeeping that undo deliberately bumps, so compare the semantic state hash.
+        assert_eq!(state_hash(&undone.doc), state_hash(&before));
+        assert!(undone.doc.workspace.field_overrides.is_empty());
+        assert!(before.workspace.field_overrides.is_empty());
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn clearing_an_override_restores_the_inferred_binding() {
+        let (engine, root) = imported("override_clear");
+        let before = engine.load_workspace("w1").unwrap();
+        engine
+            .apply(
+                "w1",
+                &[Command::OverrideFieldType {
+                    field: "amount".into(),
+                    dtype: "utf8".into(),
+                }],
+                "2026-11-10T11:03:00Z",
+            )
+            .unwrap();
+        let cleared = engine
+            .apply(
+                "w1",
+                &[Command::ClearFieldOverride {
+                    field: "amount".into(),
+                }],
+                "2026-11-10T11:04:00Z",
+            )
+            .unwrap();
+        assert!(cleared.doc.workspace.field_overrides.is_empty());
+        let amount = cleared
+            .doc
+            .workspace
+            .components
+            .iter()
+            .find(|c| c.id == "metric_amount")
+            .unwrap();
+        assert_eq!(
+            serde_json::to_value(&amount.binding).unwrap()["aggregation"]["op"],
+            "avg"
+        );
+        assert_eq!(
+            serde_json::to_value(&before.workspace.layout).unwrap(),
+            serde_json::to_value(&cleared.doc.workspace.layout).unwrap()
         );
         std::fs::remove_dir_all(&root).ok();
     }

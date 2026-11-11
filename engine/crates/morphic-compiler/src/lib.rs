@@ -19,6 +19,8 @@ use morphic_schema::{
 };
 use serde_json::Value;
 
+pub mod recompile;
+
 /// Version stamped into `workspace.generator.version`. Bump when rules change so saved
 /// workspaces record which planner produced them.
 pub const GENERATOR_VERSION: &str = "0.2.0";

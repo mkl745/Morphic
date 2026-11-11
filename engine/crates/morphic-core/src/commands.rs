@@ -73,11 +73,13 @@ pub enum Command {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         height: Option<String>,
     },
-    /// Persist a user correction to a field's inferred physical type. Recompilation of the
-    /// affected bindings is 1.5.5; storing and undoing the command arrives with 1.5.1.
+    /// Persist a user correction to a field's inferred physical type (1.5.1). Since 1.5.5 the
+    /// engine recompiles the bindings that read this field from the corrected profile.
     OverrideFieldType { field: String, dtype: String },
     /// Persist a user correction to a field's inferred semantic role.
     OverrideFieldRole { field: String, role: String },
+    /// Forget both corrections for a field and restore its inferred dtype/role (1.5.5).
+    ClearFieldOverride { field: String },
 }
 
 /// The result of applying a batch to a document. `changed` is false for a no-op batch.
@@ -111,6 +113,8 @@ pub(crate) fn apply(
     let mut global_changed = false;
     let mut layout_changed = false;
     let mut override_changed = false;
+    /// Fields whose correction changed in this batch, so recompilation stays targeted.
+    let mut corrected_fields: Vec<String> = Vec::new();
     let mut type_changed = false;
 
     for (i, cmd) in commands.iter().enumerate() {
@@ -246,6 +250,7 @@ pub(crate) fn apply(
                 }
                 override_changed |=
                     upsert_override(&mut next, field.clone(), Some(dtype.clone()), None);
+                corrected_fields.push(field.clone());
             }
             Command::OverrideFieldRole { field, role } => {
                 check_override_field(field, fields).map_err(|m| at(i, m))?;
@@ -254,6 +259,14 @@ pub(crate) fn apply(
                 }
                 override_changed |=
                     upsert_override(&mut next, field.clone(), None, Some(role.clone()));
+                corrected_fields.push(field.clone());
+            }
+            Command::ClearFieldOverride { field } => {
+                check_override_field(field, fields).map_err(|m| at(i, m))?;
+                let before = next.workspace.field_overrides.len();
+                next.workspace.field_overrides.retain(|o| o.field != *field);
+                override_changed |= before != next.workspace.field_overrides.len();
+                corrected_fields.push(field.clone());
             }
             Command::SetSearch { component_id, text } => {
                 let c = component(&mut next, component_id).map_err(|m| at(i, m))?;
@@ -290,6 +303,47 @@ pub(crate) fn apply(
         });
     }
 
+    // M1.5 task 1.5.5: a field correction changes the profile the planner sees. Recompile only
+    // the bindings that read a corrected field, leaving every user-authored edit intact. In
+    // degraded mode there is no live profile, so the correction is stored but not recompiled;
+    // the next healthy open will see it in the document rather than silently inventing data.
+    let mut recompiled: Vec<String> = Vec::new();
+    let mut effective_profile: Option<morphic_model::DatasetProfile> = None;
+    if override_changed {
+        if let Some(p) = profile {
+            let result =
+                morphic_compiler::recompile::recompile_for_fields(&next, p, &corrected_fields);
+            // A correction must never leave an uncomputable binding behind. Validate only the
+            // components that were rebuilt, so a pre-existing quirk elsewhere in an old
+            // document cannot make a legitimate correction fail.
+            let mut probe = result.doc.clone();
+            probe
+                .workspace
+                .components
+                .retain(|c| result.affected.contains(&c.id));
+            let issues = morphic_schema::validate_bindings(&probe, &result.effective);
+            if let Some(first) = issues.first() {
+                return Err(CoreError::Command(format!(
+                    "field correction would produce an uncomputable binding at {}: {}",
+                    first.pointer, first.rule
+                )));
+            }
+            next = result.doc;
+            recompiled = result.affected;
+            effective_profile = Some(result.effective);
+        } else {
+            // Without a live profile there is no way to know which bindings read the field,
+            // so every component has to be treated as affected rather than pretending the
+            // recompile was targeted.
+            recompiled = next
+                .workspace
+                .components
+                .iter()
+                .map(|c| c.id.clone())
+                .collect();
+        }
+    }
+
     // Validate the *result*, not each step: a batch may pass through an intermediate document
     // that would not stand on its own, and only the committed state has to be valid.
     let issues = morphic_schema::validate(&next);
@@ -305,7 +359,8 @@ pub(crate) fn apply(
     // stricter gate than the matrix: the matrix already applies the query layer's bucketing
     // rule, and this catches any field reference the proposal invented. Both run before the
     // document is committed, so a rejected switch changes nothing.
-    if let (true, Some(p)) = (type_changed, profile) {
+    let validation_profile = effective_profile.as_ref().or(profile);
+    if let (true, Some(p)) = (type_changed, validation_profile) {
         let binding_issues = morphic_schema::validate_bindings(&next, p);
         if !binding_issues.is_empty() {
             let first = &binding_issues[0];
@@ -318,7 +373,7 @@ pub(crate) fn apply(
 
     // Global filters reach every component. Order by layout so the list is deterministic and
     // matches the order the UI paints.
-    let affected: Vec<String> = if broad_changed {
+    let affected: Vec<String> = if global_changed || layout_changed {
         next.workspace
             .layout
             .order
@@ -327,11 +382,13 @@ pub(crate) fn apply(
             .cloned()
             .collect()
     } else {
+        // Overrides are the one broad change that is genuinely targeted: only the components
+        // whose binding was rebuilt, plus any directly touched ones, can have new data.
         next.workspace
             .layout
             .order
             .iter()
-            .filter(|id| touched.contains(id))
+            .filter(|id| touched.contains(id) || recompiled.contains(id))
             .cloned()
             .collect()
     };

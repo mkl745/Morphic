@@ -191,8 +191,8 @@ class Commands {
         if (height != null) 'height': height,
       };
 
-  /// Persist a user correction to a field's inferred type. Targeted recompilation is 1.5.5;
-  /// the command itself is an ordinary undoable batch as of 1.5.1.
+  /// Persist a user correction to a field's inferred type. Since 1.5.5 the engine recompiles
+  /// the bindings that read this field from the corrected profile.
   static Map<String, dynamic> overrideFieldType(
     String field,
     String dtype,
@@ -212,6 +212,12 @@ class Commands {
         'kind': 'overrideFieldRole',
         'field': field,
         'role': role,
+      };
+
+  /// Forget both corrections for a field, restoring its inferred type and role.
+  static Map<String, dynamic> clearFieldOverride(String field) => {
+        'kind': 'clearFieldOverride',
+        'field': field,
       };
 }
 

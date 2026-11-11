@@ -45,7 +45,7 @@ void main() {
     await pumpHome(tester, bridge);
     expect(find.text('Saved workspace'), findsOneWidget);
     expect(find.text('w1'), findsOneWidget);
-    expect(find.textContaining('bridge API v10'), findsOneWidget);
+    expect(find.textContaining('bridge API v11'), findsOneWidget);
   });
 
   testWidgets('rename sends the new title and reloads the library', (tester) async {

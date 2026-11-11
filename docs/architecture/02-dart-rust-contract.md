@@ -140,6 +140,29 @@ and re-link refuses bytes whose SHA-256 does not equal the dataset id already in
 All four drop any open session so the next snapshot rehydrates from disk. `API_VERSION` went
 **9 → 10** (§5); no existing entry point changed shape.
 
+#### 2.4.5 As shipped in M1.5.5 (task 1.5.5)
+
+`ClearFieldOverride { field }` joins the v11 command union, and the two existing override
+commands now do more than persist. A correction changes the **planner's view** of the profile:
+`morphic_compiler::recompile::effective_profile` applies the persisted `fieldOverrides` to the
+inferred `DatasetProfile`, and `recompile_for_fields` calls the real `compile` once with that
+effective profile. Only components whose binding reads a corrected field are considered; a
+fresh binding and explanation are copied where the corrected profile still generates that
+component, otherwise the binding is repaired in place (an average over a now-text field
+becomes a row count). Layout order, hints, titles, converted types, interaction state and the
+override records themselves are never rewritten. Components that read no corrected field are
+byte-identical, and `affected` names only the recompiled plus directly touched components.
+
+Overrides do **not** re-parse the imported bytes: the query layer keeps the dtype it ingested,
+while the planner and `validate_bindings` use the corrected view. A batch whose result is not
+computable against the effective profile is rejected before any write. In degraded mode there
+is no live profile, so the correction is stored undone; a healthy reopen sees it in the
+document. Flutter's entry point is a long press on a `data_table` header: it opens a sheet
+that reads the inferred and effective values from Rust, emits the three commands, and shows a
+small badge on corrected columns. Undo and redo restore the whole authoritative document, so
+the inference and every recompiled binding return together. `API_VERSION` went **10 → 11**
+(§5); no entry point changed shape.
+
 ### 2.5 Data plane
 
 ```dart
@@ -218,6 +241,9 @@ Errors MUST NOT embed raw user data rows (privacy in logs); they carry positions
 - **v10 (M1.5 task 1.5.3)** adds four library-lifecycle entry points (rename, duplicate,
   delete and hash-verified source re-link). No existing entry point changed shape; older
   clients simply see four more exports.
+- **v11 (M1.5 task 1.5.5)** adds `ClearFieldOverride` and targeted recompilation of the
+  bindings that read a corrected field. It travels through the existing
+  `morphic_apply_commands` array; no entry point changed shape.
 - The FFI boundary is a hand-written JSON surface over `morphic_*` exports, not generated frb
   code. CI compiles and tests both sides, checks generated schema artifacts for drift, and
   builds an APK whose stamp is compared with the commit SHA (see
