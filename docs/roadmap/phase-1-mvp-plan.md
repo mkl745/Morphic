@@ -108,12 +108,14 @@ p95 ≤ 33 ms measured; every generated component explains itself.
 | 1.5.5 | Field corrections UI: override type/role from table header → targeted recompile | M | AT-17 |
 | 1.5.6 | ◇ Workspace export/import `.morphic` bundle | M | stretch |
 
-*Status, 2026-11-10:* **M1.5 is in progress.** Tasks 1.5.1, 1.5.2 and 1.5.3 are done and
+*Status, 2026-11-11:* **M1.5 is in progress.** Tasks 1.5.1, 1.5.2, 1.5.3 and 1.5.5 are done and
 CI-green: undo/redo with 100-revision journal-bounded stacks, app-bar controls and snackbars;
 long-press drag-reorder, pinch-free span/height menus, phone focus mode and persisted
-`layout.hints`; then home-library rename/duplicate/delete and hash-verified degraded re-link.
-`API_VERSION` is **10**. AT-15 is green as an automated test and the AT-13/AT-14/AT-16 automated
-halves are green; the device halves, the AT-16 chaos suite and AT-17 are still owed. The milestone
+`layout.hints`; home-library rename/duplicate/delete and hash-verified degraded re-link; then a
+table-header field-correction sheet backed by targeted recompilation of the bindings that read a
+corrected field. `API_VERSION` is **11** (`23513e0`, run 43024916235, 6/6 ✅). AT-15 and AT-17 are
+green as automated tests and the AT-13/AT-14/AT-16 automated halves are green; the device halves
+and the AT-16 chaos suite are still owed. **1.5.4 is the only remaining core row.** The milestone
 exit is unmet — see [m1.5-status.md](m1.5-status.md) for the CI chain and the remaining evidence.
 
 **Exit:** AT-13…AT-17 pass; kill-mid-save chaos suite green; reopen ≤ 500 ms measured.

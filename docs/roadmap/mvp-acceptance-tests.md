@@ -158,9 +158,16 @@ Given a misdetected field (e.g. numeric-looking ids typed as int), when the user
 type/role, then only affected components recompile, the override persists, and undo
 restores the original inference. *(automated)*
 
-*1.5.1 note.* `OverrideFieldType` and `OverrideFieldRole` persist and are undoable, but there is
-no table-header correction UI and no targeted recompilation of affected bindings. Both arrive
-with 1.5.5, so AT-17 is not green.
+*1.5.5 note.* **AT-17 is green as an automated test** (`dc8a38f` → `23513e0`, run
+43024916235, 6/6 ✅). A long press on a table header opens a correction sheet that emits
+`OverrideFieldType`, `OverrideFieldRole` or the additive v11 `ClearFieldOverride` command. Rust
+applies the persisted `fieldOverrides` to the inferred profile, calls the real compiler once and
+rebuilds only the bindings that read a corrected field; components that read no corrected field
+stay byte-identical, layout/hints/titles/interaction state are untouched, and a corrected
+average over a now-text field is repaired into a row count. Tests prove the override survives
+`close_session` + reopen, that undo restores the original semantic `state_hash` (inference and
+recompiled bindings together), and that clearing an override restores the inferred binding. See
+[m1.5-status.md](m1.5-status.md) §5. This is an automated pass only: it makes no device claim.
 
 **AT-18 — Responsive & accessibility.**
 Given compact/medium/expanded widths and text scale 1.3, then layouts follow the design
