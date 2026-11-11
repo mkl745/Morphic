@@ -391,8 +391,8 @@ mod tests {
             doc.workspace.layout.order
         );
         assert_eq!(
-            result.doc.workspace.field_overrides,
-            corrected.workspace.field_overrides
+            serde_json::to_value(&result.doc.workspace.field_overrides).unwrap(),
+            serde_json::to_value(&corrected.workspace.field_overrides).unwrap()
         );
     }
 

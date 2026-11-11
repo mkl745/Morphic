@@ -113,7 +113,7 @@ pub(crate) fn apply(
     let mut global_changed = false;
     let mut layout_changed = false;
     let mut override_changed = false;
-    /// Fields whose correction changed in this batch, so recompilation stays targeted.
+    // Fields whose correction changed in this batch, so recompilation stays targeted.
     let mut corrected_fields: Vec<String> = Vec::new();
     let mut type_changed = false;
 
