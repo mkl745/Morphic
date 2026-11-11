@@ -25,8 +25,7 @@ pub use commands::Command;
 use morphic_model::{DatasetProfile, ImportReport, Table};
 use morphic_schema::WorkspaceDoc;
 use morphic_workspace::{
-    state_hash, FileStore, HistoryFrame, HistoryState, RecoveryReport, StoreError,
-    WorkspaceStore,
+    state_hash, FileStore, HistoryFrame, HistoryState, RecoveryReport, StoreError, WorkspaceStore,
 };
 
 /// Re-exported so the FFI bridge can create and trip a cancellation token without taking a

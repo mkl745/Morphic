@@ -638,9 +638,7 @@ pub unsafe extern "C" fn morphic_list_workspaces(storage_root: *const c_char) ->
 /// # Safety
 /// `storage_root` must be a valid C string.
 #[no_mangle]
-pub unsafe extern "C" fn morphic_recovery_report(
-    storage_root: *const c_char,
-) -> *mut c_char {
+pub unsafe extern "C" fn morphic_recovery_report(storage_root: *const c_char) -> *mut c_char {
     guarded(|| {
         let root = match unsafe { cstr(storage_root) } {
             Some(r) => r,

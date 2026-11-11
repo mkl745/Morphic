@@ -1211,8 +1211,14 @@ mod tests {
         let report = s.recover_startup().unwrap();
         assert_eq!(report.swept_tmp, 1, "the interrupted write is discarded");
         assert_eq!(report.torn_journal_lines, 1, "the torn record is counted");
-        assert!(report.restored_from_journal, "the lost revision is promoted");
-        assert!(report.migrated_legacy_source, "the legacy source is migrated");
+        assert!(
+            report.restored_from_journal,
+            "the lost revision is promoted"
+        );
+        assert!(
+            report.migrated_legacy_source,
+            "the legacy source is migrated"
+        );
         assert_eq!(s.load_workspace("w1").unwrap().workspace.revision, 7);
         assert!(
             s.workspace_dir("w_legacy")
