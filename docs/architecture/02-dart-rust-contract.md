@@ -156,8 +156,8 @@ byte-identical, and `affected` names only the recompiled plus directly touched c
 Overrides do **not** re-parse the imported bytes: the query layer keeps the dtype it ingested,
 while the planner and `validate_bindings` use the corrected view. A batch whose result is not
 computable against the effective profile is rejected before any write. In degraded mode there
-is no live profile, so the correction is stored undone; a healthy reopen sees it in the
-document. Flutter's entry point is a long press on a `data_table` header: it opens a sheet
+is no live profile, so the correction is persisted but not recompiled; a healthy reopen sees it
+in the document. Flutter's entry point is a long press on a `data_table` header: it opens a sheet
 that reads the inferred and effective values from Rust, emits the three commands, and shows a
 small badge on corrected columns. Undo and redo restore the whole authoritative document, so
 the inference and every recompiled binding return together. `API_VERSION` went **10 → 11**

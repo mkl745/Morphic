@@ -1933,6 +1933,9 @@ mod tests {
             )
             .unwrap();
         assert!(outcome.changed);
+        // AT-17: the engine reports only the rebuilt bindings, not every component.
+        assert!(outcome.affected.iter().any(|id| id == "metric_amount"));
+        assert!(!outcome.affected.iter().any(|id| id == "total_records"));
         let after = outcome.doc;
         assert_eq!(
             binding(&after, "metric_amount")["aggregation"]["op"],
