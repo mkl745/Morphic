@@ -54,10 +54,7 @@ fn parse_role(name: &str) -> Option<FieldRole> {
 ///
 /// A corrected role carries confidence 1.0 and a single piece of evidence naming the user's
 /// choice, so freshly generated explanations do not claim the inference came from the data.
-pub fn effective_profile(
-    profile: &DatasetProfile,
-    overrides: &[FieldOverride],
-) -> DatasetProfile {
+pub fn effective_profile(profile: &DatasetProfile, overrides: &[FieldOverride]) -> DatasetProfile {
     let mut out = profile.clone();
     for o in overrides {
         let Some(field) = out.fields.iter_mut().find(|f| f.name == o.field) else {
@@ -120,9 +117,11 @@ pub fn recompile_for_fields(
     let mut next = doc.clone();
     let mut affected = Vec::new();
     for component in next.workspace.components.iter_mut() {
-        let replacement = fresh.workspace.components.iter().find(|f| {
-            f.id == component.id && f.component_type == component.component_type
-        });
+        let replacement = fresh
+            .workspace
+            .components
+            .iter()
+            .find(|f| f.id == component.id && f.component_type == component.component_type);
         // A previous correction may have removed the field from this binding (an average
         // became a row count). Clearing that correction has to find the component again, so
         // the freshly compiled binding is considered too, not just the current one.
@@ -387,7 +386,10 @@ mod tests {
             serde_json::to_value(&before.binding).unwrap(),
             serde_json::to_value(&after.binding).unwrap()
         );
-        assert_eq!(result.doc.workspace.layout.order, doc.workspace.layout.order);
+        assert_eq!(
+            result.doc.workspace.layout.order,
+            doc.workspace.layout.order
+        );
         assert_eq!(
             result.doc.workspace.field_overrides,
             corrected.workspace.field_overrides
