@@ -295,7 +295,7 @@ class _WorkspaceList extends StatelessWidget {
     _WorkspaceAction action,
   ) async {
     final messenger = ScaffoldMessenger.of(context);
-    String? message;
+    String message = '';
     try {
       switch (action) {
         case _WorkspaceAction.rename:
@@ -343,7 +343,7 @@ class _WorkspaceList extends StatelessWidget {
       message = 'Could not ${_verb(action)}: $e';
     }
     onChanged();
-    messenger.showSnackBar(SnackBar(content: Text(message ?? '')));
+    messenger.showSnackBar(SnackBar(content: Text(message)));
   }
 
   String _verb(_WorkspaceAction action) => switch (action) {

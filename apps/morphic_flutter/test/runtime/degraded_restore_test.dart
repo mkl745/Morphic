@@ -47,7 +47,8 @@ void main() {
       tester,
       _host(WorkspaceScreen(controller: controller, fileSource: source)),
     );
-    expect(find.text(_notice), findsOneWidget);
+    // The notice and the table's degraded panel both quote the engine's explanation.
+    expect(find.text(_notice), findsWidgets);
     expect(find.byKey(const Key('restore-source-button')), findsOneWidget);
     expect(
       find.byKey(const Key('restore-source-notice-button')),
