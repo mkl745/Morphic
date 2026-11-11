@@ -23,6 +23,7 @@ schedule ───▶ nightly.yml ───────────────�
               ├─ perf harness (scripted workloads) → JSON metrics → trend artifact
               ├─ cargo-audit + cargo-deny (licenses/advisories/bans)
               ├─ deep parser fuzz smoke (40,000 mutation cases; 3,000 run in CI too)
+              ├─ named 1.5.4 kill-mid-save chaos suite (release build)
               └─ pub outdated / cargo upgrade --dry-run report
 ```
 
@@ -30,7 +31,7 @@ schedule ───▶ nightly.yml ───────────────�
 
 | Job | Runner | Key steps | Caches |
 |---|---|---|---|
-| rust-quality | ubuntu-latest | toolchain from `rust-toolchain.toml`; `cargo fmt --check`, `clippy --workspace --all-targets -D warnings`, `cargo test --workspace` | Swatinem/rust-cache (shared key across jobs) |
+| rust-quality | ubuntu-latest | toolchain from `rust-toolchain.toml`; `cargo fmt --check`, `clippy --workspace --all-targets -D warnings`, `cargo test --workspace`, named 1.5.4 kill-mid-save chaos suite | Swatinem/rust-cache (shared key across jobs) |
 | artifacts-drift | ubuntu-latest | `cargo run -p morphic-schema --bin export` → diff `schemas/`; `flutter_rust_bridge_codegen generate` → diff `lib/bridge/` + `rust/src/frb_generated.rs` | cargo + pub + codegen binary |
 | dart-quality | ubuntu-latest | `cargo build -p morphic-bridge` (host cdylib for tests) → `flutter analyze` → `flutter test --coverage` | pub, cargo |
 | android-build | ubuntu-latest | setup-java 17 → setup-android (SDK 36, NDK r28+) → cargokit builds via `flutter build apk --debug` → `tools/check_alignment.py` on every `.so` → upload artifact | gradle, cargo (per-ABI), pub |
@@ -85,5 +86,6 @@ the pipeline is testable before signing is set up. Keystore generation instructi
 > files on the **default branch** are registered, and this one lives on a feature branch.
 > `gh workflow run nightly.yml` returns 404 and the cron has never fired. Anything that must
 > actually run belongs in `ci.yml` until the branch merges to `main` — which is why the AT-02
-> scorer and the parser fuzz smoke both run on every push, with the nightly carrying only the
-> longer stream.
+> scorer, the parser fuzz smoke and the named 1.5.4 kill-mid-save chaos suite all run on every
+> push, with the nightly carrying only the longer stream. The chaos suite's nightly step is
+> therefore wired but has not yet fired on a schedule; the per-push CI gate is the evidence.
