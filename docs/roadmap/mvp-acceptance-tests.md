@@ -177,6 +177,13 @@ average over a now-text field is repaired into a row count. Tests prove the over
 recompiled bindings together), and that clearing an override restores the inferred binding. See
 [m1.5-status.md](m1.5-status.md) §5. This is an automated pass only: it makes no device claim.
 
+*1.5.6 note.* The optional ◇ `.morphic` bundle export/import stretch row shipped CI-green at
+`a8e42e4` / run **43070316539** (6/6 ✅). Rust verifies the manifest, workspace/schema identity,
+dataset count, byte counts and SHA-256 source hashes before any write; Flutter exports through an
+injectable path/byte-sink seam and imports through the existing picker seam. No acceptance test is
+attached to this stretch row, it makes no device claim, and it does not change any AT-13…AT-18
+status or the M1.5 exit. See [m1.5-status.md](m1.5-status.md) §8.
+
 **AT-18 — Responsive & accessibility.**
 Given compact/medium/expanded widths and text scale 1.3, then layouts follow the design
 rules (focus mode on phones, no clipped text — goldens), all targets ≥ 48 dp, contrast

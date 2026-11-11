@@ -1,4 +1,4 @@
-# Phase 1 standing report — 2026-11-06, updated for 1.5.4
+# Phase 1 standing report — updated for 1.5.6
 
 Written after task **1.2.5** went CI-green (run **42256267974**, commit **`fccec5c`**, all six
 jobs success). Every number below was read from the plan, the source tree, or a CI report —
@@ -29,6 +29,13 @@ chaos gate runs on every push. The nightly cron is wired but has not fired; M1.5
 exited** because AT-13/AT-14 device halves, AT-18, reopen ≤ 500 ms and the other evidence gaps
 are still owed. See [m1.5-status.md](m1.5-status.md) §6.
 
+**Update (1.5.6):** **M1.5 task 1.5.6** (`.morphic` bundle export/import) is done and CI-green at
+`a8e42e4` / run **43070316539**, 6/6 ✅, after the red first implementation run, a rustfmt bot
+push and a normal fix commit. `API_VERSION` is **13**. All **six** M1.5 task rows are now shipped,
+including the optional stretch row; M1.5 remains **not exited** because the device halves, AT-18,
+reopen ≤ 500 ms and the other evidence gaps are still owed. See [m1.5-status.md](m1.5-status.md)
+§8.
+
 **Update 2026-11-07:** **M1.3 is code-complete** — all five tasks (plan execution, interaction
 commands, the interactive table, global filters with tap-to-filter, and cross-component
 consistency) are done and CI-green. Tallies below reflect them; `docs/roadmap/m1.3-status.md`
@@ -40,10 +47,10 @@ records the decisions, the measured evidence, and why the milestone's **exit is 
 
 | Question | Answer |
 |---|---|
-| Tasks finished | **29 of 41** (71%) |
-| Tasks not finished | **12** — 10 core + 2 stretch (◇) |
-| Milestones core-complete | **5 of 7** (M1.1–M1.5; M1.5's ◇ stretch row is unstarted) |
-| Milestones not started | **2** (M1.6, M1.7); M1.5 has 5 of 5 core rows shipped |
+| Tasks finished | **30 of 41** (73%) |
+| Tasks not finished | **11** — 10 core + 1 stretch (◇) |
+| Milestones core-complete | **5 of 7** (M1.1–M1.5; M1.5 is code-complete including its ◇ stretch row) |
+| Milestones not started | **2** (M1.6, M1.7); M1.5 has 6 of 6 task rows shipped |
 | Milestone exits formally met | **0 of 7** |
 | Acceptance tests fully green | **10 of 19** (AT-02, AT-03, AT-05, AT-06, AT-08, AT-10, AT-12, AT-15, AT-16, AT-17) |
 | Acceptance tests partially evidenced | **8** |
@@ -52,9 +59,9 @@ records the decisions, the measured evidence, and why the milestone's **exit is 
 | Remaining core effort, by the plan's own S/M/L legend | **14–25 focused days** |
 
 **The most important finding is the last row.** The plan estimates *all of Phase 1* at 30–40
-focused days. With M1.3, all seven M1.4 tasks and all five M1.5 core rows finished, the **10
+focused days. With M1.3, all seven M1.4 tasks and all six M1.5 rows finished, the **10
 unfinished core tasks sum to 14–25 days** under the plan's own legend (S ≈ ½ day, M ≈ 1–2,
-L ≈ 3–5), excluding the two ◇ stretch items:
+L ≈ 3–5), excluding the one remaining ◇ stretch item:
 
 | Remaining milestone | Core tasks | Focused days |
 |---|---|---|
@@ -65,7 +72,7 @@ L ≈ 3–5), excluding the two ◇ stretch items:
 | **Total** | **10** | **14–25** |
 
 The figure is recomputed from the plan's rows on every update rather than decremented by hand.
-The estimate was optimistic before any work started and 29 finished tasks have not made it less
+The estimate was optimistic before any work started and 30 finished tasks have not made it less
 so. §7 proposes a re-baseline.
 
 ---
@@ -78,7 +85,7 @@ so. §7 proposes a re-baseline.
 | M1.2 Format breadth | 5 | 5 | **complete** | **unmet** — AT-04's timeline clause depends on M1.4; device evidence pending (fuzz smoke now clean) |
 | M1.3 Interactivity | 5 | 5 | **complete** | **unmet** — AT-06 ✓ AT-08 ✓; AT-07 blocked only on mid-class ARM latency |
 | M1.4 Visualization + planner | 7 | 7 | **code-complete** — all five painters, planner v1, the explanation sheet and `ChangeComponentType` shipped | **unmet** — AT-11 not green; all-five golden coverage false; chart p95 ≤33 ms not device-measured |
-| M1.5 Lifecycle & layout | 6 | 5 | **core-complete** — all five core rows shipped; ◇1.5.6 stretch unstarted | **unmet** — AT-13/14 device halves, AT-18, reopen ≤ 500 ms; AT-15/16/17 green as automated tests; named chaos suite CI-green |
+| M1.5 Lifecycle & layout | 6 | 6 | **code-complete** — all five core rows plus the CI-green ◇1.5.6 stretch shipped; the stretch row does not satisfy the exit | **unmet** — AT-13/14 device halves, AT-18, reopen ≤ 500 ms; AT-15/16/17 green as automated tests; named chaos suite CI-green |
 | M1.6 Experience pass | 6 | 0 | not started | — |
 | M1.7 Hardening & release | 5 | 0 | not started | — |
 
@@ -91,8 +98,8 @@ produce: a physical mid-range phone, an overnight fuzz run, all-five golden cove
 device-measured interaction budget. M1.5 has all five core rows shipped but is not exited; its
 automated AT-13/AT-14 halves are green, AT-15/16/17 are fully green as automated tests, and the
 named kill-mid-save chaos suite is CI-green, while the device halves, AT-18 and reopen ≤ 500 ms
-are still owed. The optional ◇1.5.6 stretch row is unstarted. That distinction is the difference
-between a demo and a milestone.
+are still owed. The optional ◇1.5.6 stretch row is now shipped and CI-green, but that does not
+change the exit. That distinction is the difference between a demo and a milestone.
 
 ---
 
@@ -238,13 +245,13 @@ These will not be closed by working through the task list, because no task owns 
 
 ## 7. Recommended next moves
 
-**M1.5 has all five core rows shipped and CI-green.** 1.5.1 (undo/redo with bounded journal
+**M1.5 has all six task rows shipped and CI-green.** 1.5.1 (undo/redo with bounded journal
 history), 1.5.2 (manual layout with persisted hints and phone focus), 1.5.3 (library lifecycle
 and hash-verified degraded re-link), 1.5.4 (autosave hardening, recovery UI and the kill-mid-save
-chaos suite) and 1.5.5 (field-correction UI plus targeted recompilation) are recorded in
-[m1.5-status.md](m1.5-status.md) §§2–6. AT-15, AT-16 and AT-17 are green as automated tests. The
-only remaining M1.5 row is the optional ◇1.5.6 stretch; neither it nor the now-green chaos suite
-alone closes the milestone.
+chaos suite), 1.5.5 (field-correction UI plus targeted recompilation) and 1.5.6 (`.morphic` bundle
+export/import) are recorded in [m1.5-status.md](m1.5-status.md) §§2–8. AT-15, AT-16 and AT-17 are
+green as automated tests. No M1.5 code row remains; neither the shipped ◇1.5.6 stretch row nor the
+now-green chaos suite alone closes the milestone.
 
 **The largest blocker is still one afternoon of mid-class device time.** It gates AT-01's 10 MB
 ≤ 3 s claim, AT-07's ≤ 150 ms sort/filter budget, AT-09's ≤ 500 ms reopen, the device halves of
@@ -259,10 +266,10 @@ fuzzing, all-five golden coverage and a bundled font remain owed; the nightly su
 and the nightly chaos copy are blocked on the merge to `main`, not on missing code.
 
 **Re-baseline the estimate.** The remaining **10 core tasks** are **14–25 focused days** — still a
-large slice of the 30–40 the plan allowed for *all* of Phase 1, with **29 tasks** already spent.
-If the calendar cannot absorb that, the honest lever is scope: the two remaining ◇ stretch items
-(`.morphic` bundles, templates) are already optional, and M1.6's design sweep can be narrowed
-without touching correctness.
+large slice of the 30–40 the plan allowed for *all* of Phase 1, with **30 tasks** already spent.
+If the calendar cannot absorb that, the honest lever is scope: the one remaining ◇ stretch item
+(templates) is already optional, and M1.6's design sweep can be narrowed without touching
+correctness.
 
 ---
 

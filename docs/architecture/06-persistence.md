@@ -93,7 +93,7 @@ Phone focus mode is view-only and deliberately leaves no journal entry.
 | duplicate | new id, same dataset refs, copy doc + reset journal |
 | delete | tombstone in index → remove folder (datasets untouched) |
 | missing dataset | open in **degraded mode**: layout/definitions visible, data panels show "source unavailable" + re-link flow (re-import same content restores by hash) |
-| export (P1 stretch) | **Shipped in 1.5.6** as a single `.morphic` JSON envelope = manifest + `WorkspaceDoc` + hex-encoded referenced source bytes; see §7 |
+| export (P1 stretch) | **Shipped and CI-green in 1.5.6** as a single `.morphic` JSON envelope = manifest + `WorkspaceDoc` + hex-encoded referenced source bytes; see §7 |
 
 *As shipped in 1.5.3:* rename is a **persisted document edit** (title, `revision + 1`,
 `modifiedAt`) that rewrites `library.json` and re-seeds `history.json` — not a meta-only
@@ -150,7 +150,7 @@ This document is the target contract. What the file backend actually implements 
 | Migration rollback copy | **Built (1.5.4)** | `workspace.pre-v1.json.bak` is written before `datasetId` is repointed; a chaos test asserts it survives |
 | Torn `library.json` rebuilt from folders | **Built (1.5.4)** | `workspace_ids()` ignores the index; `recover_startup()` reindexes every authoritative doc and reports `rebuiltLibraryIndex` |
 | Kill-mid-save chaos suite | **Built (1.5.4)** | Named CI step covers interrupted writes, torn journal lines, journal promotion, quarantine, legacy migration and torn-index repair; the nightly copy is wired but its cron has not fired |
-| `.morphic` bundle export/import | **Built (1.5.6)** | `morphic_export_bundle` / `morphic_import_bundle`; manifest, schema and SHA-256 dataset hashes verified before any write; import reopens a healthy session at revision 1 |
+| `.morphic` bundle export/import | **Built and CI-green (1.5.6)** | `morphic_export_bundle` / `morphic_import_bundle`; manifest, dataset count, schema and SHA-256 dataset hashes verified before any write; import reopens a healthy session at revision 1; run 43070316539 is 6/6 ✅ |
 | Hash-verified degraded re-link | **Built (1.5.3)** | `relink_workspace` compares the picked bytes' SHA-256 with the document's `datasetId`, then reopens the session; different bytes are rejected |
 | Persisted `fieldOverrides` | **Built (1.5.5)** | One record per field, with `dtype` and/or `role`; stored in `workspace.json`, validated against the closed vocabularies, and included in every history frame, so undo restores the original inference and the recompiled bindings together (contract doc 02 §2.4.5) |
 | `snapshot.bin` columnar cache | **Deferred** | Reopen re-ingests the source. The cache is a perf optimization for a 10 MB budget that is still unmeasured on hardware; a versioned binary format before that data exists is speculative risk |
@@ -169,3 +169,5 @@ wired, but that cron has never fired; CI is the evidence.
 The shipped 1.5.6 format is a single UTF-8 JSON envelope with hex-encoded source bytes, not a
 ZIP archive. It is self-contained, diffable and needs no new ZIP dependency; the `.morphic`
 extension and the manifest are the compatibility contract. A future ZIP reader is not implied.
+The CI-green tip is `a8e42e4` / run **43070316539** (6/6 ✅); this is automated evidence only and
+makes no device claim.

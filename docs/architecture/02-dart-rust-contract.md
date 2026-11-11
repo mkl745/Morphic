@@ -196,7 +196,8 @@ aspirational `WorkspaceSnapshot.dirty` above remains absent from the wire payloa
 `API_VERSION` went **12 → 13** (§5). Two additive FFI entry points join the bridge:
 `morphic_export_bundle(root, id, now)` returns `{bundleJson, bytes, manifest}`, and
 `morphic_import_bundle(bytes, len, root, newId, title, now)` returns the imported workspace
-document, its source title and the verified dataset count. No existing entry point changed shape.
+document, its source title and the verified dataset count. The CI-green tip is `a8e42e4` / run
+**43070316539** (6/6 ✅). No existing entry point changed shape.
 
 The design sketch in doc 06 called for a ZIP. The shipped `.morphic` file is instead a single
 UTF-8 JSON envelope — manifest, authoritative `WorkspaceDoc`, and hex-encoded source bytes —

@@ -108,18 +108,21 @@ p95 ≤ 33 ms measured; every generated component explains itself.
 | 1.5.5 | Field corrections UI: override type/role from table header → targeted recompile | M | AT-17 |
 | 1.5.6 | ◇ Workspace export/import `.morphic` bundle | M | stretch |
 
-*Status, 2026-11-11, updated for 1.5.4:* **all five M1.5 core rows are done and CI-green**;
-the only remaining M1.5 row is the optional ◇1.5.6 stretch. 1.5.1 shipped undo/redo with
-100-revision journal-bounded stacks, app-bar controls and snackbars; 1.5.2 shipped long-press
-drag-reorder, pinch-free span/height menus, phone focus mode and persisted `layout.hints`; 1.5.3
-shipped home-library rename/duplicate/delete and hash-verified degraded re-link; 1.5.4 shipped
-engine-owned startup recovery, a 2 s checkpoint debounce plus lifecycle flush, the recovery UI,
-a migration rollback copy and a named kill-mid-save chaos suite; 1.5.5 shipped a table-header
-field-correction sheet backed by targeted recompilation. `API_VERSION` is **12** (`641c48c`, run
-43057629282, 6/6 ✅). AT-15, AT-16 and AT-17 are green as automated tests; AT-13/AT-14 automated
-halves are green, but their device halves, AT-18, reopen ≤ 500 ms and the other evidence gaps are
-still owed. The milestone exit is **unmet** — see [m1.5-status.md](m1.5-status.md) for the CI chain
-and the remaining evidence. The chaos suite runs as a named gate in `ci.yml` and is also wired into
+*Status, updated for 1.5.6:* **all six M1.5 task rows are done and CI-green**, including the
+optional ◇1.5.6 stretch. 1.5.1 shipped undo/redo with 100-revision journal-bounded stacks,
+app-bar controls and snackbars; 1.5.2 shipped long-press drag-reorder, pinch-free span/height
+menus, phone focus mode and persisted `layout.hints`; 1.5.3 shipped home-library
+rename/duplicate/delete and hash-verified degraded re-link; 1.5.4 shipped engine-owned startup
+recovery, a 2 s checkpoint debounce plus lifecycle flush, the recovery UI, a migration rollback
+copy and a named kill-mid-save chaos suite; 1.5.5 shipped a table-header field-correction sheet
+backed by targeted recompilation; 1.5.6 shipped `.morphic` export/import as a self-contained
+UTF-8 JSON envelope with a manifest, authoritative `WorkspaceDoc` and hash-verified hex source
+bytes — not a ZIP, and with no new Cargo dependency. `API_VERSION` is **13** (`a8e42e4`, run
+43070316539, 6/6 ✅, after the red `ee57c55` run, the `61817a2` rustfmt bot push and the normal
+fix commit). AT-15, AT-16 and AT-17 are green as automated tests; AT-13/AT-14 automated halves
+are green, but their device halves, AT-18, reopen ≤ 500 ms and the other evidence gaps are still
+owed. The milestone exit is **unmet** — see [m1.5-status.md](m1.5-status.md) for the CI chain and
+the remaining evidence. The chaos suite runs as a named gate in `ci.yml` and is also wired into
 `nightly.yml`; the nightly cron itself has not fired yet because the workflow is not on `main`.
 
 **Exit:** AT-13…AT-17 pass; kill-mid-save chaos suite green; reopen ≤ 500 ms measured.
