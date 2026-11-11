@@ -14,7 +14,10 @@ import 'package:morphic_flutter/engine/bundle_location.dart';
 import 'package:morphic_flutter/engine/clipboard_source.dart';
 import 'package:morphic_flutter/engine/file_source.dart';
 import 'package:morphic_flutter/engine/import_progress.dart';
+import 'package:flutter/widgets.dart';
 import 'package:morphic_flutter/engine/import_runner.dart';
+import 'package:morphic_flutter/engine/sample_import.dart';
+import 'package:morphic_flutter/engine/sample_source.dart';
 
 import 'scripted_bridge.dart';
 
@@ -61,6 +64,40 @@ class FakeImportRunner implements ImportRunner {
     if (gate != null) await gate!.future;
     if (failure != null) throw failure!;
     return result;
+  }
+}
+
+/// An in-memory asset source so sample tests never touch the platform asset bundle.
+class FakeSampleSource implements SampleSource {
+  FakeSampleSource(this.bytes, {this.failure});
+
+  final Uint8List bytes;
+  final Object? failure;
+
+  int calls = 0;
+  SampleDataset? lastDataset;
+
+  @override
+  Future<Uint8List> load(SampleDataset dataset) async {
+    calls++;
+    lastDataset = dataset;
+    if (failure != null) throw failure!;
+    return bytes;
+  }
+}
+
+/// A sample launcher that records the choice without navigating or importing.
+class FakeSampleLauncher implements SampleLauncher {
+  Object? failure;
+
+  int calls = 0;
+  SampleDataset? lastSample;
+
+  @override
+  Future<void> launch(BuildContext _, SampleDataset sample) async {
+    calls++;
+    lastSample = sample;
+    if (failure != null) throw failure!;
   }
 }
 

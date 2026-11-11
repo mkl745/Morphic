@@ -152,6 +152,20 @@ void main() {
       c.dispose();
     });
 
+    test('in-memory bytes can carry an extension too', () async {
+      final runner = FakeImportRunner();
+      final c = make(runner);
+      await c.importBytes(
+        Uint8List(4),
+        title: 'Sensor JSON',
+        formatHint: 'json',
+        extension: 'json',
+      );
+      expect(runner.lastRequest!.formatHint, 'json');
+      expect(runner.lastRequest!.extension, 'json');
+      c.dispose();
+    });
+
     test('a picked file forwards both the hint and its extension', () async {
       final runner = FakeImportRunner();
       final c = make(runner);

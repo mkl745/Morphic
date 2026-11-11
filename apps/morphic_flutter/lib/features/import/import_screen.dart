@@ -19,6 +19,8 @@ import '../../engine/import_controller.dart';
 import '../../engine/import_failure.dart';
 import '../../engine/import_facts.dart';
 import '../../engine/import_runner.dart';
+import '../../engine/sample_import.dart';
+import '../../engine/sample_source.dart';
 import '../workspace/workspace_args.dart';
 
 /// The chooser value meaning "let the engine decide". Shared by the dropdown and the
@@ -31,6 +33,7 @@ class ImportScreen extends StatefulWidget {
     this.fileSource,
     this.clipboardSource,
     this.runner,
+    this.sampleLauncher,
   });
 
   /// Injected in tests. Production uses the SAF picker, the system clipboard and a worker
@@ -38,6 +41,9 @@ class ImportScreen extends StatefulWidget {
   final PlatformFileSource? fileSource;
   final PlatformClipboardSource? clipboardSource;
   final ImportRunner? runner;
+
+  /// Shared bundled-sample path; injected in widget tests, built from the engine in production.
+  final SampleLauncher? sampleLauncher;
 
   @override
   State<ImportScreen> createState() => _ImportScreenState();
@@ -190,6 +196,20 @@ class _ImportScreenState extends State<ImportScreen> {
     _afterImport(id);
   }
 
+  Future<void> _launchSample(BuildContext context, SampleDataset sample) async {
+    final launcher = widget.sampleLauncher;
+    if (launcher == null) return;
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await launcher.launch(context, sample);
+    } catch (e) {
+      if (!context.mounted) return;
+      messenger.showSnackBar(
+        SnackBar(content: Text('Could not open sample: $e')),
+      );
+    }
+  }
+
   Future<void> _import(PickedFile file) async {
     final controller = _controller;
     if (controller == null) return;
@@ -298,6 +318,24 @@ class _ImportScreenState extends State<ImportScreen> {
             style: theme.textTheme.bodySmall
                 ?.copyWith(color: theme.colorScheme.onSurface.withValues(alpha: 0.6)),
           ),
+          if (widget.sampleLauncher != null) ...[
+            const SizedBox(height: MorphicSpace.lg),
+            Text('Try a bundled sample', style: theme.textTheme.titleSmall),
+            const SizedBox(height: MorphicSpace.sm),
+            Wrap(
+              spacing: MorphicSpace.sm,
+              runSpacing: MorphicSpace.sm,
+              children: [
+                for (final sample in sampleDatasets)
+                  OutlinedButton.icon(
+                    key: Key('sample-${sample.id}'),
+                    onPressed: busy ? null : () => _launchSample(context, sample),
+                    icon: const Icon(Icons.insert_drive_file_outlined),
+                    label: Text(sample.title),
+                  ),
+              ],
+            ),
+          ],
           const SizedBox(height: MorphicSpace.lg),
           DropdownButtonFormField<String>(
             initialValue: _formatChoice,

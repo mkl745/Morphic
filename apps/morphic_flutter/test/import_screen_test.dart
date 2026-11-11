@@ -15,6 +15,7 @@ import 'package:morphic_flutter/engine/bridge.dart';
 import 'package:morphic_flutter/engine/bridge_scope.dart';
 import 'package:morphic_flutter/engine/clipboard_source.dart';
 import 'package:morphic_flutter/engine/file_source.dart';
+import 'package:morphic_flutter/engine/sample_import.dart';
 import 'package:morphic_flutter/features/import/import_screen.dart';
 import 'package:morphic_flutter/features/workspace/workspace_args.dart';
 
@@ -27,6 +28,7 @@ Widget host({
   required void Function(WorkspaceArgs) onWorkspace,
   ScriptedBridge? bridge,
   PlatformClipboardSource? clipboard,
+  SampleLauncher? sampleLauncher,
 }) =>
     MaterialApp(
       initialRoute: '/',
@@ -38,6 +40,7 @@ Widget host({
                 fileSource: source,
                 clipboardSource: clipboard ?? FakeClipboardSource(),
                 runner: runner,
+                sampleLauncher: sampleLauncher,
               ),
             ),
         '/workspace': (context) {
@@ -69,6 +72,49 @@ void useTallSurface(WidgetTester tester) {
 }
 
 void main() {
+  testWidgets('a bundled sample is offered and launched through the injected seam',
+      (tester) async {
+    useTallSurface(tester);
+    final launcher = FakeSampleLauncher();
+    await tester.pumpWidget(host(
+      source: FakeFileSource(),
+      runner: FakeImportRunner(),
+      onWorkspace: (_) {},
+      sampleLauncher: launcher,
+    ));
+    await tester.pump();
+
+    expect(find.text('Try a bundled sample'), findsOneWidget);
+    final button = find.byKey(const Key('sample-sensors'));
+    expect(button, findsOneWidget);
+    await tester.ensureVisible(button);
+    await tester.tap(button);
+    await tester.pumpAndSettle();
+
+    expect(launcher.calls, 1);
+    expect(launcher.lastSample!.id, 'sensors');
+    expect(launcher.lastSample!.formatHint, 'json');
+  });
+
+  testWidgets('a sample launch failure is shown on the import screen', (tester) async {
+    useTallSurface(tester);
+    final launcher = FakeSampleLauncher()..failure = StateError('asset missing');
+    await tester.pumpWidget(host(
+      source: FakeFileSource(),
+      runner: FakeImportRunner(),
+      onWorkspace: (_) {},
+      sampleLauncher: launcher,
+    ));
+    await tester.pump();
+
+    final button = find.byKey(const Key('sample-server-logs'));
+    await tester.ensureVisible(button);
+    await tester.tap(button);
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Could not open sample'), findsOneWidget);
+  });
+
   testWidgets('offers a picker and states the supported formats', (tester) async {
     useTallSurface(tester);
     await tester.pumpWidget(host(

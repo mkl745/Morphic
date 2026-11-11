@@ -9,6 +9,7 @@ import 'engine/bridge.dart';
 import 'engine/bridge_scope.dart';
 import 'engine/file_source.dart';
 import 'engine/import_runner.dart';
+import 'engine/sample_import.dart';
 import 'features/home/home_screen.dart';
 import 'features/import/import_screen.dart';
 import 'features/poc/poc_screen.dart';
@@ -24,6 +25,7 @@ class MorphicApp extends StatefulWidget {
     this.fileSource,
     this.bundlePathResolver,
     this.bundleWriter,
+    this.sampleLauncher,
   });
 
   final MorphicBridge bridge;
@@ -41,6 +43,9 @@ class MorphicApp extends StatefulWidget {
 
   /// Overrides the byte sink used by bundle export. Production leaves this null (real disk).
   final BundleWriter? bundleWriter;
+
+  /// Overrides the bundled-sample import/launch path. Production leaves this null.
+  final SampleLauncher? sampleLauncher;
 
   @override
   State<MorphicApp> createState() => _MorphicAppState();
@@ -87,6 +92,14 @@ class _MorphicAppState extends State<MorphicApp>
 
   @override
   Widget build(BuildContext context) {
+    final sampleLauncher = widget.sampleLauncher ??
+        EngineSampleLauncher(
+          EngineSampleImporter(
+            bridge: widget.bridge,
+            storageRoot: widget.storageRoot,
+            runner: widget.importRunner ?? const IsolateImportRunner(),
+          ),
+        );
     // Schedule after this build finishes: the banner is shown with the app's navigator,
     // and pushing a route during build would be a framework error.
     if (!_recoveryShown && !_autosave.recovery.isClean) {
@@ -120,9 +133,10 @@ class _MorphicAppState extends State<MorphicApp>
               fileSource: widget.fileSource,
               bundlePathResolver: widget.bundlePathResolver,
               bundleWriter: widget.bundleWriter,
+              sampleLauncher: sampleLauncher,
             ),
             '/poc': (_) => const PocScreen(),
-            '/import': (_) => const ImportScreen(),
+            '/import': (_) => ImportScreen(sampleLauncher: sampleLauncher),
             '/workspace': (_) =>
                 WorkspaceScreen(fileSource: widget.fileSource),
             '/settings': (_) => const SettingsScreen(),

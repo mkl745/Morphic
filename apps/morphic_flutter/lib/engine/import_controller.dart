@@ -170,18 +170,30 @@ class ImportController extends ChangeNotifier {
   }
 
   /// Import already-read bytes. Returns the new workspace id, or null on failure.
+  /// Import bytes already in memory. The optional `extension` exists for known sources such
+  /// as bundled samples: bytes alone have no filename, so a caller that knows the source must
+  /// be allowed to give the engine the same tie-break a picked file would supply.
   Future<String?> importBytes(
     Uint8List bytes, {
     required String title,
     String? workspaceId,
     DateTime? now,
     String? formatHint,
+    String? extension,
   }) async {
     if (isBusy) return null;
     _begin();
     final clock = now ?? DateTime.now();
     final id = workspaceId ?? 'w_${clock.millisecondsSinceEpoch}';
-    return _runImport(bytes, title: title, id: id, clock: clock, formatHint: formatHint);
+    _lastExtension = extension;
+    return _runImport(
+      bytes,
+      title: title,
+      id: id,
+      clock: clock,
+      formatHint: formatHint,
+      extension: extension,
+    );
   }
 
   /// Import a file the user picked. Handles both picker outcomes: bytes already in hand,

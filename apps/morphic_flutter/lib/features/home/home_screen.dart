@@ -10,6 +10,8 @@ import '../../engine/bridge_scope.dart';
 import '../../engine/bundle_location.dart';
 import '../../engine/engine_controller.dart';
 import '../../engine/file_source.dart';
+import '../../engine/sample_import.dart';
+import '../../engine/sample_source.dart';
 import '../workspace/workspace_args.dart';
 
 /// Home is a lightweight gateway (spec §10.1): engine status, the import/PoC action,
@@ -25,6 +27,7 @@ class HomeScreen extends StatefulWidget {
     this.fileSource,
     this.bundlePathResolver,
     this.bundleWriter,
+    this.sampleLauncher,
   });
 
   /// Injectable so widget tests can exercise "re-link" and bundle import without the
@@ -36,6 +39,9 @@ class HomeScreen extends StatefulWidget {
 
   /// Injectable so widget tests never wait on real disk I/O inside the fake-async test zone.
   final BundleWriter? bundleWriter;
+
+  /// Shared bundled-sample path; injected in widget tests, built from the engine in production.
+  final SampleLauncher? sampleLauncher;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -170,6 +176,7 @@ class _HomeScreenState extends State<HomeScreen> {
             bundlePathResolver:
                 widget.bundlePathResolver ?? const DocumentsBundlePathResolver(),
             bundleWriter: widget.bundleWriter ?? const FileBundleWriter(),
+            sampleLauncher: widget.sampleLauncher,
             onChanged: _reloadWorkspaces,
           ),
           const SizedBox(height: MorphicSpace.xl),
@@ -262,6 +269,7 @@ class _WorkspaceList extends StatelessWidget {
     required this.fileSource,
     required this.bundlePathResolver,
     required this.bundleWriter,
+    required this.sampleLauncher,
     required this.onChanged,
   });
 
@@ -269,6 +277,7 @@ class _WorkspaceList extends StatelessWidget {
   final PlatformFileSource fileSource;
   final BundlePathResolver bundlePathResolver;
   final BundleWriter bundleWriter;
+  final SampleLauncher? sampleLauncher;
   final VoidCallback onChanged;
 
   @override
@@ -289,11 +298,38 @@ class _WorkspaceList extends StatelessWidget {
         final items = snap.data ?? [];
         if (items.isEmpty) {
           return Card(
+            key: const Key('sample-suggestion'),
             child: Padding(
               padding: const EdgeInsets.all(MorphicSpace.lg),
-              child: Text(
-                'No workspaces yet. Run the proof of concept to generate one from data.',
-                style: Theme.of(context).textTheme.bodyMedium,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'No workspaces yet. Run the proof of concept to generate one from data.',
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                  const SizedBox(height: MorphicSpace.md),
+                  Text(
+                    'First time here? Try a bundled sample. Nothing leaves this device.',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                  if (sampleLauncher != null) ...[
+                    const SizedBox(height: MorphicSpace.md),
+                    Wrap(
+                      spacing: MorphicSpace.sm,
+                      runSpacing: MorphicSpace.sm,
+                      children: [
+                        for (final sample in sampleDatasets)
+                          OutlinedButton.icon(
+                            key: Key('sample-${sample.id}'),
+                            onPressed: () => _openSample(context, sample),
+                            icon: const Icon(Icons.insert_drive_file_outlined),
+                            label: Text(sample.title),
+                          ),
+                      ],
+                    ),
+                  ],
+                ],
               ),
             ),
           );
@@ -360,6 +396,22 @@ class _WorkspaceList extends StatelessWidget {
         );
       },
     );
+  }
+
+  Future<void> _openSample(BuildContext context, SampleDataset sample) async {
+    final launcher = sampleLauncher;
+    if (launcher == null) return;
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await launcher.launch(context, sample);
+    } catch (e) {
+      if (!context.mounted) return;
+      messenger.showSnackBar(
+        SnackBar(content: Text('Could not open sample: $e')),
+      );
+      return;
+    }
+    if (context.mounted) onChanged();
   }
 
   String get _nowIso => DateTime.now().toUtc().toIso8601String();

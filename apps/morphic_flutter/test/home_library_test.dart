@@ -14,6 +14,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:morphic_flutter/app.dart';
 import 'package:morphic_flutter/engine/bundle_location.dart';
 import 'package:morphic_flutter/engine/file_source.dart';
+import 'package:morphic_flutter/engine/sample_import.dart';
 
 import 'support/fake_import.dart';
 import 'support/scripted_bridge.dart';
@@ -26,6 +27,7 @@ Future<void> pumpHome(
   PlatformFileSource? fileSource,
   BundlePathResolver? bundlePathResolver,
   BundleWriter? bundleWriter,
+  SampleLauncher? sampleLauncher,
 }) async {
   await tester.pumpWidget(MorphicApp(
     bridge: bridge,
@@ -33,6 +35,7 @@ Future<void> pumpHome(
     fileSource: fileSource ?? FakeFileSource(),
     bundlePathResolver: bundlePathResolver,
     bundleWriter: bundleWriter,
+    sampleLauncher: sampleLauncher,
   ));
   await tester.pumpAndSettle();
 }
@@ -195,6 +198,40 @@ void main() {
     expect(find.textContaining('Could not import bundle'), findsOneWidget);
     expect(bridge.workspaceIndex.length, 1);
     expect(find.text('Saved workspace'), findsOneWidget);
+  });
+
+  // --- M1.6 task 1.6.4: bundled samples / first-run suggestion --------------------------
+
+  testWidgets('an empty library offers bundled samples and launches the chosen one',
+      (tester) async {
+    final bridge = ScriptedBridge()..workspaceIndex.clear();
+    final launcher = FakeSampleLauncher();
+    await pumpHome(tester, bridge, sampleLauncher: launcher);
+
+    expect(find.byKey(const Key('sample-suggestion')), findsOneWidget);
+    expect(find.textContaining('First time here?'), findsOneWidget);
+    final button = find.byKey(const Key('sample-sales'));
+    expect(button, findsOneWidget);
+    await tester.ensureVisible(button);
+    await tester.tap(button);
+    await tester.pumpAndSettle();
+
+    expect(launcher.calls, 1);
+    expect(launcher.lastSample!.id, 'sales');
+    expect(launcher.lastSample!.formatHint, 'csv');
+  });
+
+  testWidgets('a sample launch failure is shown, not swallowed', (tester) async {
+    final bridge = ScriptedBridge()..workspaceIndex.clear();
+    final launcher = FakeSampleLauncher()..failure = StateError('asset missing');
+    await pumpHome(tester, bridge, sampleLauncher: launcher);
+
+    final button = find.byKey(const Key('sample-sensors'));
+    await tester.ensureVisible(button);
+    await tester.tap(button);
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Could not open sample'), findsOneWidget);
   });
 
   testWidgets('export .morphic writes the engine bundle to the resolved path',
