@@ -110,9 +110,9 @@ operations with bounded journal-backed stacks, and
 `engine/crates/morphic-core/src/lib.rs::at13_ten_mixed_commands_undo_and_redo_match_every_state_hash`
 checks ten mixed commands (filters, sort/search, a move, two type changes, two overrides)
 against state hashes at every undo and redo step, with a separate restart test for undo depth.
-Run 42863981801 (`7e59106`) made that automated half **6/6 CI-green**. The **device** half of
-AT-13, the M1.5 kill-mid-save chaos suite and the ≤500 ms reopen measurement are still owed, so
-AT-13 is not yet formally green.
+Run 42863981801 (`7e59106`) made that automated half **6/6 CI-green**. The M1.5 kill-mid-save
+chaos suite is now CI-green as part of 1.5.4 (`641c48c`, run 43057629282), but the **device** half
+of AT-13 and the ≤ 500 ms reopen measurement are still owed, so AT-13 is not yet formally green.
 
 **AT-14 — Manual layout adjustment.**
 Given a workspace on a phone, when the user reorders components, changes a span/height,
@@ -150,8 +150,16 @@ confirms `open_session` reports `degraded`, refuses a different file, then re-li
 original bytes by SHA-256 and confirms `metric_data` returns the row count again. The degraded
 notice now carries a **Restore source file** button alongside an app-bar action, and four Dart
 widget tests cover both entry points, a rejected re-link and a healthy workspace. The
-kill-mid-save / corrupted-index **chaos suite** is task 1.5.4 and has not run, so AT-16 is not
-yet formally green.
+kill-mid-save / corrupted-index **chaos suite** is task 1.5.4.
+
+*1.5.4 note.* **AT-16 is now green as an automated test.** `641c48c` / run **43057629282** has a
+named chaos gate covering an interrupted `*.tmp` write, a torn trailing journal line, a revision
+left in the journal before the document rename, an unreadable `workspace.json` quarantined for
+diagnosis, a torn `library.json` rebuilt from the folders, and a legacy source migration whose
+`workspace.pre-v1.json.bak` rollback copy is asserted. Startup recovery is reported to the UI
+rather than performed silently. This is fault injection in CI, not a physical forced-kill run, and
+makes no device claim; the nightly cron is wired but has not fired. See
+[m1.5-status.md](m1.5-status.md) §6.
 
 **AT-17 — User corrections.**
 Given a misdetected field (e.g. numeric-looking ids typed as int), when the user overrides

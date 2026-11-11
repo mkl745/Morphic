@@ -17,9 +17,17 @@ then home-library rename/duplicate/delete and hash-verified degraded re-link hav
 is in progress, not exited. See [m1.5-status.md](m1.5-status.md) §4.
 
 **Update 2026-11-11:** **M1.5 task 1.5.5** (field-correction UI and targeted recompilation) is
-done and CI-green at `23513e0` / run **43024916235**, 6/6 ✅. `API_VERSION` is **11** and AT-17 is
-green as an automated test. M1.5 now has 4 of 5 core rows shipped; 1.5.4 is the only remaining
-core row and the milestone is still not exited. See [m1.5-status.md](m1.5-status.md) §5.
+done and CI-green at `23513e0` / run **43024916235**, 6/6 ✅. At that point `API_VERSION` was
+**11** and AT-17 was green as an automated test. M1.5 then had 4 of 5 core rows shipped; 1.5.4
+was the only remaining core row and the milestone was still not exited. See
+[m1.5-status.md](m1.5-status.md) §5.
+
+**Update (1.5.4):** **M1.5 task 1.5.4** (autosave hardening, recovery UI and the kill-mid-save
+chaos suite) is done and CI-green at `641c48c` / run **43057629282**, 6/6 ✅. `API_VERSION` is
+**12**, all five M1.5 core rows are shipped, AT-16 is green as an automated test, and the named
+chaos gate runs on every push. The nightly cron is wired but has not fired; M1.5 remains **not
+exited** because AT-13/AT-14 device halves, AT-18, reopen ≤ 500 ms and the other evidence gaps
+are still owed. See [m1.5-status.md](m1.5-status.md) §6.
 
 **Update 2026-11-07:** **M1.3 is code-complete** — all five tasks (plan execution, interaction
 commands, the interactive table, global filters with tap-to-filter, and cross-component
@@ -32,32 +40,32 @@ records the decisions, the measured evidence, and why the milestone's **exit is 
 
 | Question | Answer |
 |---|---|
-| Tasks finished | **28 of 41** (68%) |
-| Tasks not finished | **13** — 11 core + 2 stretch (◇) |
-| Milestones code-complete | **4 of 7** (M1.1, M1.2, M1.3, M1.4) |
-| Milestones not started | **2** (M1.6, M1.7); M1.5 has 4 of 5 core rows shipped |
+| Tasks finished | **29 of 41** (71%) |
+| Tasks not finished | **12** — 10 core + 2 stretch (◇) |
+| Milestones core-complete | **5 of 7** (M1.1–M1.5; M1.5's ◇ stretch row is unstarted) |
+| Milestones not started | **2** (M1.6, M1.7); M1.5 has 5 of 5 core rows shipped |
 | Milestone exits formally met | **0 of 7** |
-| Acceptance tests fully green | **9 of 19** (AT-02, AT-03, AT-05, AT-06, AT-08, AT-10, AT-12, AT-15, AT-17) |
-| Acceptance tests partially evidenced | **9** |
+| Acceptance tests fully green | **10 of 19** (AT-02, AT-03, AT-05, AT-06, AT-08, AT-10, AT-12, AT-15, AT-16, AT-17) |
+| Acceptance tests partially evidenced | **8** |
 | Acceptance tests not yet started | **1** (AT-18) |
 | Evidence gaps no task row covers | **6** (see §6) |
-| Remaining core effort, by the plan's own S/M/L legend | **15–27 focused days** |
+| Remaining core effort, by the plan's own S/M/L legend | **14–25 focused days** |
 
 **The most important finding is the last row.** The plan estimates *all of Phase 1* at 30–40
-focused days. With M1.3, all seven M1.4 tasks and four M1.5 rows finished, the **11
-unfinished core tasks sum to 15–27 days** under the plan's own legend (S ≈ ½ day, M ≈ 1–2,
+focused days. With M1.3, all seven M1.4 tasks and all five M1.5 core rows finished, the **10
+unfinished core tasks sum to 14–25 days** under the plan's own legend (S ≈ ½ day, M ≈ 1–2,
 L ≈ 3–5), excluding the two ◇ stretch items:
 
 | Remaining milestone | Core tasks | Focused days |
 |---|---|---|
 | M1.4 Visualization + planner | 0 | 0 |
-| M1.5 Lifecycle & layout | 1 | 1–2 |
+| M1.5 Lifecycle & layout | 0 | 0 |
 | M1.6 Experience pass | 5 | 8–14 |
 | M1.7 Hardening & release | 5 | 6–11 |
-| **Total** | **11** | **15–27** |
+| **Total** | **10** | **14–25** |
 
 The figure is recomputed from the plan's rows on every update rather than decremented by hand.
-The estimate was optimistic before any work started and 28 finished tasks have not made it less
+The estimate was optimistic before any work started and 29 finished tasks have not made it less
 so. §7 proposes a re-baseline.
 
 ---
@@ -70,20 +78,21 @@ so. §7 proposes a re-baseline.
 | M1.2 Format breadth | 5 | 5 | **complete** | **unmet** — AT-04's timeline clause depends on M1.4; device evidence pending (fuzz smoke now clean) |
 | M1.3 Interactivity | 5 | 5 | **complete** | **unmet** — AT-06 ✓ AT-08 ✓; AT-07 blocked only on mid-class ARM latency |
 | M1.4 Visualization + planner | 7 | 7 | **code-complete** — all five painters, planner v1, the explanation sheet and `ChangeComponentType` shipped | **unmet** — AT-11 not green; all-five golden coverage false; chart p95 ≤33 ms not device-measured |
-| M1.5 Lifecycle & layout | 6 | 4 | **in progress** — undo/redo (1.5.1), manual layout (1.5.2), library lifecycle / re-link (1.5.3) and field corrections (1.5.5) shipped | **unmet** — AT-13/14 device halves, AT-16 chaos, kill-mid-save suite, reopen ≤ 500 ms; AT-15/AT-17 green as automated tests |
+| M1.5 Lifecycle & layout | 6 | 5 | **core-complete** — all five core rows shipped; ◇1.5.6 stretch unstarted | **unmet** — AT-13/14 device halves, AT-18, reopen ≤ 500 ms; AT-15/16/17 green as automated tests; named chaos suite CI-green |
 | M1.6 Experience pass | 6 | 0 | not started | — |
 | M1.7 Hardening & release | 5 | 0 | not started | — |
 
 Phase 0 (architecture, contracts, CI, release pipeline) is complete and was verified by run
 42066050532.
 
-**"Code-complete" is not "done".** All four code-complete milestones have working, tested code
+**"Core-complete" is not "done".** All five core-complete milestones have working, tested code
 and none has met its exit criteria, because those exits demand evidence this sandbox cannot
 produce: a physical mid-range phone, an overnight fuzz run, all-five golden coverage and a
-device-measured interaction budget. M1.5 has four shipped rows but is not code-complete yet; its
-automated AT-13/AT-14/AT-16 halves are green and AT-15 and AT-17 are fully green as automated
-tests, while the device and chaos halves are still owed. That distinction is the difference between a
-demo and a milestone.
+device-measured interaction budget. M1.5 has all five core rows shipped but is not exited; its
+automated AT-13/AT-14 halves are green, AT-15/16/17 are fully green as automated tests, and the
+named kill-mid-save chaos suite is CI-green, while the device halves, AT-18 and reopen ≤ 500 ms
+are still owed. The optional ◇1.5.6 stretch row is unstarted. That distinction is the difference
+between a demo and a milestone.
 
 ---
 
@@ -179,10 +188,10 @@ three ABIs.
 | AT-10 | UI schema validity | **green** | gate-enforced on every run; since 1.4.6 the explanation clause is checked across all 21 fixtures, not just one synthetic profile |
 | AT-11 | Component states | partial | **5 of 5** components paintable; **54 golden images** committed and gated. They pin geometry, colour and layout — with no font asset the test font draws boxes, so wording is asserted behaviourally instead |
 | AT-12 | Selection quality | **green** | **96.6% (85/88) on 21 labelled files**, target 85%; all three guarantees asserted per file; every generated chart rendered against its own fixture, 0 failures. Tuned against this corpus, so an upper bound. The 3 misses are text time axes the query layer cannot bucket — labels deliberately left asking for the chart |
-| AT-13 | Undo/redo | partial | automated 10-command state-hash + restart gates green (`7e59106`, run 42863981801); device half, chaos suite and ≤ 500 ms reopen still owed |
+| AT-13 | Undo/redo | partial | automated 10-command state-hash + restart gates green (`7e59106`, run 42863981801); device half and ≤ 500 ms reopen still owed (chaos suite is now CI-green in 1.5.4) |
 | AT-14 | Layout adjustment | partial | automated reorder/span/height/type-switch persistence, validation and widget gates green (1.5.2, run 42873440886); device half still owed |
 | AT-15 | Library lifecycle | **green** | 3 workspaces, rename/duplicate/delete, one shared dataset on disk and two healthy survivors proven in Rust + Dart on run 42970337214; no device claim |
-| AT-16 | Missing-source resilience | partial | degraded mode ✓, two recovery affordances ✓, hash-verified re-link restores `metric_data` ✓; kill-mid-save / corrupted-index chaos suite is 1.5.4 |
+| AT-16 | Missing-source resilience | **green** | 1.5.4 (`641c48c`, run 43057629282): degraded mode ✓, two recovery affordances ✓, hash-verified re-link restores `metric_data` ✓; named CI chaos gate covers interrupted writes, torn journals, quarantine, torn-index repair and migration backup. Automated only, no device claim |
 | AT-17 | User corrections | **green** | 1.5.5 (`23513e0`, run 43024916235): only affected bindings recompile, the override persists across reopen, undo restores the semantic state hash; automated only, no device claim |
 | AT-18 | Responsive & a11y | not started | M1.6 |
 | AT-19 | Release artifact | partial | dry-run APK only; unsigned; ~48 MB fat vs ≤ 40 MB per-ABI target |
@@ -207,8 +216,9 @@ These will not be closed by working through the task list, because no task owns 
    [at07-latency-measurement.md](../engineering/at07-latency-measurement.md).
 2. **The nightly workflow has never executed.** GitHub only registers workflow files from the
    default branch, so the cron has never fired and `cargo-deny` / `cargo-audit` have never run.
-   The fuzz smoke was moved into CI so it actually executes; the supply-chain audit cannot be,
-   and waits for the merge to `main`.
+   The fuzz smoke and the named 1.5.4 chaos suite were both put into `ci.yml` so they actually
+   execute; the nightly copies are wired but have not fired, and the supply-chain audit waits for
+   the merge to `main`.
 3. **The 10 MB → ≤ 3 s hypothesis is unmeasured.** It is the product's central claim. The
    dataset generator and the phone harness now exist, so this is one import away rather than
    needing new tooling.
@@ -228,12 +238,13 @@ These will not be closed by working through the task list, because no task owns 
 
 ## 7. Recommended next moves
 
-**M1.5 has four of five core rows shipped and CI-green.** 1.5.1 (undo/redo with bounded journal
+**M1.5 has all five core rows shipped and CI-green.** 1.5.1 (undo/redo with bounded journal
 history), 1.5.2 (manual layout with persisted hints and phone focus), 1.5.3 (library lifecycle
-and hash-verified degraded re-link) and 1.5.5 (field-correction UI plus targeted recompilation)
-are recorded in [m1.5-status.md](m1.5-status.md) §§2–5. AT-15 and AT-17 are green as automated
-tests. **1.5.4** — autosave hardening, recovery UI and the kill-mid-save chaos suite — is now the
-only remaining core row in M1.5. It does not alone close the milestone.
+and hash-verified degraded re-link), 1.5.4 (autosave hardening, recovery UI and the kill-mid-save
+chaos suite) and 1.5.5 (field-correction UI plus targeted recompilation) are recorded in
+[m1.5-status.md](m1.5-status.md) §§2–6. AT-15, AT-16 and AT-17 are green as automated tests. The
+only remaining M1.5 row is the optional ◇1.5.6 stretch; neither it nor the now-green chaos suite
+alone closes the milestone.
 
 **The largest blocker is still one afternoon of mid-class device time.** It gates AT-01's 10 MB
 ≤ 3 s claim, AT-07's ≤ 150 ms sort/filter budget, AT-09's ≤ 500 ms reopen, the device halves of
@@ -242,13 +253,13 @@ low-class pass is useful but does not satisfy the written matrix. `tools/device_
 AT-07 gate exist, but the measurement still has to be run.
 
 **Keep the cheap checks gated.** The AT-02 scorer (21 labelled files, 90 fields), the 3,000-case
-seeded fuzz smoke, the 54 LIVE goldens, schema drift and the build-stamp/permission checks all run
-on every push. Held-out detection files, coverage-guided fuzzing, all-five golden coverage and a
-bundled font remain owed; the nightly supply-chain audit is blocked on the merge to `main`, not
-on missing code.
+seeded fuzz smoke, the named 1.5.4 chaos suite, the 54 LIVE goldens, schema drift and the
+build-stamp/permission checks all run on every push. Held-out detection files, coverage-guided
+fuzzing, all-five golden coverage and a bundled font remain owed; the nightly supply-chain audit
+and the nightly chaos copy are blocked on the merge to `main`, not on missing code.
 
-**Re-baseline the estimate.** The remaining **11 core tasks** are **15–27 focused days** — still a
-large slice of the 30–40 the plan allowed for *all* of Phase 1, with **28 tasks** already spent.
+**Re-baseline the estimate.** The remaining **10 core tasks** are **14–25 focused days** — still a
+large slice of the 30–40 the plan allowed for *all* of Phase 1, with **29 tasks** already spent.
 If the calendar cannot absorb that, the honest lever is scope: the two remaining ◇ stretch items
 (`.morphic` bundles, templates) are already optional, and M1.6's design sweep can be narrowed
 without touching correctness.

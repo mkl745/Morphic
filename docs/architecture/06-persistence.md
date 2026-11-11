@@ -146,7 +146,7 @@ This document is the target contract. What the file backend actually implements 
 | Explicit autosave checkpoint + lifecycle flush | **Built (1.5.4)** | `checkpoint` / `Engine::save` / `morphic_save_workspace`; 2 s Dart checkpoint debounce plus immediate flush on pause/hidden/detached and before `closeWorkspace` |
 | Migration rollback copy | **Built (1.5.4)** | `workspace.pre-v1.json.bak` is written before `datasetId` is repointed; a chaos test asserts it survives |
 | Torn `library.json` rebuilt from folders | **Built (1.5.4)** | `workspace_ids()` ignores the index; `recover_startup()` reindexes every authoritative doc and reports `rebuiltLibraryIndex` |
-| Kill-mid-save chaos suite | **Built (1.5.4)** | Named CI and nightly steps cover interrupted writes, torn journal lines, journal promotion, quarantine, legacy migration and torn-index repair |
+| Kill-mid-save chaos suite | **Built (1.5.4)** | Named CI step covers interrupted writes, torn journal lines, journal promotion, quarantine, legacy migration and torn-index repair; the nightly copy is wired but its cron has not fired |
 | Hash-verified degraded re-link | **Built (1.5.3)** | `relink_workspace` compares the picked bytes' SHA-256 with the document's `datasetId`, then reopens the session; different bytes are rejected |
 | Persisted `fieldOverrides` | **Built (1.5.5)** | One record per field, with `dtype` and/or `role`; stored in `workspace.json`, validated against the closed vocabularies, and included in every history frame, so undo restores the original inference and the recompiled bindings together (contract doc 02 §2.4.5) |
 | `snapshot.bin` columnar cache | **Deferred** | Reopen re-ingests the source. The cache is a perf optimization for a 10 MB budget that is still unmeasured on hardware; a versioned binary format before that data exists is speculative risk |
@@ -157,6 +157,6 @@ This document is the target contract. What the file backend actually implements 
 `RecoveryReport` (`sweptTmp`, `tornJournalLines`, `restoredFromJournal`, `quarantined`,
 `migratedLegacySource`, `rebuiltLibraryIndex`) exists so recovery can be *reported* to the user
 rather than performed silently. **1.5.4** surfaces it in the recovery dialog; a clean startup
-shows nothing. The named CI and nightly chaos steps exercise the crash windows by fault
-injection — reproducing the exact on-disk state a kill would leave — rather than waiting for a
-cron that has never fired.
+shows nothing. The named CI chaos step exercises the crash windows by fault injection —
+reproducing the exact on-disk state a kill would leave — on every push. The nightly copy is
+wired, but that cron has never fired; CI is the evidence.
