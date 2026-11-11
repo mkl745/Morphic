@@ -6,8 +6,10 @@ on:
   pull_request:
     branches: [main]
 
+# The suffix keeps this run out of a stale concurrency group whose queued runs never got
+# jobs. Only the group name changed; every gate below is unchanged.
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.ref }}-v2
   cancel-in-progress: true
 
 env:
