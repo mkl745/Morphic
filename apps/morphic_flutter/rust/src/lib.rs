@@ -693,8 +693,7 @@ pub unsafe extern "C" fn morphic_export_bundle(
             Some(i) => i,
             None => return err("invalid workspace_id"),
         };
-        let now = unsafe { cstr(now_iso) }
-            .unwrap_or_else(|| "1970-01-01T00:00:00Z".into());
+        let now = unsafe { cstr(now_iso) }.unwrap_or_else(|| "1970-01-01T00:00:00Z".into());
         with_engine(&root, |engine| {
             to_json(&engine.export_bundle(&id, &now).map_err(|e| e.to_string())?)
         })
@@ -729,8 +728,7 @@ pub unsafe extern "C" fn morphic_import_bundle(
             None => return err("invalid workspace_id"),
         };
         let title = unsafe { cstr(title) }.unwrap_or_else(|| "Untitled".into());
-        let now = unsafe { cstr(now_iso) }
-            .unwrap_or_else(|| "1970-01-01T00:00:00Z".into());
+        let now = unsafe { cstr(now_iso) }.unwrap_or_else(|| "1970-01-01T00:00:00Z".into());
         with_engine(&root, |engine| {
             to_json(
                 &engine
@@ -2077,9 +2075,7 @@ mod tests {
         let now = c("2026-11-05T09:00:00Z");
         unsafe { import(&rp, &w1, None) };
 
-        let export = json(unsafe {
-            morphic_export_bundle(rp.as_ptr(), w1.as_ptr(), now.as_ptr())
-        });
+        let export = json(unsafe { morphic_export_bundle(rp.as_ptr(), w1.as_ptr(), now.as_ptr()) });
         assert_eq!(export["manifest"]["format"], "morphic/workspace-bundle/1");
         assert_eq!(export["manifest"]["datasetCount"], 1);
         let bundle = export["bundleJson"]

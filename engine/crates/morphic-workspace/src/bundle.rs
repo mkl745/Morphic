@@ -92,10 +92,10 @@ pub fn hex_decode(text: &str) -> Result<Vec<u8>, StoreError> {
     }
     let mut out = Vec::with_capacity(raw.len() / 2);
     for pair in raw.chunks(2) {
-        let hi = hex_value(pair[0])
-            .ok_or_else(|| StoreError::Bundle("invalid hex source".into()))?;
-        let lo = hex_value(pair[1])
-            .ok_or_else(|| StoreError::Bundle("invalid hex source".into()))?;
+        let hi =
+            hex_value(pair[0]).ok_or_else(|| StoreError::Bundle("invalid hex source".into()))?;
+        let lo =
+            hex_value(pair[1]).ok_or_else(|| StoreError::Bundle("invalid hex source".into()))?;
         out.push((hi << 4) | lo);
     }
     Ok(out)

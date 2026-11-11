@@ -611,18 +611,13 @@ impl FileStore {
     /// Export one workspace plus every source it references as a self-contained `.morphic`
     /// JSON envelope (M1.5 task 1.5.6). Dataset bytes are hex-encoded and hash-verified on
     /// import; no ZIP dependency is added to the supply chain.
-    pub fn export_bundle(
-        &self,
-        id: &str,
-        exported_at: &str,
-    ) -> Result<BundleExport, StoreError> {
+    pub fn export_bundle(&self, id: &str, exported_at: &str) -> Result<BundleExport, StoreError> {
         let doc = self.load_workspace(id)?;
         let mut datasets = Vec::new();
         for ds in &doc.workspace.data_sources {
             let path = self.dataset_path(&ds.dataset_id);
-            let bytes = fs::read(&path).map_err(|_| {
-                StoreError::SourceUnavailable(id.to_string())
-            })?;
+            let bytes =
+                fs::read(&path).map_err(|_| StoreError::SourceUnavailable(id.to_string()))?;
             datasets.push((ds.dataset_id.clone(), bytes));
         }
         encode_bundle(&doc, &datasets, exported_at)
@@ -1374,9 +1369,7 @@ mod tests {
         d.workspace.data_sources[0].dataset_id = hash.clone();
         s.save_workspace(&d).unwrap();
 
-        let export = s
-            .export_bundle("w1", "2026-11-05T08:00:00Z")
-            .unwrap();
+        let export = s.export_bundle("w1", "2026-11-05T08:00:00Z").unwrap();
         assert_eq!(export.manifest.format, BUNDLE_FORMAT);
         assert_eq!(export.manifest.dataset_count, 1);
         assert_eq!(export.manifest.workspace_id, "w1");

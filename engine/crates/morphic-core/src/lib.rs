@@ -415,9 +415,7 @@ impl Engine {
         title: &str,
         now_iso: &str,
     ) -> Result<BundleImportOutcome, CoreError> {
-        let outcome = self
-            .store
-            .import_bundle(bytes, new_id, title, now_iso)?;
+        let outcome = self.store.import_bundle(bytes, new_id, title, now_iso)?;
         self.open_session(new_id)?;
         Ok(outcome)
     }
@@ -2067,9 +2065,7 @@ mod tests {
             .import_csv(SALES, "Sales", "w1", "2026-11-05T00:00:00Z", &mut |_| {})
             .unwrap();
 
-        let export = engine
-            .export_bundle("w1", "2026-11-05T08:00:00Z")
-            .unwrap();
+        let export = engine.export_bundle("w1", "2026-11-05T08:00:00Z").unwrap();
         assert_eq!(export.manifest.format, "morphic/workspace-bundle/1");
         assert_eq!(export.manifest.dataset_count, 1);
         assert!(export.bytes > 0);
@@ -2101,21 +2097,13 @@ mod tests {
         engine
             .import_csv(SALES, "Sales", "w1", "2026-11-05T00:00:00Z", &mut |_| {})
             .unwrap();
-        let export = engine
-            .export_bundle("w1", "2026-11-05T08:00:00Z")
-            .unwrap();
+        let export = engine.export_bundle("w1", "2026-11-05T08:00:00Z").unwrap();
 
-        let mut envelope: serde_json::Value =
-            serde_json::from_str(&export.bundle_json).unwrap();
+        let mut envelope: serde_json::Value = serde_json::from_str(&export.bundle_json).unwrap();
         envelope["datasets"][0]["contentHex"] = serde_json::json!("00ff");
         let bad = serde_json::to_string(&envelope).unwrap();
         let err = engine
-            .import_bundle(
-                bad.as_bytes(),
-                "w2",
-                "Bad",
-                "2026-11-05T09:00:00Z",
-            )
+            .import_bundle(bad.as_bytes(), "w2", "Bad", "2026-11-05T09:00:00Z")
             .unwrap_err();
         assert!(
             matches!(err, CoreError::Store(StoreError::Bundle(_))),
