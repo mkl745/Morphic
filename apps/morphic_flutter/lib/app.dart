@@ -23,6 +23,7 @@ class MorphicApp extends StatefulWidget {
     this.importRunner,
     this.fileSource,
     this.bundlePathResolver,
+    this.bundleWriter,
   });
 
   final MorphicBridge bridge;
@@ -37,6 +38,9 @@ class MorphicApp extends StatefulWidget {
 
   /// Overrides where exported `.morphic` bundles are written. Production leaves this null.
   final BundlePathResolver? bundlePathResolver;
+
+  /// Overrides the byte sink used by bundle export. Production leaves this null (real disk).
+  final BundleWriter? bundleWriter;
 
   @override
   State<MorphicApp> createState() => _MorphicAppState();
@@ -115,6 +119,7 @@ class _MorphicAppState extends State<MorphicApp>
             '/': (_) => HomeScreen(
               fileSource: widget.fileSource,
               bundlePathResolver: widget.bundlePathResolver,
+              bundleWriter: widget.bundleWriter,
             ),
             '/poc': (_) => const PocScreen(),
             '/import': (_) => const ImportScreen(),

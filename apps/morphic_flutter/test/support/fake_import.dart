@@ -121,6 +121,21 @@ class FakeBundlePathResolver implements BundlePathResolver {
   Future<String> exportPath(String workspaceId) async => path;
 }
 
+/// An in-memory byte sink: real `dart:io` futures do not complete reliably inside the
+/// fake-async zone used by `testWidgets`.
+class FakeBundleWriter implements BundleWriter {
+  String? path;
+  List<int>? bytes;
+  int writes = 0;
+
+  @override
+  Future<void> write(String path, List<int> bytes) async {
+    this.path = path;
+    this.bytes = bytes;
+    writes++;
+  }
+}
+
 const List<ImportProgress> kProgressEvents = [
   ImportProgress(phase: 'sniffing', rowsRead: 0, bytesRead: 0),
   ImportProgress(phase: 'parsing', rowsRead: 4096, bytesRead: 204800),

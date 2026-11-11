@@ -24,6 +24,7 @@ class HomeScreen extends StatefulWidget {
     super.key,
     this.fileSource,
     this.bundlePathResolver,
+    this.bundleWriter,
   });
 
   /// Injectable so widget tests can exercise "re-link" and bundle import without the
@@ -32,6 +33,9 @@ class HomeScreen extends StatefulWidget {
 
   /// Injectable so widget tests can exercise bundle export without `path_provider`.
   final BundlePathResolver? bundlePathResolver;
+
+  /// Injectable so widget tests never wait on real disk I/O inside the fake-async test zone.
+  final BundleWriter? bundleWriter;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -165,6 +169,7 @@ class _HomeScreenState extends State<HomeScreen> {
             fileSource: widget.fileSource ?? const FilePickerSource(),
             bundlePathResolver:
                 widget.bundlePathResolver ?? const DocumentsBundlePathResolver(),
+            bundleWriter: widget.bundleWriter ?? const FileBundleWriter(),
             onChanged: _reloadWorkspaces,
           ),
           const SizedBox(height: MorphicSpace.xl),
@@ -256,12 +261,14 @@ class _WorkspaceList extends StatelessWidget {
     required this.future,
     required this.fileSource,
     required this.bundlePathResolver,
+    required this.bundleWriter,
     required this.onChanged,
   });
 
   final Future<List<dynamic>>? future;
   final PlatformFileSource fileSource;
   final BundlePathResolver bundlePathResolver;
+  final BundleWriter bundleWriter;
   final VoidCallback onChanged;
 
   @override
@@ -422,7 +429,7 @@ class _WorkspaceList extends StatelessWidget {
             throw const FormatException('engine returned no bundleJson');
           }
           final path = await bundlePathResolver.exportPath(id);
-          await File(path).writeAsBytes(utf8.encode(bundle));
+          await bundleWriter.write(path, utf8.encode(bundle));
           message = 'Exported $title to $path';
       }
     } catch (e) {

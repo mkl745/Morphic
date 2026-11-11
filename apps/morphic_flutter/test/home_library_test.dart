@@ -7,7 +7,6 @@
 library;
 
 import 'dart:convert';
-import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -26,12 +25,14 @@ Future<void> pumpHome(
   ScriptedBridge bridge, {
   PlatformFileSource? fileSource,
   BundlePathResolver? bundlePathResolver,
+  BundleWriter? bundleWriter,
 }) async {
   await tester.pumpWidget(MorphicApp(
     bridge: bridge,
     storageRoot: '/tmp/morphic-home-test',
     fileSource: fileSource ?? FakeFileSource(),
     bundlePathResolver: bundlePathResolver,
+    bundleWriter: bundleWriter,
   ));
   await tester.pumpAndSettle();
 }
@@ -198,24 +199,25 @@ void main() {
 
   testWidgets('export .morphic writes the engine bundle to the resolved path',
       (tester) async {
-    final path =
-        '${Directory.systemTemp.path}/morphic-bundle-${DateTime.now().microsecondsSinceEpoch}.morphic';
-    final file = File(path);
-    addTearDown(() {
-      if (file.existsSync()) file.deleteSync();
-    });
+    const path = '/documents/w1.morphic';
+    final writer = FakeBundleWriter();
     final bridge = ScriptedBridge();
     await pumpHome(
       tester,
       bridge,
-      bundlePathResolver: FakeBundlePathResolver(path),
+      bundlePathResolver: const FakeBundlePathResolver(path),
+      bundleWriter: writer,
     );
 
     await choose(tester, 'Export .morphic bundle');
 
     expect(bridge.bundleCalls, ['export:w1']);
-    expect(await file.exists(), isTrue);
-    expect(await file.readAsString(), bridge.bundleExportResult['bundleJson']);
+    expect(writer.writes, 1);
+    expect(writer.path, path);
+    expect(
+      utf8.decode(writer.bytes!),
+      bridge.bundleExportResult['bundleJson'],
+    );
     expect(
       find.textContaining('Exported Saved workspace to'),
       findsOneWidget,

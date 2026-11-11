@@ -632,7 +632,7 @@ impl FileStore {
         title: &str,
         now_iso: &str,
     ) -> Result<BundleImportOutcome, StoreError> {
-        let (manifest, workspace, datasets) = decode_bundle(bytes)?;
+        let decoded = decode_bundle(bytes)?;
         if new_id.trim().is_empty() || title.trim().is_empty() {
             return Err(StoreError::Bundle(
                 "import needs a workspace id and title".into(),
@@ -643,15 +643,16 @@ impl FileStore {
                 "workspace '{new_id}' already exists"
             )));
         }
-        for (hash, data) in &datasets {
-            let stored = self.put_dataset(data)?;
-            if stored != *hash {
+        for source in &decoded.datasets {
+            let stored = self.put_dataset(&source.bytes)?;
+            if stored != source.hash {
                 return Err(StoreError::Bundle(format!(
-                    "dataset '{hash}' was stored under a different hash"
+                    "dataset '{}' was stored under a different hash",
+                    source.hash
                 )));
             }
         }
-        let mut doc = workspace;
+        let mut doc = decoded.workspace;
         doc.workspace.id = new_id.to_string();
         doc.workspace.title = title.trim().to_string();
         doc.workspace.created_at = now_iso.to_string();
@@ -661,8 +662,8 @@ impl FileStore {
         self.write_history(new_id, &HistoryState::seed(&doc))?;
         Ok(BundleImportOutcome {
             doc,
-            source_title: manifest.title,
-            dataset_count: manifest.dataset_count,
+            source_title: decoded.manifest.title,
+            dataset_count: decoded.manifest.dataset_count,
         })
     }
 
@@ -1414,6 +1415,29 @@ mod tests {
             "expected a typed bundle error, got {err}"
         );
         assert!(!s.exists("w2"), "a bad bundle must write nothing");
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn a_wrong_manifest_dataset_count_is_refused_before_any_write() {
+        let (s, root) = store();
+        let hash = s.put_dataset(b"region,amount\neu,10\n").unwrap();
+        let mut d = doc("w1");
+        d.workspace.data_sources[0].dataset_id = hash;
+        s.save_workspace(&d).unwrap();
+        let export = s.export_bundle("w1", "2026-11-05T08:00:00Z").unwrap();
+
+        let mut envelope: BundleEnvelope = serde_json::from_str(&export.json).unwrap();
+        envelope.manifest.dataset_count = 2;
+        let bad = serde_json::to_string(&envelope).unwrap();
+        let err = s
+            .import_bundle(bad.as_bytes(), "w2", "Bad", "2026-11-05T09:00:00Z")
+            .unwrap_err();
+        assert!(
+            matches!(err, StoreError::Bundle(_)),
+            "expected a typed bundle error, got {err}"
+        );
+        assert!(!s.exists("w2"), "a bad manifest must write nothing");
         fs::remove_dir_all(&root).ok();
     }
 

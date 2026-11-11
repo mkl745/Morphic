@@ -206,8 +206,8 @@ workspace/schema identity, every declared byte count and every SHA-256 content h
 writing a dataset or a workspace. Import re-seeds the document at revision 1 under a fresh id
 and rehydrates the session, so a broken bundle fails at the boundary rather than on the first
 data read. Flutter picks a `.morphic` file through the same injectable file-source seam used by
-re-link, and writes exports into the app-private documents directory through an injectable path
-resolver. Errors, cancellations and engine rejections are surfaced, never swallowed.
+re-link, and writes exports into the app-private documents directory through injectable path and
+byte-sink seams. Errors, cancellations and engine rejections are surfaced, never swallowed.
 
 ### 2.5 Data plane
 

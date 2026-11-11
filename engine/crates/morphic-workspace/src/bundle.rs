@@ -65,6 +65,23 @@ pub struct BundleImportOutcome {
     pub dataset_count: usize,
 }
 
+/// One source whose declared hash and byte count have both been verified.
+#[derive(Debug, Clone)]
+pub struct BundleSource {
+    pub hash: String,
+    pub bytes: Vec<u8>,
+}
+
+/// The verified contents of an envelope, before a fresh workspace id is assigned. A named
+/// struct keeps `decode_bundle`'s signature legible (and satisfies clippy's type-complexity
+/// lint) while making the verification boundary explicit.
+#[derive(Debug, Clone)]
+pub struct DecodedBundle {
+    pub manifest: BundleManifest,
+    pub workspace: WorkspaceDoc,
+    pub datasets: Vec<BundleSource>,
+}
+
 /// Lowercase hex; two characters per byte. No external codec dependency.
 pub fn hex_encode(bytes: &[u8]) -> String {
     const DIGITS: &[u8; 16] = b"0123456789abcdef";
@@ -140,9 +157,7 @@ pub fn encode_bundle(
 
 /// Parse and verify a `.morphic` envelope. Hash verification happens here so a caller cannot
 /// accidentally persist tampered source bytes under a trusted hash.
-pub fn decode_bundle(
-    bytes: &[u8],
-) -> Result<(BundleManifest, WorkspaceDoc, Vec<(String, Vec<u8>)>), StoreError> {
+pub fn decode_bundle(bytes: &[u8]) -> Result<DecodedBundle, StoreError> {
     let envelope: BundleEnvelope = serde_json::from_slice(bytes)
         .map_err(|e| StoreError::Bundle(format!("not a .morphic bundle: {e}")))?;
     let manifest = envelope.manifest;
@@ -162,6 +177,11 @@ pub fn decode_bundle(
             "manifest schemaVersion does not match workspace.json".into(),
         ));
     }
+    if manifest.dataset_count != envelope.datasets.len() {
+        return Err(StoreError::Bundle(
+            "manifest dataset count does not match datasets".into(),
+        ));
+    }
     let mut datasets = Vec::with_capacity(envelope.datasets.len());
     for ds in envelope.datasets {
         let decoded = hex_decode(&ds.content_hex)?;
@@ -179,7 +199,14 @@ pub fn decode_bundle(
                 ds.hash
             )));
         }
-        datasets.push((ds.hash, decoded));
+        datasets.push(BundleSource {
+            hash: ds.hash,
+            bytes: decoded,
+        });
     }
-    Ok((manifest, envelope.workspace, datasets))
+    Ok(DecodedBundle {
+        manifest,
+        workspace: envelope.workspace,
+        datasets,
+    })
 }

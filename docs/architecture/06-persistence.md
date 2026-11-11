@@ -34,8 +34,8 @@ Principles:
 - SQLite is deliberately deferred (ADR-0007): a folder-per-workspace + atomic index meets
   MVP scale; the access layer is a trait so SQLite can replace it without touching callers.
 - `.morphic` exports are **not** part of the store root. Flutter writes them to its
-  app-private documents directory; importing one creates a fresh workspace folder and
-  re-adds the content-addressed datasets.
+  app-private documents directory through an injectable byte sink; importing one creates a
+  fresh workspace folder and re-adds the content-addressed datasets.
 
 ## 2. Write discipline (crash safety)
 
