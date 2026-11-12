@@ -527,6 +527,124 @@ void main() {
       expect(find.text('eu'), findsOneWidget);
     });
 
+    testWidgets('small table keeps recovery and long rejection evidence reachable',
+        (tester) async {
+      final bridge = ScriptedBridge(
+        components: [tableSpec()],
+        order: const ['data_table'],
+      );
+      final engine = EngineController(bridge: bridge, storageRoot: '/tmp/m');
+      await engine.open('w1');
+      await engine.applyCommands([
+        Commands.setGlobalFilter([
+          filterNode('eq', field: 'region', value: 'eu'),
+        ]),
+        Commands.setSearch('data_table', 'zzzz'),
+      ]);
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: SizedBox(
+              width: 360,
+              child: AnimatedBuilder(
+                animation: engine,
+                builder: (context, _) => DataTableView(
+                  ctx: ComponentContext(spec: engine.components.first, engine: engine),
+                  height: 280,
+                  searchDebounce: Duration.zero,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ));
+      await tester.pumpAndSettle();
+      final clearView = find.byKey(const Key('table-clear-empty'));
+      await tester.ensureVisible(clearView);
+      await tester.pumpAndSettle();
+      bridge
+        ..failCommands = true
+        ..commandError = List.filled(
+          8,
+          'The update could not be saved because device storage is unavailable.',
+        ).join(' ');
+      await tester.tap(clearView);
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      expect(find.text(MorphicCopy.updateFailure), findsOneWidget);
+      final evidence = find.textContaining(bridge.commandError);
+      expect(evidence, findsOneWidget);
+      expect(
+        find.ancestor(of: evidence, matching: find.byKey(const Key('table-state-scroll'))),
+        findsOneWidget,
+      );
+      await tester.ensureVisible(evidence);
+      await tester.pumpAndSettle();
+      expect(ComponentInteraction.fromSpec(engine.components.first).search, 'zzzz');
+
+      bridge.failCommands = false;
+      await tester.ensureVisible(clearView);
+      await tester.pumpAndSettle();
+      await tester.tap(clearView);
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      expect(ComponentInteraction.fromSpec(engine.components.first).search, isNull);
+      expect(engine.globalFilters, isNotEmpty);
+    });
+
+    testWidgets('small populated table scrolls long command errors without losing rows',
+        (tester) async {
+      final bridge = ScriptedBridge(
+        components: [tableSpec()],
+        order: const ['data_table'],
+      );
+      final engine = EngineController(bridge: bridge, storageRoot: '/tmp/m');
+      await engine.open('w1');
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: SizedBox(
+              width: 360,
+              child: AnimatedBuilder(
+                animation: engine,
+                builder: (context, _) => DataTableView(
+                  ctx: ComponentContext(spec: engine.components.first, engine: engine),
+                  height: 280,
+                  searchDebounce: Duration.zero,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ));
+      await tester.pumpAndSettle();
+      bridge
+        ..failCommands = true
+        ..commandError = List.filled(
+          8,
+          'The update could not be saved because device storage is unavailable.',
+        ).join(' ');
+      await tester.enterText(find.byType(TextField), 'zzzz');
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      final evidence = find.textContaining(bridge.commandError);
+      expect(evidence, findsOneWidget);
+      expect(
+        find.ancestor(of: evidence, matching: find.byKey(const Key('table-chrome-scroll'))),
+        findsOneWidget,
+      );
+      await tester.ensureVisible(evidence);
+      await tester.pumpAndSettle();
+      expect(ComponentInteraction.fromSpec(engine.components.first).search, isNull);
+      expect(find.text('eu'), findsOneWidget);
+
+      bridge.failCommands = false;
+      await tester.enterText(find.byType(TextField), 'eu');
+      await tester.pumpAndSettle();
+      expect(ComponentInteraction.fromSpec(engine.components.first).search, 'eu');
+      expect(find.text('eu'), findsWidgets);
+    });
+
     testWidgets('a filter-only table clears its view without sending a search command',
         (tester) async {
       final bridge = ScriptedBridge(

@@ -42,7 +42,9 @@ abstract final class MorphicCopy {
   static const String metricFiltersHint =
       'Workspace filters may affect this metric.';
   static const String noProfileDetail =
-      'Try reopening the workspace to reload its field information.';
+      'Try reopening the workspace, or import a file with columns to create a new workspace.';
+  static const String noProfileDegradedDetail =
+      'Close this sheet, then choose Restore source file in the workspace.';
   static const String unsupportedViewDetail =
       'Return to Home and open another workspace, or update Morphic if a newer version is available.';
   static const String engineFailureDetail =

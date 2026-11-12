@@ -8,9 +8,11 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:morphic_flutter/design_system/copy.dart';
 import 'package:morphic_flutter/engine/engine_controller.dart';
 import 'package:morphic_flutter/runtime/component_registry.dart';
 import 'package:morphic_flutter/runtime/components/data_table_view.dart';
+import 'package:morphic_flutter/runtime/field_corrections.dart';
 
 import '../support/scripted_bridge.dart';
 
@@ -75,6 +77,46 @@ Future<void> _tap(WidgetTester tester, String key) async {
 }
 
 void main() {
+  Future<void> openSheet(WidgetTester tester, EngineController engine) async {
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: Builder(
+          builder: (context) => TextButton(
+            key: const Key('open-corrections'),
+            onPressed: () => showFieldCorrectionsSheet(context, engine: engine),
+            child: const Text('Correct a field'),
+          ),
+        ),
+      ),
+    ));
+    await tester.tap(find.byKey(const Key('open-corrections')));
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('a missing profile offers an explicit close and a next step',
+      (tester) async {
+    final engine = await _open(ScriptedBridge(fields: []));
+    await openSheet(tester, engine);
+
+    expect(find.text('No field profile is available for this workspace.'), findsOneWidget);
+    expect(find.text(MorphicCopy.noProfileDetail), findsOneWidget);
+    expect(find.text(MorphicCopy.noProfileDegradedDetail), findsNothing);
+    expect(find.byKey(const Key('field-correction-apply')), findsNothing);
+    await _tap(tester, 'field-correction-close');
+    expect(find.byKey(const Key('field-corrections-sheet')), findsNothing);
+  });
+
+  testWidgets('a degraded profile points to source restoration, not reopening alone',
+      (tester) async {
+    final engine = await _open(ScriptedBridge(degraded: true));
+    await openSheet(tester, engine);
+
+    expect(find.text(MorphicCopy.noProfileDegradedDetail), findsOneWidget);
+    expect(find.text(MorphicCopy.noProfileDetail), findsNothing);
+    await _tap(tester, 'field-correction-close');
+    expect(find.byKey(const Key('field-corrections-sheet')), findsNothing);
+  });
+
   testWidgets('a long press on a header opens that column for correction', (tester) async {
     final bridge = _bridge();
     final engine = await _open(bridge);

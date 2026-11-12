@@ -393,18 +393,65 @@ class _DataTableViewState extends State<DataTableView> {
                   ),
                 ),
               ],
-              if (widget.ctx.canFilter || widget.ctx.canSearch)
-                _activeFilters(theme),
-              if (_commandError != null)
-                MorphicCommandError(evidence: _commandError!),
-              const SizedBox(height: MorphicSpace.sm),
-              Expanded(child: _body(theme, cols, totalWidth)),
+              Expanded(child: _content(theme, cols, totalWidth)),
               const SizedBox(height: MorphicSpace.sm),
               _footer(theme),
             ],
           ),
         ),
       ),
+    );
+  }
+
+  /// Keep empty/error recovery and any engine evidence reachable even in a small table.
+  /// The status body and its filter/error chrome scroll together; the populated grid keeps
+  /// its own bounded viewport and gives a long command error a separate bounded scroll area.
+  Widget _content(ThemeData theme, List<String> cols, double totalWidth) {
+    final firstPageLoading = _state == _Load.pending && _page == null;
+    final statusBody = _state == _Load.failed ||
+        (!firstPageLoading && (_page == null || cols.isEmpty || _page!.rows.isEmpty));
+    final chrome = <Widget>[
+      if (widget.ctx.canFilter || widget.ctx.canSearch) _activeFilters(theme),
+      if (_commandError != null) MorphicCommandError(evidence: _commandError!),
+    ];
+    final body = _body(theme, cols, totalWidth);
+    if (statusBody) {
+      return SingleChildScrollView(
+        key: const Key('table-state-scroll'),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            ...chrome,
+            const SizedBox(height: MorphicSpace.sm),
+            body,
+          ],
+        ),
+      );
+    }
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Leave room for the grid's 36 dp header, divider, and the gap below the chrome.
+        final chromeHeight = constraints.maxHeight > 48 ? constraints.maxHeight - 48 : 0.0;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            ConstrainedBox(
+              constraints: BoxConstraints(maxHeight: chromeHeight),
+              child: SingleChildScrollView(
+                key: const Key('table-chrome-scroll'),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: chrome,
+                ),
+              ),
+            ),
+            const SizedBox(height: MorphicSpace.sm),
+            Expanded(child: body),
+          ],
+        );
+      },
     );
   }
 
@@ -478,29 +525,24 @@ class _DataTableViewState extends State<DataTableView> {
 
   Widget _body(ThemeData theme, List<String> cols, double totalWidth) {
     if (_state == _Load.failed) {
-      // The engine's error text is evidence, so it must never be clipped. The table has a
-      // fixed height and a scrollable body: a taller header (the "Why this view?" button) or
-      // a long error message can leave less than the ~150 dp this state wants, and a bare
-      // Column then overflows the RenderFlex. Scrolling keeps every word reachable. Found by
-      // the degraded-mode suite when 1.4.6 added 28 dp to the header.
-      return SingleChildScrollView(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: MorphicSpace.md),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text('Could not load rows',
-                  style: theme.textTheme.bodyMedium
-                      ?.copyWith(color: MorphicColors.error)),
-              if (_error != null)
-                Padding(
-                  padding: const EdgeInsets.all(MorphicSpace.sm),
-                  child: Text(_error!, style: theme.textTheme.bodySmall),
-                ),
-              TextButton(onPressed: _fetch, child: const Text('Retry')),
-            ],
-          ),
+      // _content scrolls this state together with filter chips and command errors, so even
+      // a long engine message remains reachable inside the fixed-height table.
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: MorphicSpace.md),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('Could not load rows',
+                style: theme.textTheme.bodyMedium
+                    ?.copyWith(color: MorphicColors.error)),
+            if (_error != null)
+              Padding(
+                padding: const EdgeInsets.all(MorphicSpace.sm),
+                child: Text(_error!, style: theme.textTheme.bodySmall),
+              ),
+            TextButton(onPressed: _fetch, child: const Text('Retry')),
+          ],
         ),
       );
     }
@@ -520,61 +562,57 @@ class _DataTableViewState extends State<DataTableView> {
       );
     }
     if (cols.isEmpty) {
-      return SingleChildScrollView(
-        child: Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                // Preserve the engine's notice for a missing source.
-                widget.ctx.engine.notice ?? 'No columns to display.',
-                style: theme.textTheme.bodySmall,
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: MorphicSpace.sm),
-              Text(
-                widget.ctx.engine.degraded
-                    ? MorphicCopy.missingSourceDetail
-                    : MorphicCopy.noColumnsDetail,
-                style: theme.textTheme.bodySmall,
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ),
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              // Preserve the engine's notice for a missing source.
+              widget.ctx.engine.notice ?? 'No columns to display.',
+              style: theme.textTheme.bodySmall,
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: MorphicSpace.sm),
+            Text(
+              widget.ctx.engine.degraded
+                  ? MorphicCopy.missingSourceDetail
+                  : MorphicCopy.noColumnsDetail,
+              style: theme.textTheme.bodySmall,
+              textAlign: TextAlign.center,
+            ),
+          ],
         ),
       );
     }
     if (page.rows.isEmpty) {
       final hasWorkspaceFilters = widget.ctx.engine.globalFilters.isNotEmpty;
       final viewCommands = clearViewNarrowingCommands(widget.ctx);
-      return SingleChildScrollView(
-        child: Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              _emptyLabel(),
+              style: theme.textTheme.bodySmall,
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: MorphicSpace.sm),
+            if (hasWorkspaceFilters || viewCommands.isNotEmpty)
+              MorphicFilterActions(
+                workspaceKey: const Key('table-clear-global-filters'),
+                viewKey: const Key('table-clear-empty'),
+                viewLabel: MorphicCopy.clearSearchAndFilters,
+                onClearWorkspace: hasWorkspaceFilters ? _clearWorkspaceFilters : null,
+                onClearView: viewCommands.isEmpty ? null : _clearAll,
+                busy: _commandBusy,
+              )
+            else
               Text(
-                _emptyLabel(),
+                MorphicCopy.noTableRowsDetail,
                 style: theme.textTheme.bodySmall,
                 textAlign: TextAlign.center,
               ),
-              const SizedBox(height: MorphicSpace.sm),
-              if (hasWorkspaceFilters || viewCommands.isNotEmpty)
-                MorphicFilterActions(
-                  workspaceKey: const Key('table-clear-global-filters'),
-                  viewKey: const Key('table-clear-empty'),
-                  viewLabel: MorphicCopy.clearSearchAndFilters,
-                  onClearWorkspace: hasWorkspaceFilters ? _clearWorkspaceFilters : null,
-                  onClearView: viewCommands.isEmpty ? null : _clearAll,
-                  busy: _commandBusy,
-                )
-              else
-                Text(
-                  MorphicCopy.noTableRowsDetail,
-                  style: theme.textTheme.bodySmall,
-                  textAlign: TextAlign.center,
-                ),
-            ],
-          ),
+          ],
         ),
       );
     }

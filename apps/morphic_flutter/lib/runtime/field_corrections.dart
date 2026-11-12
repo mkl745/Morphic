@@ -263,11 +263,20 @@ class _FieldCorrectionsSheetState extends State<FieldCorrectionsSheet> {
                   style: theme.textTheme.bodySmall),
               const SizedBox(height: MorphicSpace.sm),
               Text(
-                MorphicCopy.noProfileDetail,
+                widget.engine.degraded
+                    ? MorphicCopy.noProfileDegradedDetail
+                    : MorphicCopy.noProfileDetail,
                 style: theme.textTheme.bodySmall,
               ),
-            ]
-            else ...[
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(
+                  key: const Key('field-correction-close'),
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Close'),
+                ),
+              ),
+            ] else ...[
               DropdownButton<String>(
                 key: const Key('field-name-dropdown'),
                 value: _field,
