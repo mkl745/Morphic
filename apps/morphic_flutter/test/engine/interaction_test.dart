@@ -13,7 +13,7 @@ import 'package:morphic_flutter/engine/interaction.dart';
 
 import '../runtime/registry_drift_test.dart' show rustStringArray;
 
-/// The ten command tags Dart can emit, taken from the builders themselves rather than a
+/// The command tags Dart can emit, taken from the builders themselves rather than a
 /// hand-copied list, so a new builder cannot escape the gate.
 Set<String> _dartCommandTags() => {
       Commands.setGlobalFilter(const [])['kind'],
@@ -26,6 +26,7 @@ Set<String> _dartCommandTags() => {
       Commands.overrideFieldType('amount', 'int64')['kind'],
       Commands.overrideFieldRole('region', 'dimension')['kind'],
       Commands.clearFieldOverride('amount')['kind'],
+      Commands.renameWorkspace('Sales')['kind'],
     }.cast<String>();
 
 /// `SetComponentSort { .. }` → `setComponentSort`, which is what `rename_all = "camelCase"`

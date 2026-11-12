@@ -1,13 +1,8 @@
 /// Golden images for the line chart (M1.4 task 1.4.3), across themes and states.
 ///
-/// Same contract and same limitation as the bar chart's goldens: this repository ships no font
-/// asset, so Flutter's test font renders every glyph as a box. These images pin geometry,
-/// colour, spacing and layout — the shape of the lines, where a gap breaks them, the crosshair
-/// and markers, the legend's hidden state, the partial-scene notice, and 1.3× text scale. Text
-/// *content* is asserted in `line_chart_test.dart`.
-///
-/// The loading state is not captured: an indeterminate spinner's pixels depend on animation
-/// phase. Regenerate with `[regenerate-goldens]` in the commit message.
+/// Bundled Inter and JetBrains Mono are loaded explicitly so these images pin readable text,
+/// geometry, color and spacing. The indeterminate loading animation is not captured because
+/// its pixels depend on animation phase. Regenerate with the CI subject marker.
 @Tags(<String>['golden'])
 library;
 
@@ -18,6 +13,7 @@ import 'package:morphic_flutter/engine/engine_controller.dart';
 import 'package:morphic_flutter/runtime/component_registry.dart';
 import 'package:morphic_flutter/runtime/components/line_chart_view.dart';
 
+import '../support/golden_fonts.dart';
 import '../support/scripted_bridge.dart';
 
 const Size _surface = Size(360, 620);
@@ -115,6 +111,7 @@ Future<void> _pumpChart(
 }
 
 void main() {
+  setUpAll(loadMorphicGoldenFonts);
   for (final theme in <String, Brightness>{
     'dark': Brightness.dark,
     'light': Brightness.light,

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import 'design_system/theme_preference.dart';
 import 'design_system/tokens.dart';
 import 'engine/autosave.dart';
 import 'engine/bundle_location.dart';
@@ -26,6 +27,7 @@ class MorphicApp extends StatefulWidget {
     this.bundlePathResolver,
     this.bundleWriter,
     this.sampleLauncher,
+    this.themePreferenceStore,
   });
 
   final MorphicBridge bridge;
@@ -47,6 +49,9 @@ class MorphicApp extends StatefulWidget {
   /// Overrides the bundled-sample import/launch path. Production leaves this null.
   final SampleLauncher? sampleLauncher;
 
+  /// Injectable local UI preference store for tests; production stores it beside the library.
+  final ThemePreferenceStore? themePreferenceStore;
+
   @override
   State<MorphicApp> createState() => _MorphicAppState();
 }
@@ -56,11 +61,15 @@ class MorphicApp extends StatefulWidget {
 class _MorphicAppState extends State<MorphicApp>
     with WidgetsBindingObserver {
   final _autosave = AutosaveCoordinator();
+  late final MorphicThemePreference _themePreference;
   bool _recoveryShown = false;
 
   @override
   void initState() {
     super.initState();
+    _themePreference = MorphicThemePreference(
+      widget.themePreferenceStore ?? FileThemePreferenceStore(widget.storageRoot),
+    );
     WidgetsBinding.instance.addObserver(this);
     // Captured once at process start. An FFI failure here must never stop the app from
     // opening; an empty app is strictly worse than an unshown recovery banner.
@@ -86,6 +95,7 @@ class _MorphicAppState extends State<MorphicApp>
   void dispose() {
     unawaited(_autosave.flushNow());
     _autosave.dispose();
+    _themePreference.dispose();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -120,27 +130,32 @@ class _MorphicAppState extends State<MorphicApp>
         bridge: widget.bridge,
         storageRoot: widget.storageRoot,
         importRunner: widget.importRunner,
-        child: MaterialApp(
-          navigatorKey: _autosave.navigatorKey,
-          title: 'MORPHIC',
-          debugShowCheckedModeBanner: false,
-          theme: MorphicTheme.light(),
-          darkTheme: MorphicTheme.dark(),
-          themeMode: ThemeMode.dark,
-          initialRoute: '/',
-          routes: {
-            '/': (_) => HomeScreen(
-              fileSource: widget.fileSource,
-              bundlePathResolver: widget.bundlePathResolver,
-              bundleWriter: widget.bundleWriter,
-              sampleLauncher: sampleLauncher,
+        child: MorphicThemeScope(
+          preference: _themePreference,
+          child: ListenableBuilder(
+            listenable: _themePreference,
+            builder: (context, _) => MaterialApp(
+              navigatorKey: _autosave.navigatorKey,
+              title: 'MORPHIC',
+              debugShowCheckedModeBanner: false,
+              theme: MorphicTheme.light(),
+              darkTheme: MorphicTheme.dark(),
+              themeMode: _themePreference.mode,
+              initialRoute: '/',
+              routes: {
+                '/': (_) => HomeScreen(
+                  fileSource: widget.fileSource,
+                  bundlePathResolver: widget.bundlePathResolver,
+                  bundleWriter: widget.bundleWriter,
+                  sampleLauncher: sampleLauncher,
+                ),
+                '/poc': (_) => const PocScreen(),
+                '/import': (_) => ImportScreen(sampleLauncher: sampleLauncher),
+                '/workspace': (_) => WorkspaceScreen(fileSource: widget.fileSource),
+                '/settings': (_) => const SettingsScreen(),
+              },
             ),
-            '/poc': (_) => const PocScreen(),
-            '/import': (_) => ImportScreen(sampleLauncher: sampleLauncher),
-            '/workspace': (_) =>
-                WorkspaceScreen(fileSource: widget.fileSource),
-            '/settings': (_) => const SettingsScreen(),
-          },
+          ),
         ),
       ),
     );

@@ -1,18 +1,8 @@
 /// Golden images for the bar chart (M1.4 task 1.4.2), across themes and states.
 ///
-/// **What these images do and do not pin.** Flutter's default test font renders every glyph as a
-/// box, and this repository ships no font asset, so these goldens cannot verify that the right
-/// *words* are drawn. They pin what a text-only test cannot: bar geometry, ordering, the
-/// remainder and null bars, colour and contrast per theme, spacing, the truncation notice, and
-/// the layout under a 1.3× text scale. Text *content* is asserted in `bar_chart_test.dart`.
-/// Wiring a real font would upgrade these to full visual checks; that is recorded as a gap
-/// rather than implied by the presence of PNG files.
-///
-/// The loading state is deliberately not captured: it draws an indeterminate spinner, so its
-/// pixels depend on animation phase and would be flaky.
-///
-/// Regenerate with `[regenerate-goldens]` in the commit message (or let CI seed them on the
-/// first run), exactly as the Rust `insta` snapshots work.
+/// Bundled Inter and JetBrains Mono are loaded explicitly so these images pin readable text,
+/// geometry, color and spacing. The indeterminate loading animation is not captured because
+/// its pixels depend on animation phase. Regenerate with the CI subject marker.
 @Tags(<String>['golden'])
 library;
 
@@ -24,6 +14,7 @@ import 'package:morphic_flutter/engine/interaction.dart';
 import 'package:morphic_flutter/runtime/component_registry.dart';
 import 'package:morphic_flutter/runtime/components/bar_chart_view.dart';
 
+import '../support/golden_fonts.dart';
 import '../support/scripted_bridge.dart';
 
 /// A phone-width surface at a 1:1 device pixel ratio: golden bytes must not depend on the
@@ -117,6 +108,7 @@ Future<void> _pumpChart(
 }
 
 void main() {
+  setUpAll(loadMorphicGoldenFonts);
   for (final theme in <String, Brightness>{
     'dark': Brightness.dark,
     'light': Brightness.light,

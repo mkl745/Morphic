@@ -49,7 +49,7 @@ use thiserror::Error;
 /// recovery report and the explicit autosave checkpoint entry points (M1.5 task 1.5.4). v13 adds
 /// `.morphic` bundle export/import (M1.5 task 1.5.6). New entry points and commands are additive
 /// contract changes and are versioned with the bridge (doc 02 §4).
-pub const API_VERSION: u32 = 13;
+pub const API_VERSION: u32 = 14;
 
 #[derive(Debug, Error)]
 pub enum CoreError {
@@ -309,6 +309,7 @@ fn command_label(commands: &[Command]) -> String {
         return format!("Applied {} changes", commands.len());
     }
     match &commands[0] {
+        Command::RenameWorkspace { .. } => "Renamed workspace".into(),
         Command::SetGlobalFilter { .. } => "Changed global filters".into(),
         Command::SetComponentFilter { .. } => "Changed component filter".into(),
         Command::SetComponentSort { .. } => "Changed component sort".into(),
@@ -3304,6 +3305,95 @@ mod tests {
         assert!(
             !opts.iter().any(|t| t == "timeline"),
             "SALES has no Timestamp column, so a timeline must not be offered: {opts:?}"
+        );
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    // Live workspace titles use the same transaction and history as the rest of the chrome.
+    #[test]
+    fn live_rename_preserves_session_and_history_across_restart() {
+        let (engine, root) = imported("live_rename");
+        let initial = engine.snapshot("w1").unwrap();
+        let filter = Command::SetGlobalFilter {
+            filters: vec![eq_filter("region", serde_json::json!("eu"))],
+        };
+        let filtered = engine.apply("w1", &[filter], NOW).unwrap();
+        let rename = Command::RenameWorkspace {
+            title: "  Quarterly sales  ".into(),
+        };
+        assert_eq!(
+            serde_json::to_value(&rename).unwrap()["kind"],
+            "renameWorkspace"
+        );
+        let renamed = engine.apply("w1", &[rename], NOW).unwrap();
+        assert!(renamed.changed);
+        assert!(
+            renamed.affected.is_empty(),
+            "a title does not change component data"
+        );
+        assert_eq!(renamed.doc.workspace.title, "Quarterly sales");
+        assert_eq!(renamed.undo_depth, 2);
+        assert!(engine.has_session("w1"));
+        assert_eq!(
+            engine.snapshot("w1").unwrap().state_hash,
+            renamed.state_hash
+        );
+        assert_eq!(
+            engine.list_workspaces().unwrap()[0].title,
+            "Quarterly sales"
+        );
+
+        let noop = engine
+            .apply(
+                "w1",
+                &[Command::RenameWorkspace {
+                    title: "Quarterly sales".into(),
+                }],
+                NOW,
+            )
+            .unwrap();
+        assert!(!noop.changed);
+        assert_eq!(noop.undo_depth, 2);
+        let rejected = engine.apply(
+            "w1",
+            &[
+                Command::RenameWorkspace {
+                    title: "Temporary".into(),
+                },
+                Command::RenameWorkspace { title: "  ".into() },
+            ],
+            NOW,
+        );
+        assert!(rejected.is_err());
+        assert_eq!(
+            engine.snapshot("w1").unwrap().state_hash,
+            renamed.state_hash
+        );
+        assert_eq!(
+            engine.list_workspaces().unwrap()[0].title,
+            "Quarterly sales"
+        );
+
+        drop(engine);
+        let engine = Engine::new(&root).unwrap();
+        assert_eq!(engine.snapshot("w1").unwrap().undo_depth, 2);
+        let undo_rename = engine.undo("w1", NOW).unwrap();
+        assert_eq!(undo_rename.doc.workspace.title, "Sales");
+        assert_eq!(undo_rename.state_hash, filtered.state_hash);
+        assert_eq!(engine.list_workspaces().unwrap()[0].title, "Sales");
+        assert_eq!(
+            engine.undo("w1", NOW).unwrap().state_hash,
+            initial.state_hash
+        );
+        assert_eq!(
+            engine.redo("w1", NOW).unwrap().state_hash,
+            filtered.state_hash
+        );
+        let redo_rename = engine.redo("w1", NOW).unwrap();
+        assert_eq!(redo_rename.state_hash, renamed.state_hash);
+        assert_eq!(
+            engine.list_workspaces().unwrap()[0].title,
+            "Quarterly sales"
         );
         std::fs::remove_dir_all(&root).ok();
     }

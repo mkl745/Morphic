@@ -203,7 +203,7 @@ class _MetricCardViewState extends State<MetricCardView> {
                 Icon(
                   active ? Icons.filter_alt : Icons.filter_alt_outlined,
                   size: 14,
-                  color: active ? scheme.onSecondaryContainer : theme.hintColor,
+                  color: active ? scheme.onSecondaryContainer : scheme.onSurfaceVariant,
                 ),
                 const SizedBox(width: MorphicSpace.xs),
                 Expanded(
@@ -212,7 +212,7 @@ class _MetricCardViewState extends State<MetricCardView> {
                         ? 'Filtering the workspace — tap to clear'
                         : (own != null ? 'Tap to filter the workspace' : 'Tap to add a filter'),
                     style: theme.textTheme.labelSmall?.copyWith(
-                      color: active ? scheme.onSecondaryContainer : theme.hintColor,
+                      color: active ? scheme.onSecondaryContainer : scheme.onSurfaceVariant,
                     ),
                   ),
                 ),
@@ -266,7 +266,7 @@ class _MetricCardViewState extends State<MetricCardView> {
             Text(
               'Could not compute this metric',
               style: theme.textTheme.bodyMedium
-                  ?.copyWith(color: MorphicColors.error),
+                  ?.copyWith(color: theme.colorScheme.error),
             ),
             if (_error != null)
               Text(_error!, style: theme.textTheme.bodySmall),
@@ -283,7 +283,8 @@ class _MetricCardViewState extends State<MetricCardView> {
           children: [
             Text(
               formatCell(_value),
-              style: theme.textTheme.headlineMedium,
+              style: MorphicTypography.dataStyle(theme.textTheme.headlineMedium)
+                  ?.copyWith(fontSize: 32, fontWeight: FontWeight.w600),
               // A null aggregate means "no data", which is not the number zero.
               semanticsLabel: isNull ? 'No data' : formatCell(_value),
             ),

@@ -53,7 +53,21 @@ void main() {
     await pumpHome(tester, bridge);
     expect(find.text('Saved workspace'), findsOneWidget);
     expect(find.text('w1'), findsOneWidget);
-    expect(find.textContaining('bridge API v13'), findsOneWidget);
+    expect(find.textContaining('bridge API v14'), findsOneWidget);
+  });
+
+  testWidgets('recent metadata shows the engine hash and modification time when present',
+      (tester) async {
+    final bridge = ScriptedBridge();
+    bridge.workspaceIndex.single.addAll({
+      'datasetId': 'abcdef0123456789',
+      'modifiedAt': '2026-11-05T12:34:00Z',
+    });
+    await pumpHome(tester, bridge);
+    expect(find.text('Dataset abcdef01'), findsOneWidget);
+    expect(find.byTooltip('Dataset ID: abcdef0123456789'), findsOneWidget);
+    expect(find.textContaining('Modified '), findsOneWidget);
+    expect(find.text('w1'), findsOneWidget);
   });
 
   testWidgets('rename sends the new title and reloads the library', (tester) async {

@@ -8,6 +8,7 @@ import '../../design_system/tokens.dart';
 import '../../engine/autosave.dart';
 import '../../engine/engine_controller.dart';
 import '../../engine/file_source.dart';
+import '../../engine/interaction.dart';
 import '../../runtime/component_registry.dart';
 import '../../runtime/explanation_sheet.dart';
 import '../../runtime/workspace_view.dart';
@@ -28,6 +29,7 @@ class WorkspaceScreen extends StatefulWidget {
     this.registry,
     this.warnings = const [],
     this.fileSource,
+    this.animateEntrance = false,
   });
 
   /// Optional injected document (structural view / tests); otherwise read from route args.
@@ -43,14 +45,50 @@ class WorkspaceScreen extends StatefulWidget {
   /// Injectable picker for the degraded-mode "Restore source file" action.
   final PlatformFileSource? fileSource;
 
+  /// Used by direct hosts/tests; route-based imports use [WorkspaceArgs.animateEntrance].
+  final bool animateEntrance;
+
   @override
   State<WorkspaceScreen> createState() => _WorkspaceScreenState();
 }
 
-class _WorkspaceScreenState extends State<WorkspaceScreen> {
+class _WorkspaceScreenState extends State<WorkspaceScreen>
+    with SingleTickerProviderStateMixin {
   bool _editingLayout = false;
   bool _focusMode = false;
   int _focusIndex = 0;
+  late final AnimationController _entrance;
+  bool _entranceStarted = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _entrance = AnimationController(
+      vsync: this,
+      duration: MorphicMotion.entranceLimit,
+      // Reduced motion still uses opacity; the child removes translation and stagger.
+      animationBehavior: AnimationBehavior.preserve,
+    );
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_entranceStarted) return;
+    _entranceStarted = true;
+    final args = ModalRoute.of(context)?.settings.arguments;
+    if (widget.animateEntrance || (args is WorkspaceArgs && args.animateEntrance)) {
+      _entrance.forward();
+    } else {
+      _entrance.value = 1;
+    }
+  }
+
+  @override
+  void dispose() {
+    _entrance.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -74,7 +112,12 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
           final phone = MediaQuery.sizeOf(context).width < 640;
           return Scaffold(
             appBar: AppBar(
-              title: Text(ws?['title'] as String? ?? 'Workspace'),
+              title: ws == null || ctl.workspaceId == null
+                  ? const Text('Workspace')
+                  : _WorkspaceTitle(
+                      title: ws['title'] as String? ?? 'Workspace',
+                      onRename: () => _renameWorkspace(context, ctl),
+                    ),
               actions: [
                 _historyButton(context, ctl, undo: true),
                 _historyButton(context, ctl, undo: false),
@@ -125,11 +168,13 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
             ),
             body: Column(
               children: [
+                if (ws != null) _WorkspaceSaveStatus(pendingCheckpoint: ctl.dirty),
                 if (notices.isNotEmpty) _WarningBanner(warnings: notices),
                 Expanded(
                   child: WorkspaceView(
                     controller: ctl,
                     registry: widget.registry ?? ComponentRegistry(),
+                    entrance: _entrance,
                     onRetry: ctl.workspaceId == null
                         ? null
                         : () => ctl.open(ctl.workspaceId!),
@@ -201,6 +246,22 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
     );
   }
 
+  /// Rename as an ordinary engine command. The library rename API closes the live session
+  /// and resets its history, so it must not be used from this screen.
+  Future<void> _renameWorkspace(BuildContext context, EngineController ctl) async {
+    final current = (ctl.doc?['workspace'] as Map?)?['title'] as String? ?? 'Workspace';
+    final title = await showDialog<String>(
+      context: context,
+      builder: (_) => _RenameWorkspaceDialog(current: current),
+    );
+    if (!context.mounted || title == null) return;
+    final result = await ctl.applyCommands([Commands.renameWorkspace(title)]);
+    if (!context.mounted || result != null) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Could not rename workspace: ${ctl.error ?? 'Try again.'}')),
+    );
+  }
+
   /// Re-link a degraded workspace to its original source bytes, then reopen so the table,
   /// profile and metrics are rehydrated. A different file is refused by Rust, and that error
   /// is shown rather than leaving the user guessing.
@@ -265,6 +326,121 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
   }
 }
 
+class _WorkspaceTitle extends StatelessWidget {
+  const _WorkspaceTitle({required this.title, required this.onRename});
+  final String title;
+  final VoidCallback onRename;
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+        builder: (context, constraints) => Tooltip(
+          message: 'Rename workspace',
+          child: InkWell(
+            key: const Key('workspace-rename'),
+            onTap: onRename,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 48),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Flexible(child: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis)),
+                  if (constraints.maxWidth > 80) ...[
+                    const SizedBox(width: MorphicSpace.xs),
+                    const Icon(Icons.edit_outlined, size: 16),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+}
+
+class _WorkspaceSaveStatus extends StatelessWidget {
+  const _WorkspaceSaveStatus({required this.pendingCheckpoint});
+  final bool pendingCheckpoint;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Semantics(
+      liveRegion: true,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: MorphicSpace.lg,
+          vertical: MorphicSpace.xs,
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.check_circle_outline, size: 16, color: theme.colorScheme.onSurfaceVariant),
+            const SizedBox(width: MorphicSpace.sm),
+            Expanded(
+              child: Text(
+                pendingCheckpoint ? 'Saved locally · checkpoint pending' : 'Saved locally',
+                key: const Key('workspace-save-status'),
+                style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _RenameWorkspaceDialog extends StatefulWidget {
+  const _RenameWorkspaceDialog({required this.current});
+  final String current;
+
+  @override
+  State<_RenameWorkspaceDialog> createState() => _RenameWorkspaceDialogState();
+}
+
+class _RenameWorkspaceDialogState extends State<_RenameWorkspaceDialog> {
+  late final TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.current);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final title = _controller.text.trim();
+    if (title.isNotEmpty) Navigator.of(context).pop(title);
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+        title: const Text('Rename workspace'),
+        content: TextField(
+          key: const Key('workspace-title-input'),
+          controller: _controller,
+          autofocus: true,
+          decoration: const InputDecoration(labelText: 'Title'),
+          onChanged: (_) => setState(() {}),
+          onSubmitted: (_) => _submit(),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            key: const Key('workspace-title-save'),
+            onPressed: _controller.text.trim().isEmpty ? null : _submit,
+            child: const Text('Save'),
+          ),
+        ],
+      );
+}
+
 class _ComponentCard extends StatelessWidget {
   const _ComponentCard({required this.component});
   final Map<String, dynamic> component;
@@ -315,7 +491,7 @@ class _ComponentCard extends StatelessWidget {
                       horizontal: MorphicSpace.sm, vertical: 2),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(MorphicRadius.sm),
-                    border: Border.all(color: MorphicColors.borderDark),
+                    border: Border.all(color: Theme.of(context).colorScheme.outline),
                   ),
                   child: Text(type, style: Theme.of(context).textTheme.labelSmall),
                 ),
@@ -352,7 +528,8 @@ class _WarningBanner extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.info_outline, size: 18, color: MorphicColors.warning),
+          Icon(Icons.info_outline,
+              size: 18, color: MorphicColors.warningText(theme.brightness)),
           const SizedBox(width: MorphicSpace.sm),
           Expanded(
             child: Column(

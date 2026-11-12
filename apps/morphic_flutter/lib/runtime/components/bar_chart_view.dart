@@ -284,7 +284,9 @@ class _BarChartViewState extends State<BarChartView> {
         child: Text(
           _result!.scene.partialNotice ?? '',
           key: const Key('bar-partial-notice'),
-          style: theme.textTheme.labelSmall?.copyWith(color: MorphicColors.warning),
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: MorphicColors.warningText(theme.brightness),
+          ),
         ),
       );
 
@@ -344,7 +346,7 @@ class _BarChartViewState extends State<BarChartView> {
     final style = (theme.textTheme.bodySmall ?? const TextStyle()).copyWith(
       color: dark ? MorphicColors.textPrimaryDark : MorphicColors.textPrimaryLight,
     );
-    final valueStyle = style.copyWith(
+    final valueStyle = (MorphicTypography.dataStyle(style) ?? style).copyWith(
       color: dark ? MorphicColors.textSecondaryDark : MorphicColors.textSecondaryLight,
     );
     final scaler = MediaQuery.textScalerOf(context);

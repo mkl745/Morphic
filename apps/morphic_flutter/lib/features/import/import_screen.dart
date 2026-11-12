@@ -10,6 +10,7 @@ library;
 
 import 'package:flutter/material.dart';
 
+import '../../design_system/motion.dart';
 import '../../design_system/tokens.dart';
 import '../../engine/bridge_scope.dart';
 import '../../engine/clipboard_source.dart';
@@ -21,7 +22,10 @@ import '../../engine/import_facts.dart';
 import '../../engine/import_runner.dart';
 import '../../engine/sample_import.dart';
 import '../../engine/sample_source.dart';
+import '../../engine/storage_usage.dart';
 import '../workspace/workspace_args.dart';
+
+export '../../engine/storage_usage.dart' show formatByteCount;
 
 /// The chooser value meaning "let the engine decide". Shared by the dropdown and the
 /// report sheet so the two cannot drift apart.
@@ -260,7 +264,11 @@ class _ImportScreenState extends State<ImportScreen> {
     )..adoptImport(outcome, id);
     Navigator.of(context).pushReplacementNamed(
       '/workspace',
-      arguments: WorkspaceArgs(controller: engine, warnings: controller.warnings),
+      arguments: WorkspaceArgs(
+        controller: engine,
+        warnings: controller.warnings,
+        animateEntrance: true,
+      ),
     );
   }
 
@@ -316,7 +324,7 @@ class _ImportScreenState extends State<ImportScreen> {
             'Android may show its own notice when an app reads the clipboard. '
             'The text stays on this device.',
             style: theme.textTheme.bodySmall
-                ?.copyWith(color: theme.colorScheme.onSurface.withValues(alpha: 0.6)),
+                ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
           ),
           if (widget.sampleLauncher != null) ...[
             const SizedBox(height: MorphicSpace.lg),
@@ -394,7 +402,7 @@ class _ImportScreenState extends State<ImportScreen> {
             'Morphic reports how it read the file, plus any rows it was unable to '
             'parse. If it guessed wrong, choose the format above and import again.',
             style: theme.textTheme.bodySmall
-                ?.copyWith(color: theme.colorScheme.onSurface.withValues(alpha: 0.6)),
+                ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
           ),
         ],
       ),
@@ -456,12 +464,16 @@ class _ImportProgressCard extends StatelessWidget {
               children: [
                 Icon(
                   done ? Icons.check_circle : Icons.memory,
-                  color: done ? MorphicColors.success : null,
+                  color: done
+                      ? MorphicColors.successText(Theme.of(context).brightness)
+                      : null,
                 ),
                 const SizedBox(width: MorphicSpace.md),
                 Expanded(
-                  child: Text(
-                    switch (controller.stage) {
+                  child: MorphicStageLabel(
+                    key: const Key('import-stage'),
+                    stageKey: '${controller.stage.name}:${progress?.phase ?? ''}',
+                    label: switch (controller.stage) {
                       ImportStage.reading => 'Reading file',
                       ImportStage.done => 'Workspace ready',
                       _ => progress?.label ?? 'Starting engine',
@@ -820,12 +832,4 @@ Future<String?> showImportReportSheet(
       );
     },
   );
-}
-
-/// Binary units, one decimal above 1 KB. Shared so the picker card and the progress card
-/// never disagree about the same file.
-String formatByteCount(int bytes) {
-  if (bytes < 1024) return '$bytes B';
-  if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
-  return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
 }

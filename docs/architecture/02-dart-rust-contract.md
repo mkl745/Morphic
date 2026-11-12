@@ -210,6 +210,15 @@ data read. Flutter picks a `.morphic` file through the same injectable file-sour
 re-link, and writes exports into the app-private documents directory through injectable path and
 byte-sink seams. Errors, cancellations and engine rejections are surfaced, never swallowed.
 
+#### 2.4.8 Live workspace rename (task 1.6.1)
+
+`API_VERSION` **13 → 14** adds `RenameWorkspace { title }` to the existing command array; no
+FFI function signature changes. The engine trims the title, rejects an empty title atomically,
+updates the library index through the normal journaled save, and records a normal undo frame.
+A no-op does not change revision or history; renaming does not mark component data affected.
+This path preserves the open session and its previous undo/redo history. The older *library*
+rename entry point still drops a session and re-seeds history and is not used by the live title UI.
+
 ### 2.5 Data plane
 
 ```dart
@@ -297,6 +306,8 @@ Errors MUST NOT embed raw user data rows (privacy in logs); they carry positions
 - **v13 (M1.5 task 1.5.6)** adds `.morphic` bundle export/import
   (`morphic_export_bundle`, `morphic_import_bundle`). Both are additive; no existing entry point
   changed shape.
+- **v14 (M1.6 task 1.6.1)** adds undoable `RenameWorkspace` to the command union. It uses
+  `morphic_apply_commands`; no existing entry point changed shape.
 - The FFI boundary is a hand-written JSON surface over `morphic_*` exports, not generated frb
   code. CI compiles and tests both sides, checks generated schema artifacts for drift, and
   builds an APK whose stamp is compared with the commit SHA (see

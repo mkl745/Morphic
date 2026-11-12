@@ -381,7 +381,9 @@ class _TimelineViewState extends State<TimelineView> {
         child: Text(
           scene.partialNotice ?? '',
           key: const Key('timeline-partial-notice'),
-          style: theme.textTheme.labelSmall?.copyWith(color: MorphicColors.warning),
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: MorphicColors.warningText(theme.brightness),
+          ),
         ),
       );
 
@@ -456,7 +458,8 @@ class _TimelineViewState extends State<TimelineView> {
       );
     }
 
-    final style = theme.textTheme.labelSmall ?? const TextStyle(fontSize: 11);
+    final style = MorphicTypography.dataStyle(theme.textTheme.labelSmall) ??
+        const TextStyle(fontSize: 11);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -671,7 +674,7 @@ class _TimelineViewState extends State<TimelineView> {
                     child: Text(
                       scene.partialNotice!,
                       style: theme.textTheme.labelSmall?.copyWith(
-                        color: MorphicColors.warning,
+                        color: MorphicColors.warningText(theme.brightness),
                       ),
                     ),
                   ),

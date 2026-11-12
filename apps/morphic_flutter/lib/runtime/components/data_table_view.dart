@@ -535,7 +535,7 @@ class _DataTableViewState extends State<DataTableView> {
           children: [
             Text('Could not load rows',
                 style: theme.textTheme.bodyMedium
-                    ?.copyWith(color: MorphicColors.error)),
+                    ?.copyWith(color: theme.colorScheme.error)),
             if (_error != null)
               Padding(
                 padding: const EdgeInsets.all(MorphicSpace.sm),
@@ -822,8 +822,8 @@ class _DataRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isNullStyle = theme.textTheme.bodySmall
-        ?.copyWith(color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.55));
+    final dataStyle = MorphicTypography.dataStyle(theme.textTheme.bodySmall);
+    final isNullStyle = dataStyle?.copyWith(color: theme.colorScheme.onSurfaceVariant);
     final values = [
       for (var i = 0; i < columns.length; i++)
         i < row.length ? row[i] : null,
@@ -854,7 +854,7 @@ class _DataRow extends StatelessWidget {
                         formatCell(values[i]),
                         overflow: TextOverflow.ellipsis,
                         maxLines: 1,
-                        style: values[i] == null ? isNullStyle : theme.textTheme.bodySmall,
+                        style: values[i] == null ? isNullStyle : dataStyle,
                       ),
                     ),
                   ),

@@ -28,6 +28,8 @@ use crate::CoreError;
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum Command {
+    /// Rename an open workspace as a normal undoable, journaled edit.
+    RenameWorkspace { title: String },
     /// Replace the whole global filter set. Add/edit/remove a chip is composed by the UI and
     /// sent as the resulting set, so "clear all" is simply an empty vector and there is no
     /// separate remove command whose index could go stale.
@@ -112,6 +114,7 @@ pub(crate) fn apply(
     let mut touched: Vec<String> = Vec::new();
     let mut global_changed = false;
     let mut layout_changed = false;
+    let mut metadata_changed = false;
     let mut override_changed = false;
     // Fields whose correction changed in this batch, so recompilation stays targeted.
     let mut corrected_fields: Vec<String> = Vec::new();
@@ -119,6 +122,16 @@ pub(crate) fn apply(
 
     for (i, cmd) in commands.iter().enumerate() {
         match cmd {
+            Command::RenameWorkspace { title } => {
+                let title = title.trim();
+                if title.is_empty() {
+                    return Err(at(i, "workspace title is empty".to_string()));
+                }
+                if next.workspace.title != title {
+                    next.workspace.title = title.to_string();
+                    metadata_changed = true;
+                }
+            }
             Command::SetGlobalFilter { filters } => {
                 for f in filters {
                     check_fields(f, fields).map_err(|m| at(i, m))?;
@@ -294,7 +307,7 @@ pub(crate) fn apply(
     }
 
     let broad_changed = global_changed || layout_changed || override_changed;
-    let changed = broad_changed || !touched.is_empty();
+    let changed = broad_changed || metadata_changed || !touched.is_empty();
     if !changed {
         return Ok(Applied {
             doc: doc.clone(),

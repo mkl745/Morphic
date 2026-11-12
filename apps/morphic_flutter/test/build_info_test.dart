@@ -69,6 +69,10 @@ void main() {
   });
 
   testWidgets('Settings renders the build identity, not a fixed string', (tester) async {
+    tester.view.physicalSize = const Size(800, 2000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
     await tester.pumpWidget(MaterialApp(
       home: BridgeScope(
         bridge: ScriptedBridge(),

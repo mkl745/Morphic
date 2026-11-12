@@ -252,7 +252,9 @@ class _LineChartViewState extends State<LineChartView> {
         child: Text(
           scene.partialNotice ?? '',
           key: const Key('line-partial-notice'),
-          style: theme.textTheme.labelSmall?.copyWith(color: MorphicColors.warning),
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: MorphicColors.warningText(theme.brightness),
+          ),
         ),
       );
 
@@ -344,7 +346,8 @@ class _LineChartViewState extends State<LineChartView> {
       );
     }
 
-    final style = (theme.textTheme.labelSmall ?? const TextStyle()).copyWith(
+    final style = (MorphicTypography.dataStyle(theme.textTheme.labelSmall) ??
+            const TextStyle()).copyWith(
       color: dark ? MorphicColors.textSecondaryDark : MorphicColors.textSecondaryLight,
     );
     final scaler = MediaQuery.textScalerOf(context);

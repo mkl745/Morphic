@@ -9,9 +9,17 @@ library;
 import '../../engine/engine_controller.dart';
 
 class WorkspaceArgs {
-  const WorkspaceArgs({this.controller, this.document, this.warnings = const []});
+  const WorkspaceArgs({
+    this.controller,
+    this.document,
+    this.warnings = const [],
+    this.animateEntrance = false,
+  });
 
   final EngineController? controller;
   final Map<String, dynamic>? document;
   final List<String> warnings;
+
+  /// Set only when an actual import has completed; reopening a saved workspace is immediate.
+  final bool animateEntrance;
 }

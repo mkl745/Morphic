@@ -31,3 +31,10 @@ flutter:
   uses-material-design: true
   assets:
     - assets/samples/
+  fonts:
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/Inter.ttf
+    - family: JetBrainsMono
+      fonts:
+        - asset: assets/fonts/JetBrainsMono.ttf

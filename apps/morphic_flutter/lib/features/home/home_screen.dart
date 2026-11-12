@@ -133,6 +133,7 @@ class _HomeScreenState extends State<HomeScreen> {
         title: const Text('MORPHIC'),
         actions: [
           IconButton(
+            tooltip: 'Settings',
             icon: const Icon(Icons.settings_outlined),
             onPressed: () => Navigator.of(context).pushNamed('/settings'),
           ),
@@ -146,7 +147,7 @@ class _HomeScreenState extends State<HomeScreen> {
             style: Theme.of(context)
                 .textTheme
                 .titleMedium
-                ?.copyWith(color: MorphicColors.textSecondaryDark),
+                ?.copyWith(color: scheme.onSurfaceVariant),
           ),
           const SizedBox(height: MorphicSpace.lg),
           _EngineStatusCard(future: _engineInfo, onRetry: _reloadEngine),
@@ -240,8 +241,8 @@ class _EngineStatusCard extends StatelessWidget {
                 children: [
                   Row(
                     children: [
-                      const Icon(Icons.error_outline,
-                          color: MorphicColors.error),
+                      Icon(Icons.error_outline,
+                          color: Theme.of(context).colorScheme.error),
                       const SizedBox(width: MorphicSpace.md),
                       Expanded(
                           child: Text('Engine unavailable: ${snap.error}')),
@@ -291,8 +292,60 @@ class _EngineStatusCard extends StatelessWidget {
   }
 }
 
-/// The actions offered for one workspace row. `PopupMenuItem<String>` values are also the
-/// labels in the menu, so tests and the UI agree on one vocabulary.
+/// Uses only fields present in the engine's library index. `datasetId` is a content hash,
+/// not a file name; older indexes may not have it or a modification time at all.
+class _WorkspaceDetails extends StatelessWidget {
+  const _WorkspaceDetails({required this.item});
+  final Map item;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final id = item['id'] as String? ?? '';
+    final dataset = item['datasetId'] as String? ?? '';
+    final rawTime = item['modifiedAt'] as String? ?? '';
+    final time = DateTime.tryParse(rawTime)?.toLocal();
+    final when = time == null ? rawTime : time.toIso8601String().replaceFirst('T', ' ').substring(0, 16);
+    return Padding(
+      padding: const EdgeInsets.only(top: MorphicSpace.xs),
+      child: Wrap(
+        spacing: MorphicSpace.sm,
+        runSpacing: MorphicSpace.xs,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          Text(id, style: MorphicTypography.dataStyle(theme.textTheme.labelSmall)),
+          if (dataset.isNotEmpty)
+            Tooltip(
+              message: 'Dataset ID: $dataset',
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: MorphicSpace.sm,
+                  vertical: MorphicSpace.xs,
+                ),
+                decoration: BoxDecoration(
+                  border: Border.all(color: theme.colorScheme.outline),
+                  borderRadius: BorderRadius.circular(MorphicRadius.sm),
+                ),
+                child: Text(
+                  'Dataset ${dataset.length > 8 ? dataset.substring(0, 8) : dataset}',
+                  key: const Key('workspace-dataset'),
+                  style: MorphicTypography.dataStyle(theme.textTheme.labelSmall),
+                ),
+              ),
+            ),
+          if (when.isNotEmpty)
+            Text(
+              'Modified $when${time == null ? '' : ' local'}',
+              key: const Key('workspace-modified'),
+              style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The actions offered for one workspace row.
 enum _WorkspaceAction { rename, duplicate, delete, relink, export }
 
 class _WorkspaceList extends StatelessWidget {
@@ -395,7 +448,7 @@ class _WorkspaceList extends StatelessWidget {
                 child: ListTile(
                   leading: const Icon(Icons.dashboard_outlined),
                   title: Text((item as Map)['title'] as String? ?? 'Workspace'),
-                  subtitle: Text(item['id'] as String? ?? ''),
+                  subtitle: _WorkspaceDetails(item: item),
                   trailing: PopupMenuButton<_WorkspaceAction>(
                     key: ValueKey('workspace-menu-${item['id']}'),
                     onSelected: (action) => _run(

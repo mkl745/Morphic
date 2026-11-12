@@ -191,6 +191,12 @@ class Commands {
         if (height != null) 'height': height,
       };
 
+  /// Rename the live workspace through the same journal and undo stack as other edits.
+  static Map<String, dynamic> renameWorkspace(String title) => {
+        'kind': 'renameWorkspace',
+        'title': title,
+      };
+
   /// Persist a user correction to a field's inferred type. Since 1.5.5 the engine recompiles
   /// the bindings that read this field from the corrected profile.
   static Map<String, dynamic> overrideFieldType(

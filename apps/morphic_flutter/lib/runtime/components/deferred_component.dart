@@ -79,7 +79,9 @@ class DeferredComponent extends StatelessWidget {
         subtitle: Text(
           status.headline,
           style: theme.textTheme.bodySmall?.copyWith(
-            color: isDeferred ? MorphicColors.warning : MorphicColors.error,
+            color: isDeferred
+                ? MorphicColors.warningText(theme.brightness)
+                : theme.colorScheme.error,
           ),
         ),
         tilePadding: const EdgeInsets.symmetric(horizontal: MorphicSpace.lg),

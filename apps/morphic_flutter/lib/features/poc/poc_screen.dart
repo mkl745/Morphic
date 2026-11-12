@@ -92,7 +92,11 @@ class _PocScreenState extends State<PocScreen> {
     engine.adoptImport(outcome, id);
     Navigator.of(context).pushReplacementNamed(
       '/workspace',
-      arguments: WorkspaceArgs(controller: engine, warnings: importer.warnings),
+      arguments: WorkspaceArgs(
+        controller: engine,
+        warnings: importer.warnings,
+        animateEntrance: true,
+      ),
     );
   }
 

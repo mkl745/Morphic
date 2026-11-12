@@ -22,9 +22,15 @@ abstract final class MorphicColors {
   static const textPrimaryLight = Color(0xFF14181F);
   static const textSecondaryLight = Color(0xFF5B6472);
 
+  // Selection surfaces remain legible with each theme's primary text.
+  static const selectionDark = Color(0xFF17423F);
+  static const selectionLight = Color(0xFFCDECE8);
+
   // Semantic (shared hues)
   static const accent = Color(0xFF4FD1C5);
   static const accentDark = Color(0xFF0D9488);
+  // The light accent is suitable for graphics, but small action text needs a deeper shade.
+  static const accentTextLight = Color(0xFF0F766E);
   static const info = Color(0xFF60A5FA);
 
   /// Deeper blue for light surfaces, the way [accentDark] pairs with [accent]. `info` itself
@@ -83,6 +89,12 @@ abstract final class MorphicColors {
   static const severityInfoLight = infoDark;
   static const severityOkLight = Color(0xFF047857);
   static const severityMutedLight = textSecondaryLight;
+
+  /// Text-safe semantic colors, including on white surfaces in light mode.
+  static Color warningText(Brightness brightness) =>
+      brightness == Brightness.dark ? warning : severityWarningLight;
+  static Color successText(Brightness brightness) =>
+      brightness == Brightness.dark ? success : severityOkLight;
 }
 
 abstract final class MorphicSpace {
@@ -104,35 +116,114 @@ abstract final class MorphicMotion {
   static const Duration fast = Duration(milliseconds: 150);
   static const Duration standard = Duration(milliseconds: 200);
   static const Duration slow = Duration(milliseconds: 250);
+  static const Duration stagger = Duration(milliseconds: 40);
+  static const Duration entranceLimit = Duration(milliseconds: 400);
+  static const double entranceRise = 4;
+  static const Curve easing = Cubic(0.2, 0, 0, 1);
 }
 
-/// Builds the dark and light [ThemeData] from tokens, on a Material 3 foundation.
+abstract final class MorphicTypography {
+  static const String ui = 'Inter';
+  static const String data = 'JetBrainsMono';
+
+  /// Tabular figures keep values aligned without changing the engine's formatting.
+  static TextStyle? dataStyle(TextStyle? base) => base?.copyWith(
+        fontFamily: data,
+        fontFeatures: const [FontFeature.tabularFigures()],
+      );
+}
+
+/// Builds both themes from the same tokens. A light theme is not an inverted dark one.
 abstract final class MorphicTheme {
   static ThemeData dark() => _build(Brightness.dark);
   static ThemeData light() => _build(Brightness.light);
 
   static ThemeData _build(Brightness brightness) {
-    final isDark = brightness == Brightness.dark;
+    final dark = brightness == Brightness.dark;
+    final background = dark ? MorphicColors.bgDark : MorphicColors.bgLight;
+    final surface = dark ? MorphicColors.surfaceDark : MorphicColors.surfaceLight;
+    final text = dark ? MorphicColors.textPrimaryDark : MorphicColors.textPrimaryLight;
+    final muted = dark ? MorphicColors.textSecondaryDark : MorphicColors.textSecondaryLight;
+    final border = dark ? MorphicColors.borderDark : MorphicColors.borderLight;
     final scheme = ColorScheme(
       brightness: brightness,
-      primary: isDark ? MorphicColors.accent : MorphicColors.accentDark,
-      onPrimary: isDark ? MorphicColors.bgDark : Colors.white,
-      secondary: MorphicColors.info,
-      onSecondary: Colors.white,
-      error: MorphicColors.error,
-      onError: Colors.white,
-      surface: isDark ? MorphicColors.surfaceDark : MorphicColors.surfaceLight,
-      onSurface:
-          isDark ? MorphicColors.textPrimaryDark : MorphicColors.textPrimaryLight,
+      primary: dark ? MorphicColors.accent : MorphicColors.accentDark,
+      // White on the light accent is only 3.7:1; dark ink clears 4.5:1 in both themes.
+      onPrimary: dark ? MorphicColors.bgDark : MorphicColors.textPrimaryLight,
+      secondary: dark ? MorphicColors.info : MorphicColors.infoDark,
+      onSecondary: dark ? MorphicColors.bgDark : MorphicColors.surfaceLight,
+      secondaryContainer: dark ? MorphicColors.selectionDark : MorphicColors.selectionLight,
+      onSecondaryContainer: text,
+      error: dark ? MorphicColors.error : MorphicColors.severityErrorLight,
+      onError: dark ? MorphicColors.bgDark : MorphicColors.surfaceLight,
+      surface: surface,
+      onSurface: text,
+      onSurfaceVariant: muted,
+      outline: border,
     );
-    // Phase 0 keeps the theme minimal and low-risk. Custom card chrome, Inter /
-    // JetBrains Mono bundling, and the full token application land in the M1.6 design pass.
-    return ThemeData(
+    final base = ThemeData(
       useMaterial3: true,
       brightness: brightness,
       colorScheme: scheme,
-      scaffoldBackgroundColor:
-          isDark ? MorphicColors.bgDark : MorphicColors.bgLight,
+      fontFamily: MorphicTypography.ui,
+    );
+    TextStyle? scaled(TextStyle? style, double size, FontWeight weight) =>
+        style?.copyWith(fontSize: size, fontWeight: weight, height: 1.4);
+    final typography = base.textTheme.apply(bodyColor: text, displayColor: text);
+    final textTheme = typography.copyWith(
+      headlineMedium: scaled(typography.headlineMedium, 28, FontWeight.w600),
+      titleLarge: scaled(typography.titleLarge, 20, FontWeight.w600),
+      titleMedium: scaled(typography.titleMedium, 16, FontWeight.w600),
+      titleSmall: scaled(typography.titleSmall, 16, FontWeight.w600),
+      bodyLarge: scaled(typography.bodyLarge, 16, FontWeight.w400),
+      bodyMedium: scaled(typography.bodyMedium, 14, FontWeight.w400),
+      bodySmall: scaled(typography.bodySmall, 12, FontWeight.w400),
+      labelLarge: scaled(typography.labelLarge, 14, FontWeight.w500),
+      labelMedium: scaled(typography.labelMedium, 12, FontWeight.w500),
+      labelSmall: scaled(typography.labelSmall, 11, FontWeight.w500),
+    );
+    final shape = RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(MorphicRadius.md),
+      side: BorderSide(color: border),
+    );
+    final buttonShape = RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(MorphicRadius.sm),
+    );
+    return base.copyWith(
+      scaffoldBackgroundColor: background,
+      textTheme: textTheme,
+      appBarTheme: AppBarTheme(
+        backgroundColor: background,
+        foregroundColor: text,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+      ),
+      cardTheme: CardThemeData(
+        color: surface,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        margin: const EdgeInsets.symmetric(vertical: MorphicSpace.xs),
+        shape: shape,
+      ),
+      filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(
+          minimumSize: const Size(48, 48),
+          shape: buttonShape,
+        ),
+      ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          foregroundColor: dark ? MorphicColors.accent : MorphicColors.accentTextLight,
+          minimumSize: const Size(48, 48),
+          shape: buttonShape,
+        ),
+      ),
+      textButtonTheme: TextButtonThemeData(
+        style: TextButton.styleFrom(
+          foregroundColor: dark ? MorphicColors.accent : MorphicColors.accentTextLight,
+          minimumSize: const Size(48, 48),
+        ),
+      ),
     );
   }
 }

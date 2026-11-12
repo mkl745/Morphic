@@ -77,7 +77,7 @@ class FakeBridge implements MorphicBridge {
 
   @override
   EngineInfo engineInfo() =>
-      const EngineInfo(apiVersion: 13, coreVersion: '0.1.0', engine: 'morphic');
+      const EngineInfo(apiVersion: 14, coreVersion: '0.1.0', engine: 'morphic');
 
   @override
   RecoveryReport recoveryReport(String storageRoot) => const RecoveryReport();

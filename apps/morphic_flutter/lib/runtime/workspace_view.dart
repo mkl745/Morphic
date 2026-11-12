@@ -12,6 +12,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../design_system/copy.dart';
+import '../design_system/motion.dart';
 import '../design_system/tokens.dart';
 import '../engine/engine_controller.dart';
 import '../engine/interaction.dart';
@@ -31,6 +32,7 @@ class WorkspaceView extends StatelessWidget {
     super.key,
     required this.controller,
     required this.registry,
+    this.entrance,
     this.onRetry,
     this.onRestoreSource,
     this.layoutEditing = false,
@@ -41,6 +43,9 @@ class WorkspaceView extends StatelessWidget {
 
   final EngineController controller;
   final ComponentRegistry registry;
+
+  /// One clock started after a real import completes; null means no entrance animation.
+  final Animation<double>? entrance;
   final VoidCallback? onRetry;
 
   /// Optional degraded-mode recovery action. Supplied by the host screen, which owns the
@@ -422,10 +427,15 @@ class WorkspaceView extends StatelessWidget {
     final spanWidth = cardWidth * span + gap * (span - 1);
     final componentWidth = spanWidth > width ? width : spanWidth;
     final name = hint?['height'] as String? ?? '';
+    final component = registry.build(ComponentContext(spec: spec, engine: controller));
+    final clock = entrance;
+    final index = controller.components.indexWhere((item) => _idOf(item) == _idOf(spec));
     return SizedBox(
       width: componentWidth,
       height: _layoutHeights[name],
-      child: registry.build(ComponentContext(spec: spec, engine: controller)),
+      child: clock == null
+          ? component
+          : MorphicEntrance(animation: clock, index: index, child: component),
     );
   }
 

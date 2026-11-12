@@ -154,6 +154,7 @@ class ScriptedBridge implements MorphicBridge {
   String commandError = "filter references unknown field 'nope'";
 
   int _revision = 1;
+  String _title = 'Scripted';
 
   /// A deliberately small stand-in for the engine's bounded stacks. The authoritative
   /// implementation lives in Rust; widget tests only need the response shape and label.
@@ -184,6 +185,10 @@ class ScriptedBridge implements MorphicBridge {
 
   void _restore(Map<String, dynamic> snapshot) {
     final ws = snapshot['workspace'] as Map<String, dynamic>;
+    _title = ws['title'] as String? ?? 'Scripted';
+    for (final entry in workspaceIndex) {
+      if (entry['id'] == 'w1') entry['title'] = _title;
+    }
     final comps = (ws['components'] as List? ?? const [])
         .map((e) => _clone((e as Map).cast<String, dynamic>()))
         .toList();
@@ -245,7 +250,7 @@ class ScriptedBridge implements MorphicBridge {
         'schemaVersion': '1.0',
         'workspace': {
           'id': 'w1',
-          'title': 'Scripted',
+          'title': _title,
           'revision': _revision,
           'layout': {
             'mode': 'adaptive',
@@ -282,7 +287,7 @@ class ScriptedBridge implements MorphicBridge {
 
   @override
   EngineInfo engineInfo() =>
-      const EngineInfo(apiVersion: 13, coreVersion: '0.1.0', engine: 'morphic');
+      const EngineInfo(apiVersion: 14, coreVersion: '0.1.0', engine: 'morphic');
 
   @override
   RecoveryReport recoveryReport(String storageRoot) => recovery;
@@ -472,6 +477,18 @@ class ScriptedBridge implements MorphicBridge {
     final affected = <String>[];
     for (final cmd in commands) {
       switch (cmd['kind'] as String) {
+        case 'renameWorkspace':
+          final title = (cmd['title'] as String? ?? '').trim();
+          if (title.isEmpty) {
+            throw const MorphicBridgeException('workspace title is empty');
+          }
+          if (title != _title) {
+            _title = title;
+            for (final entry in workspaceIndex) {
+              if (entry['id'] == workspaceId) entry['title'] = title;
+            }
+            changed = true;
+          }
         case 'setComponentSort':
           final c = _component(cmd['componentId'] as String);
           if (c == null) throw const MorphicBridgeException('unknown component');

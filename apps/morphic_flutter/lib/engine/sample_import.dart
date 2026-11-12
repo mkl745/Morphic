@@ -104,6 +104,7 @@ class EngineSampleLauncher implements SampleLauncher {
         arguments: WorkspaceArgs(
           controller: outcome.controller,
           warnings: outcome.warnings,
+          animateEntrance: true,
         ),
       );
     } catch (e) {

@@ -1,13 +1,8 @@
 /// Golden images for the timeline (M1.4 task 1.4.4), across themes and states.
 ///
-/// Same contract and limitation as the bar and line goldens: no font asset ships with this repo,
-/// so Flutter's test font renders every glyph as a box. These images pin geometry, colour and
-/// layout — column widths and heights, how severity lanes stack, which hue a recognised level
-/// gets, the selection ring, the hidden-lane legend state, and 1.3× text scale. Text *content* is
-/// asserted in `timeline_test.dart`.
-///
-/// The loading state is not captured: an indeterminate spinner's pixels depend on animation phase.
-/// Regenerate by putting the marker in the commit *subject*.
+/// Bundled Inter and JetBrains Mono are loaded explicitly so these images pin readable text,
+/// geometry, color and spacing. The indeterminate loading animation is not captured because
+/// its pixels depend on animation phase. Regenerate with the CI subject marker.
 @Tags(<String>['golden'])
 library;
 
@@ -19,6 +14,7 @@ import 'package:morphic_flutter/runtime/component_registry.dart';
 import 'package:morphic_flutter/runtime/components/timeline_painter.dart';
 import 'package:morphic_flutter/runtime/components/timeline_view.dart';
 
+import '../support/golden_fonts.dart';
 import '../support/scripted_bridge.dart';
 
 const Size _surface = Size(360, 620);
@@ -124,6 +120,7 @@ Future<void> _pumpChart(
 }
 
 void main() {
+  setUpAll(loadMorphicGoldenFonts);
   for (final theme in <String, Brightness>{
     'dark': Brightness.dark,
     'light': Brightness.light,
