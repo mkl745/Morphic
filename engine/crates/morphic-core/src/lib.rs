@@ -47,8 +47,9 @@ use thiserror::Error;
 /// entry points (M1.5 task 1.5.3). v11 adds `ClearFieldOverride` and targeted recompilation of
 /// the bindings affected by a field correction (M1.5 task 1.5.5). v12 adds the startup
 /// recovery report and the explicit autosave checkpoint entry points (M1.5 task 1.5.4). v13 adds
-/// `.morphic` bundle export/import (M1.5 task 1.5.6). New entry points and commands are additive
-/// contract changes and are versioned with the bridge (doc 02 §4).
+/// `.morphic` bundle export/import (M1.5 task 1.5.6). v14 adds the journaled live-workspace rename
+/// command (M1.6 task 1.6.1). New entry points and commands are additive contract changes and
+/// are versioned with the bridge (doc 02 §4).
 pub const API_VERSION: u32 = 14;
 
 #[derive(Debug, Error)]

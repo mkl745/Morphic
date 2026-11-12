@@ -6,6 +6,7 @@
 /// swallowed, and a cancelled dialog or file picker makes no call at all.
 library;
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -13,8 +14,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:morphic_flutter/app.dart';
 import 'package:morphic_flutter/engine/bundle_location.dart';
+import 'package:morphic_flutter/engine/engine_controller.dart';
 import 'package:morphic_flutter/engine/file_source.dart';
+import 'package:morphic_flutter/engine/interaction.dart';
 import 'package:morphic_flutter/engine/sample_import.dart';
+import 'package:morphic_flutter/features/workspace/workspace_args.dart';
 
 import 'support/fake_import.dart';
 import 'support/scripted_bridge.dart';
@@ -68,6 +72,45 @@ void main() {
     expect(find.byTooltip('Dataset ID: abcdef0123456789'), findsOneWidget);
     expect(find.textContaining('Modified '), findsOneWidget);
     expect(find.text('w1'), findsOneWidget);
+  });
+
+  testWidgets('returning from a live rename refreshes Home from the library', (tester) async {
+    final bridge = ScriptedBridge();
+    await pumpHome(tester, bridge);
+    await tester.tap(find.text('Saved workspace'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('workspace-rename')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('workspace-title-input')), 'Revenue review');
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('workspace-title-save')));
+    await tester.pumpAndSettle();
+    expect(bridge.workspaceIndex.single['title'], 'Revenue review');
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    expect(find.text('Revenue review'), findsOneWidget);
+    expect(find.text('Saved workspace'), findsNothing);
+  });
+
+  testWidgets('Home refreshes when an import route is replaced by a workspace', (tester) async {
+    final bridge = ScriptedBridge();
+    await pumpHome(tester, bridge);
+    final navigator = tester.state<NavigatorState>(find.byType(Navigator));
+    unawaited(navigator.pushNamed<void>('/import'));
+    await tester.pumpAndSettle();
+    final engine = EngineController(bridge: bridge, storageRoot: '/tmp/morphic-home-test');
+    await engine.open('w1');
+    unawaited(navigator.pushReplacementNamed<void, void>(
+      '/workspace',
+      arguments: WorkspaceArgs(controller: engine),
+    ));
+    await tester.pumpAndSettle();
+    await engine.applyCommands([Commands.renameWorkspace('Imported review')]);
+    await tester.pumpAndSettle();
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    expect(find.text('Imported review'), findsOneWidget);
+    expect(find.text('Saved workspace'), findsNothing);
   });
 
   testWidgets('rename sends the new title and reloads the library', (tester) async {

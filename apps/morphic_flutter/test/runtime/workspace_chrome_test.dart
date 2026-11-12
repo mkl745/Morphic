@@ -4,6 +4,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:morphic_flutter/design_system/tokens.dart';
+import 'package:morphic_flutter/engine/autosave.dart';
 import 'package:morphic_flutter/engine/engine_controller.dart';
 import 'package:morphic_flutter/engine/interaction.dart';
 import 'package:morphic_flutter/features/workspace/workspace_screen.dart';
@@ -70,6 +71,27 @@ void main() {
     await tester.pump();
     expect(find.text('Saved locally'), findsOneWidget);
     expect(find.textContaining('unsaved'), findsNothing);
+  });
+
+  testWidgets('an adopted import shows checkpoint status until the debounce completes',
+      (tester) async {
+    final bridge = ScriptedBridge();
+    final engine = EngineController(bridge: bridge, storageRoot: '/tmp/m')
+      ..adoptImport({'doc': bridge.doc(), 'profile': bridge.profileJson()}, 'w1');
+    final coordinator = AutosaveCoordinator();
+    addTearDown(coordinator.dispose);
+    await tester.pumpWidget(AutosaveScope(
+      coordinator: coordinator,
+      child: MaterialApp(home: WorkspaceScreen(controller: engine)),
+    ));
+    await tester.pump();
+    expect(find.text('Saved locally · checkpoint pending'), findsOneWidget);
+    await tester.pump(const Duration(milliseconds: 1999));
+    expect(bridge.saveCalls, isEmpty);
+    await tester.pump(const Duration(milliseconds: 1));
+    await tester.pump();
+    expect(bridge.saveCalls, ['w1']);
+    expect(find.text('Saved locally'), findsOneWidget);
   });
 
   testWidgets('a rejected rename keeps the title and displays engine evidence', (tester) async {

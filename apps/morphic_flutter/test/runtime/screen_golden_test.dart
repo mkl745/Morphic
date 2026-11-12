@@ -56,7 +56,8 @@ void main() {
       final bridge = ScriptedBridge();
       bridge.workspaceIndex.single.addAll({
         'datasetId': 'abcdef0123456789',
-        'modifiedAt': '2026-11-05T12:34:00Z',
+        // A local-time fixture makes the snapshot independent of the runner's time zone.
+        'modifiedAt': '2026-11-05T12:34:00',
       });
       await tester.pumpWidget(_host(
           bridge,

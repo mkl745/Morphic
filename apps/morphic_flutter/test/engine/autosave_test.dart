@@ -108,6 +108,27 @@ void main() {
     expect(controller.dirty, isFalse);
   });
 
+  testWidgets('watching an already-adopted import schedules its checkpoint', (tester) async {
+    await tester.pumpWidget(const SizedBox.shrink());
+    final bridge = ScriptedBridge();
+    final controller = EngineController(
+      bridge: bridge,
+      storageRoot: '/tmp/morphic-adopted-import',
+    )..adoptImport({'doc': bridge.doc(), 'profile': bridge.profileJson()}, 'w1');
+    final coordinator = AutosaveCoordinator();
+    addTearDown(coordinator.dispose);
+    expect(controller.dirty, isTrue);
+    coordinator.watch(controller);
+
+    await tester.pump(const Duration(milliseconds: 1000));
+    coordinator.watch(controller); // Repeated workspace builds must not restart the timer.
+    await tester.pump(const Duration(milliseconds: 999));
+    expect(bridge.saveCalls, isEmpty);
+    await tester.pump(const Duration(milliseconds: 1));
+    expect(bridge.saveCalls, ['w1']);
+    expect(controller.dirty, isFalse);
+  });
+
   testWidgets('a clean startup shows no recovery dialog', (tester) async {
     await tester.pumpWidget(MorphicApp(
       bridge: ScriptedBridge(),

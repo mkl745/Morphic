@@ -34,6 +34,9 @@ class AutosaveCoordinator extends ChangeNotifier {
     _timer = null;
     _controller = controller;
     controller?.addListener(_onControllerChanged);
+    // Imports are adopted before the workspace first binds this coordinator. Their dirty
+    // notification has already happened, so schedule the pending checkpoint on attachment.
+    if (controller?.dirty == true) _schedule();
   }
 
   void _onControllerChanged() {

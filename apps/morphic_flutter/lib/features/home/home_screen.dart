@@ -52,16 +52,25 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<EngineInfo>? _engineInfo;
   Future<List<dynamic>>? _workspaces;
   bool _initialized = false;
+  bool _wasCurrent = true;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    // Import replaces its route with the workspace, so awaiting the import route alone
+    // finishes *before* the user returns. Observe route currency and reload the canonical
+    // index when Home becomes visible again, including after a live workspace rename.
+    final isCurrent = ModalRoute.of(context)?.isCurrent ?? true;
     if (!_initialized) {
       _initialized = true;
       final scope = BridgeScope.of(context);
       _engineInfo = Future(() => scope.bridge.engineInfo());
       _workspaces = Future(() => scope.bridge.listWorkspaces(scope.storageRoot));
+    } else if (isCurrent && !_wasCurrent) {
+      final scope = BridgeScope.of(context);
+      _workspaces = Future(() => scope.bridge.listWorkspaces(scope.storageRoot));
     }
+    _wasCurrent = isCurrent;
   }
 
   void _reloadWorkspaces() {
@@ -155,7 +164,7 @@ class _HomeScreenState extends State<HomeScreen> {
           FilledButton.icon(
             onPressed: () async {
               await Navigator.of(context).pushNamed('/import');
-              _reloadWorkspaces();
+              if (mounted) _reloadWorkspaces();
             },
             icon: const Icon(Icons.file_open_outlined),
             label: const Text('Import a file'),
@@ -164,7 +173,7 @@ class _HomeScreenState extends State<HomeScreen> {
           OutlinedButton.icon(
             onPressed: () async {
               await Navigator.of(context).pushNamed('/poc');
-              _reloadWorkspaces();
+              if (mounted) _reloadWorkspaces();
             },
             icon: const Icon(Icons.auto_awesome),
             label: const Text('Run proof of concept'),
