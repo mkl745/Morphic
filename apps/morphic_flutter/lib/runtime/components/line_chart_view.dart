@@ -34,6 +34,7 @@ import '../../engine/interaction.dart';
 import '../change_type_button.dart';
 import '../component_registry.dart';
 import '../explanation_sheet.dart';
+import '../filter_recovery.dart';
 import 'chart_format.dart';
 import 'line_chart_painter.dart';
 
@@ -55,7 +56,9 @@ class _LineChartViewState extends State<LineChartView> {
   _Load _state = _Load.pending;
   ChartResult? _result;
   String? _error;
+  String? _commandError;
   int _attempt = 0;
+  bool _busy = false;
 
   /// The revision this chart last rendered. Both contexts hold one controller, so comparing
   /// `old.ctx.engine.revision` to the current one can never differ (task 1.3.5).
@@ -198,6 +201,11 @@ class _LineChartViewState extends State<LineChartView> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _header(theme),
+            if (_commandError != null)
+              MorphicCommandError(
+                evidence: _commandError!,
+                evidenceKey: const Key('line-command-error'),
+              ),
             if (scene != null && scene.isPartial) _partialNotice(theme, scene),
             const SizedBox(height: MorphicSpace.sm),
             _body(theme, dark, scene, geo),
@@ -214,7 +222,7 @@ class _LineChartViewState extends State<LineChartView> {
           Expanded(
             child: Text(widget.ctx.title, style: theme.textTheme.titleSmall),
           ),
-          if (_state == _Load.pending)
+          if (_state == _Load.pending || _busy)
             const SizedBox(
               width: 14,
               height: 14,
@@ -248,24 +256,54 @@ class _LineChartViewState extends State<LineChartView> {
         ),
       );
 
-  /// Recovery action for the empty surfaces (design-system §7): clearing the workspace
-  /// filters is the only way rows come back, so the empty states offer it.
-  Future<void> _clearFilters() async {
-    final affected = await widget.ctx.engine.applyCommands(
-      [Commands.setGlobalFilter([])],
-    );
+  Future<void> _send(List<Map<String, dynamic>> commands) async {
+    if (_busy) return;
+    setState(() {
+      _busy = true;
+      _commandError = null;
+    });
+    final affected = await widget.ctx.engine.applyCommands(commands);
     if (!mounted) return;
+    setState(() {
+      _busy = false;
+      _commandError = affected == null ? widget.ctx.engine.error : null;
+    });
     if (affected != null) {
       _seenRevision = widget.ctx.engine.revision;
       await _fetch();
     }
   }
 
+  Future<void> _clearFilters() => _send([Commands.setGlobalFilter([])]);
+
+  Widget _emptyMessage(String headline, IconData icon) {
+    final hasWorkspaceFilters = widget.ctx.engine.globalFilters.isNotEmpty;
+    final viewCommands = clearViewNarrowingCommands(widget.ctx);
+    return MorphicStateMessage(
+      icon: icon,
+      headline: headline,
+      detail: !hasWorkspaceFilters && viewCommands.isEmpty
+          ? MorphicCopy.noRowsDetail
+          : null,
+      action: hasWorkspaceFilters || viewCommands.isNotEmpty
+          ? MorphicFilterActions(
+              workspaceKey: const Key('line-clear-filters'),
+              viewKey: const Key('line-clear-view-filters'),
+              onClearWorkspace: hasWorkspaceFilters ? _clearFilters : null,
+              onClearView: viewCommands.isEmpty ? null : () => _send(viewCommands),
+              busy: _busy,
+            )
+          : null,
+    );
+  }
+
   Widget _body(ThemeData theme, bool dark, SeriesScene? scene, LineGeometry geo) {
     if (_state == _Load.failed) {
       return MorphicStateMessage(
         icon: Icons.error_outline,
-        headline: _error ?? 'This chart could not be built.',
+        headline: MorphicCopy.chartFailure,
+        detail: _error,
+        isError: true,
         action: TextButton(
           key: const Key('line-retry'),
           onPressed: _fetch,
@@ -286,19 +324,7 @@ class _LineChartViewState extends State<LineChartView> {
       );
     }
     if (scene == null || scene.series.isEmpty) {
-      final hasFilters = widget.ctx.engine.globalFilters.isNotEmpty;
-      return MorphicStateMessage(
-        icon: Icons.filter_alt_off_outlined,
-        headline: MorphicCopy.noRowsMatch,
-        detail: hasFilters ? null : MorphicCopy.noRowsDetail,
-        action: hasFilters
-            ? TextButton(
-                key: const Key('line-clear-filters'),
-                onPressed: _clearFilters,
-                child: const Text(MorphicCopy.clearFilters),
-              )
-            : null,
-      );
+      return _emptyMessage(MorphicCopy.noRowsMatch, Icons.filter_alt_off_outlined);
     }
     if (geo.series.isEmpty) {
       return MorphicStateMessage(
@@ -312,18 +338,9 @@ class _LineChartViewState extends State<LineChartView> {
       );
     }
     if (geo.isEmpty) {
-      final hasFilters = widget.ctx.engine.globalFilters.isNotEmpty;
-      return MorphicStateMessage(
-        icon: Icons.show_chart,
-        headline: 'No values in range: every bucket is empty.',
-        detail: hasFilters ? null : MorphicCopy.noRowsDetail,
-        action: hasFilters
-            ? TextButton(
-                key: const Key('line-clear-filters'),
-                onPressed: _clearFilters,
-                child: const Text(MorphicCopy.clearFilters),
-              )
-            : null,
+      return _emptyMessage(
+        'No values in range: every bucket is empty.',
+        Icons.show_chart,
       );
     }
 

@@ -11,11 +11,13 @@ library;
 
 import 'package:flutter/material.dart';
 
+import '../../design_system/copy.dart';
 import '../../design_system/tokens.dart';
 import '../../engine/interaction.dart';
 import '../change_type_button.dart';
 import '../component_registry.dart';
 import '../explanation_sheet.dart';
+import '../filter_recovery.dart';
 import '../global_filter_bar.dart';
 import '../value_format.dart';
 
@@ -72,13 +74,16 @@ class _MetricCardViewState extends State<MetricCardView> {
     return own != null && indexOfFilter(widget.ctx.engine.globalFilters, own) >= 0;
   }
 
-  Future<void> _send(List<Map<String, dynamic>> next) async {
+  Future<void> _send(List<Map<String, dynamic>> next) =>
+      _sendCommands([Commands.setGlobalFilter(next)]);
+
+  Future<void> _sendCommands(List<Map<String, dynamic>> commands) async {
+    if (_busy) return;
     setState(() {
       _busy = true;
       _filterError = null;
     });
-    final affected =
-        await widget.ctx.engine.applyCommands([Commands.setGlobalFilter(next)]);
+    final affected = await widget.ctx.engine.applyCommands(commands);
     if (!mounted) return;
     setState(() {
       _busy = false;
@@ -221,13 +226,7 @@ class _MetricCardViewState extends State<MetricCardView> {
             ),
           ],
           if (_filterError != null)
-            Padding(
-              padding: const EdgeInsets.only(top: MorphicSpace.xs),
-              child: Text(
-                _filterError!,
-                style: theme.textTheme.labelSmall?.copyWith(color: MorphicColors.error),
-              ),
-            ),
+            MorphicCommandError(evidence: _filterError!),
         ],
       ),
     );
@@ -276,6 +275,8 @@ class _MetricCardViewState extends State<MetricCardView> {
         );
       case _Load.ready:
         final isNull = _value == null;
+        final hasWorkspaceFilters = widget.ctx.engine.globalFilters.isNotEmpty;
+        final viewCommands = clearViewNarrowingCommands(widget.ctx);
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
@@ -291,18 +292,21 @@ class _MetricCardViewState extends State<MetricCardView> {
                 'No data for this metric',
                 style: theme.textTheme.bodySmall,
               ),
-              if (widget.ctx.engine.globalFilters.isNotEmpty) ...[
-                const SizedBox(height: MorphicSpace.sm),
-                Text(
-                  'No rows match the current filters.',
-                  style: theme.textTheme.bodySmall,
-                ),
-                TextButton(
-                  key: Key('metric-clear-filters-${widget.ctx.id}'),
-                  onPressed: _busy ? null : () => _send([]),
-                  child: const Text('Clear filters'),
-                ),
-              ],
+              const SizedBox(height: MorphicSpace.sm),
+              if (hasWorkspaceFilters)
+                Text(MorphicCopy.metricFiltersHint, style: theme.textTheme.bodySmall),
+              if (hasWorkspaceFilters || viewCommands.isNotEmpty)
+                MorphicFilterActions(
+                  workspaceKey: Key('metric-clear-filters-${widget.ctx.id}'),
+                  viewKey: Key('metric-clear-view-filters-${widget.ctx.id}'),
+                  onClearWorkspace: hasWorkspaceFilters ? () => _send([]) : null,
+                  onClearView: viewCommands.isEmpty
+                      ? null
+                      : () => _sendCommands(viewCommands),
+                  busy: _busy,
+                )
+              else
+                Text(MorphicCopy.noRowsDetail, style: theme.textTheme.bodySmall),
             ],
           ],
         );

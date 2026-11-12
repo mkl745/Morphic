@@ -88,10 +88,18 @@ class WorkspaceView extends StatelessWidget {
                     style: theme.textTheme.titleSmall),
                 const SizedBox(height: MorphicSpace.sm),
                 Text(controller.error!, style: theme.textTheme.bodySmall),
-                if (onRetry != null) ...[
-                  const SizedBox(height: MorphicSpace.md),
-                  FilledButton(onPressed: onRetry, child: const Text('Retry')),
-                ],
+                const SizedBox(height: MorphicSpace.md),
+                if (onRetry != null)
+                  FilledButton(
+                    onPressed: onRetry,
+                    child: const Text(MorphicCopy.retry),
+                  )
+                else
+                  Text(
+                    MorphicCopy.workspaceOpenFailureDetail,
+                    style: theme.textTheme.bodySmall,
+                    textAlign: TextAlign.center,
+                  ),
               ],
             ),
           ),

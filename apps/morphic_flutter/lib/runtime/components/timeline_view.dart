@@ -39,6 +39,7 @@ import '../../engine/interaction.dart';
 import '../change_type_button.dart';
 import '../component_registry.dart';
 import '../explanation_sheet.dart';
+import '../filter_recovery.dart';
 import 'chart_format.dart';
 import 'timeline_painter.dart';
 
@@ -107,13 +108,13 @@ class _TimelineViewState extends State<TimelineView> {
     });
   }
 
-  /// Recovery action for the empty-after-filter surface (design-system §7): clearing the
-  /// workspace filters is the only way rows come back, so the empty state offers it.
+  /// Clear workspace filters without discarding this view's own state.
   Future<void> _clearFilters() async {
     await _send([Commands.setGlobalFilter([])]);
   }
 
   Future<void> _send(List<Map<String, dynamic>> commands) async {
+    if (_busy) return;
     setState(() {
       _busy = true;
       _commandError = null;
@@ -331,17 +332,9 @@ class _TimelineViewState extends State<TimelineView> {
             _header(theme),
             if (scene != null && scene.isPartial) _partialNotice(theme, scene),
             if (_commandError != null)
-              Padding(
-                padding: const EdgeInsets.only(top: MorphicSpace.xs),
-                child: Text(
-                  _commandError!,
-                  key: const Key('timeline-command-error'),
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    color: dark
-                        ? MorphicColors.error
-                        : MorphicColors.severityErrorLight,
-                  ),
-                ),
+              MorphicCommandError(
+                evidence: _commandError!,
+                evidenceKey: const Key('timeline-command-error'),
               ),
             const SizedBox(height: MorphicSpace.sm),
             _body(theme, dark, scene, geo, active),
@@ -402,7 +395,9 @@ class _TimelineViewState extends State<TimelineView> {
     if (_state == _Load.failed) {
       return MorphicStateMessage(
         icon: Icons.error_outline,
-        headline: _error ?? 'This timeline could not be built.',
+        headline: MorphicCopy.timelineFailure,
+        detail: _error,
+        isError: true,
         action: TextButton(
           key: const Key('timeline-retry'),
           onPressed: _fetch,
@@ -423,16 +418,21 @@ class _TimelineViewState extends State<TimelineView> {
       );
     }
     if (scene == null || scene.buckets.isEmpty) {
-      final hasFilters = widget.ctx.engine.globalFilters.isNotEmpty;
+      final hasWorkspaceFilters = widget.ctx.engine.globalFilters.isNotEmpty;
+      final viewCommands = clearViewNarrowingCommands(widget.ctx);
       return MorphicStateMessage(
         icon: Icons.filter_alt_off_outlined,
         headline: 'No dated rows match the current filters.',
-        detail: hasFilters ? null : MorphicCopy.noRowsDetail,
-        action: hasFilters
-            ? TextButton(
-                key: const Key('timeline-clear-filters'),
-                onPressed: _clearFilters,
-                child: const Text(MorphicCopy.clearFilters),
+        detail: !hasWorkspaceFilters && viewCommands.isEmpty
+            ? MorphicCopy.noRowsDetail
+            : null,
+        action: hasWorkspaceFilters || viewCommands.isNotEmpty
+            ? MorphicFilterActions(
+                workspaceKey: const Key('timeline-clear-filters'),
+                viewKey: const Key('timeline-clear-view-filters'),
+                onClearWorkspace: hasWorkspaceFilters ? _clearFilters : null,
+                onClearView: viewCommands.isEmpty ? null : () => _send(viewCommands),
+                busy: _busy,
               )
             : null,
       );

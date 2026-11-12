@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
+import '../../design_system/copy.dart';
 import '../../design_system/tokens.dart';
 import '../../engine/bridge.dart';
 import '../../engine/bridge_scope.dart';
@@ -248,7 +249,7 @@ class _EngineStatusCard extends StatelessWidget {
                   ),
                   const SizedBox(height: MorphicSpace.sm),
                   Text(
-                    'The engine did not start. Try again; your files are not affected.',
+                    MorphicCopy.engineFailureDetail,
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
                   Align(
@@ -257,7 +258,7 @@ class _EngineStatusCard extends StatelessWidget {
                       key: const Key('engine-retry-button'),
                       onPressed: onRetry,
                       icon: const Icon(Icons.refresh, size: 18),
-                      label: const Text('Try again'),
+                      label: const Text(MorphicCopy.tryAgain),
                     ),
                   ),
                 ],
@@ -333,7 +334,7 @@ class _WorkspaceList extends StatelessWidget {
               Text('Could not load workspaces: ${snap.error}'),
               const SizedBox(height: MorphicSpace.sm),
               Text(
-                'Your workspaces are still saved. Try loading the list again.',
+                MorphicCopy.libraryFailureDetail,
                 style: Theme.of(context).textTheme.bodySmall,
               ),
               Align(
@@ -342,7 +343,7 @@ class _WorkspaceList extends StatelessWidget {
                   key: const Key('workspaces-retry-button'),
                   onPressed: onRetry,
                   icon: const Icon(Icons.refresh, size: 18),
-                  label: const Text('Try again'),
+                  label: const Text(MorphicCopy.tryAgain),
                 ),
               ),
             ],

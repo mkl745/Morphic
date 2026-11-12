@@ -15,6 +15,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../design_system/copy.dart';
 import '../../design_system/tokens.dart';
 import '../../engine/engine_controller.dart';
 import '../../engine/interaction.dart';
@@ -22,6 +23,7 @@ import '../change_type_button.dart';
 import '../component_registry.dart';
 import '../explanation_sheet.dart';
 import '../field_corrections.dart';
+import '../filter_recovery.dart';
 import '../value_format.dart';
 import 'row_detail_sheet.dart';
 import 'table_filter_menu.dart';
@@ -238,14 +240,14 @@ class _DataTableViewState extends State<DataTableView> {
 
   /// Send a batch and let the controller's revision bump drive the rebuild. A rejected batch
   /// leaves the document alone, so the header keeps showing what is actually applied.
-  Future<void> _send(List<Map<String, dynamic>> commands) async {
-    if (_commandBusy) return;
+  Future<bool> _send(List<Map<String, dynamic>> commands) async {
+    if (_commandBusy) return false;
     setState(() {
       _commandBusy = true;
       _commandError = null;
     });
     final affected = await widget.ctx.engine.applyCommands(commands);
-    if (!mounted) return;
+    if (!mounted) return false;
     setState(() {
       _commandBusy = false;
       _commandError = affected == null ? widget.ctx.engine.error : null;
@@ -257,6 +259,7 @@ class _DataTableViewState extends State<DataTableView> {
       _offset = 0;
       await _fetch();
     }
+    return affected != null;
   }
 
   void _toggleSort(String field) {
@@ -284,13 +287,17 @@ class _DataTableViewState extends State<DataTableView> {
     await _send([Commands.setComponentFilter(widget.ctx.id, next)]);
   }
 
-  void _clearAll() {
+  Future<void> _clearAll() async {
     if (_commandBusy) return;
-    _searchCtrl.clear();
-    _send([
-      Commands.setComponentFilter(widget.ctx.id, null),
-      Commands.setSearch(widget.ctx.id, null),
-    ]);
+    _debounce?.cancel();
+    final commands = clearViewNarrowingCommands(widget.ctx);
+    if (commands.isEmpty) return;
+    // Leave the text intact if the engine rejects the batch.
+    if (await _send(commands) && mounted) _searchCtrl.clear();
+  }
+
+  Future<void> _clearWorkspaceFilters() async {
+    await _send([Commands.setGlobalFilter([])]);
   }
 
   void _next() {
@@ -389,14 +396,7 @@ class _DataTableViewState extends State<DataTableView> {
               if (widget.ctx.canFilter || widget.ctx.canSearch)
                 _activeFilters(theme),
               if (_commandError != null)
-                Padding(
-                  padding: const EdgeInsets.only(top: MorphicSpace.xs),
-                  child: Text(
-                    _commandError!,
-                    style: theme.textTheme.labelSmall
-                        ?.copyWith(color: MorphicColors.error),
-                  ),
-                ),
+                MorphicCommandError(evidence: _commandError!),
               const SizedBox(height: MorphicSpace.sm),
               Expanded(child: _body(theme, cols, totalWidth)),
               const SizedBox(height: MorphicSpace.sm),
@@ -413,6 +413,10 @@ class _DataTableViewState extends State<DataTableView> {
     if (_search.isNotEmpty) bits.add('“$_search”');
     final f = _interaction.filter;
     if (f != null) bits.add(describeFilter(f));
+    if (widget.ctx.engine.globalFilters.isNotEmpty) {
+      if (bits.isEmpty) return MorphicCopy.noWorkspaceRows;
+      bits.add('workspace filters');
+    }
     if (bits.isEmpty) return 'This dataset has no rows.';
     return 'No rows match ${bits.join(' and ')}.';
   }
@@ -445,9 +449,11 @@ class _DataTableViewState extends State<DataTableView> {
         label: Text('Search: $_search'),
         onDeleted: _commandBusy
             ? null
-            : () {
-                _searchCtrl.clear();
-                _send([Commands.setSearch(widget.ctx.id, null)]);
+            : () async {
+                _debounce?.cancel();
+                if (await _send([Commands.setSearch(widget.ctx.id, null)]) && mounted) {
+                  _searchCtrl.clear();
+                }
               },
       ));
     }
@@ -503,51 +509,72 @@ class _DataTableViewState extends State<DataTableView> {
     }
     final page = _page;
     if (page == null) {
-      return Center(child: Text('No page loaded.', style: theme.textTheme.bodySmall));
-    }
-    if (cols.isEmpty) {
       return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(
-              // A workspace can reopen without its source (docs/architecture/06 §3). Say why,
-              // using the engine's wording, instead of implying the import was malformed.
-              widget.ctx.engine.notice ?? 'No columns to display.',
-              style: theme.textTheme.bodySmall,
-            ),
-            const SizedBox(height: MorphicSpace.sm),
-            Text(
-              'Restore the source file, or import it again to rebuild this workspace.',
-              style: theme.textTheme.bodySmall,
-            ),
+            Text('No page loaded.', style: theme.textTheme.bodySmall),
+            TextButton(onPressed: _fetch, child: const Text(MorphicCopy.retry)),
           ],
         ),
       );
     }
-    if (page.rows.isEmpty) {
-      final narrowed = _search.isNotEmpty || _interaction.filter != null;
-      return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              _emptyLabel(),
-              style: theme.textTheme.bodySmall,
-            ),
-            const SizedBox(height: MorphicSpace.sm),
-            if (narrowed)
-              TextButton(
-                key: const Key('table-clear-empty'),
-                onPressed: _commandBusy ? null : _clearAll,
-                child: const Text('Clear search and filters'),
-              )
-            else
+    if (cols.isEmpty) {
+      return SingleChildScrollView(
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
               Text(
-                'Import a file with data rows to fill this table.',
+                // Preserve the engine's notice for a missing source.
+                widget.ctx.engine.notice ?? 'No columns to display.',
                 style: theme.textTheme.bodySmall,
+                textAlign: TextAlign.center,
               ),
-          ],
+              const SizedBox(height: MorphicSpace.sm),
+              Text(
+                widget.ctx.engine.degraded
+                    ? MorphicCopy.missingSourceDetail
+                    : MorphicCopy.noColumnsDetail,
+                style: theme.textTheme.bodySmall,
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    if (page.rows.isEmpty) {
+      final hasWorkspaceFilters = widget.ctx.engine.globalFilters.isNotEmpty;
+      final viewCommands = clearViewNarrowingCommands(widget.ctx);
+      return SingleChildScrollView(
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                _emptyLabel(),
+                style: theme.textTheme.bodySmall,
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: MorphicSpace.sm),
+              if (hasWorkspaceFilters || viewCommands.isNotEmpty)
+                MorphicFilterActions(
+                  workspaceKey: const Key('table-clear-global-filters'),
+                  viewKey: const Key('table-clear-empty'),
+                  viewLabel: MorphicCopy.clearSearchAndFilters,
+                  onClearWorkspace: hasWorkspaceFilters ? _clearWorkspaceFilters : null,
+                  onClearView: viewCommands.isEmpty ? null : _clearAll,
+                  busy: _commandBusy,
+                )
+              else
+                Text(
+                  MorphicCopy.noTableRowsDetail,
+                  style: theme.textTheme.bodySmall,
+                  textAlign: TextAlign.center,
+                ),
+            ],
+          ),
         ),
       );
     }

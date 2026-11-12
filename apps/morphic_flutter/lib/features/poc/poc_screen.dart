@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 
+import '../../design_system/copy.dart';
 import '../../design_system/tokens.dart';
 import '../../engine/bridge_scope.dart';
 import '../../engine/engine_controller.dart';
@@ -25,6 +26,7 @@ class _PocScreenState extends State<PocScreen> {
   Map<String, dynamic>? _profile;
   String? _error;
   bool _generating = false;
+  bool _generationFailed = false;
   bool _started = false;
 
   @override
@@ -38,7 +40,10 @@ class _PocScreenState extends State<PocScreen> {
 
   Future<void> _loadAndProfile() async {
     final scope = BridgeScope.of(context);
-    setState(() => _error = null);
+    setState(() {
+      _error = null;
+      _generationFailed = false;
+    });
     try {
       final data = await rootBundle.load('assets/samples/sample_logs.csv');
       final bytes = data.buffer.asUint8List();
@@ -58,7 +63,12 @@ class _PocScreenState extends State<PocScreen> {
     final scope = BridgeScope.of(context);
     final bytes = _bytes;
     if (bytes == null) return;
-    setState(() => _generating = true);
+    if (_generating) return;
+    setState(() {
+      _generating = true;
+      _generationFailed = false;
+      _error = null;
+    });
     // Real import: Rust analyzes, compiles, validates, persists, and keeps a live session
     // so the workspace can page and aggregate without re-reading the file.
     final importer = ImportController(
@@ -72,6 +82,7 @@ class _PocScreenState extends State<PocScreen> {
     if (id == null || outcome == null) {
       setState(() {
         _generating = false;
+        _generationFailed = true;
         _error = importer.error ?? 'the engine did not return a workspace';
       });
       return;
@@ -108,17 +119,20 @@ class _PocScreenState extends State<PocScreen> {
                     Text('Error: $_error',
                         style: const TextStyle(color: MorphicColors.error)),
                     const SizedBox(height: MorphicSpace.sm),
-                    const Text(
-                      'The sample data could not be loaded. '
-                      'Try again; nothing was saved.',
+                    Text(
+                      _generationFailed
+                          ? MorphicCopy.sampleBuildFailureDetail
+                          : MorphicCopy.sampleLoadFailureDetail,
                     ),
                     Align(
                       alignment: Alignment.centerLeft,
                       child: TextButton.icon(
                         key: const Key('poc-retry-button'),
-                        onPressed: _generating ? null : _loadAndProfile,
+                        onPressed: _generating
+                            ? null
+                            : (_generationFailed ? _generate : _loadAndProfile),
                         icon: const Icon(Icons.refresh, size: 18),
-                        label: const Text('Try again'),
+                        label: const Text(MorphicCopy.tryAgain),
                       ),
                     ),
                   ],

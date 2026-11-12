@@ -352,6 +352,8 @@ void main() {
     final bridge = _bridge()..failChart = true;
     await _pump(tester, bridge);
     expect(find.byKey(const Key('timeline-retry')), findsOneWidget);
+    expect(find.text('This timeline could not be built.'), findsOneWidget);
+    expect(find.textContaining('not a chart'), findsOneWidget);
     bridge.failChart = false;
     await tester.tap(find.byKey(const Key('timeline-retry')));
     await tester.pumpAndSettle();

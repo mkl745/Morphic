@@ -30,6 +30,7 @@ import '../../engine/interaction.dart';
 import '../change_type_button.dart';
 import '../component_registry.dart';
 import '../explanation_sheet.dart';
+import '../filter_recovery.dart';
 import 'bar_chart_painter.dart';
 
 class BarChartView extends StatefulWidget {
@@ -110,6 +111,7 @@ class _BarChartViewState extends State<BarChartView> {
   }
 
   Future<void> _send(List<Map<String, dynamic>> commands) async {
+    if (_busy) return;
     setState(() {
       _busy = true;
       _commandError = null;
@@ -228,14 +230,7 @@ class _BarChartViewState extends State<BarChartView> {
           children: [
             _header(theme),
             if (_commandError != null)
-              Padding(
-                padding: const EdgeInsets.only(top: MorphicSpace.xs),
-                child: Text(
-                  _commandError!,
-                  style: theme.textTheme.labelSmall
-                      ?.copyWith(color: MorphicColors.error),
-                ),
-              ),
+              MorphicCommandError(evidence: _commandError!),
             if (_scene?.truncated == true) _partialNotice(theme),
             const SizedBox(height: MorphicSpace.sm),
             _body(theme, bars),
@@ -293,8 +288,7 @@ class _BarChartViewState extends State<BarChartView> {
         ),
       );
 
-  /// Recovery action for the empty-after-filter surface (design-system §7): clearing the
-  /// workspace filters is the only way rows come back, so the empty state offers it.
+  /// Clear workspace filters without discarding this view's own state.
   Future<void> _clearFilters() async {
     await _send([Commands.setGlobalFilter([])]);
   }
@@ -303,7 +297,9 @@ class _BarChartViewState extends State<BarChartView> {
     if (_state == _Load.failed) {
       return MorphicStateMessage(
         icon: Icons.error_outline,
-        headline: _error ?? 'This chart could not be built.',
+        headline: MorphicCopy.chartFailure,
+        detail: _error,
+        isError: true,
         action: TextButton(
           key: const Key('bar-retry'),
           onPressed: _fetch,
@@ -324,16 +320,21 @@ class _BarChartViewState extends State<BarChartView> {
       );
     }
     if (bars.isEmpty) {
-      final hasFilters = widget.ctx.engine.globalFilters.isNotEmpty;
+      final hasWorkspaceFilters = widget.ctx.engine.globalFilters.isNotEmpty;
+      final viewCommands = clearViewNarrowingCommands(widget.ctx);
       return MorphicStateMessage(
         icon: Icons.filter_alt_off_outlined,
         headline: MorphicCopy.noRowsMatch,
-        detail: hasFilters ? null : MorphicCopy.noRowsDetail,
-        action: hasFilters
-            ? TextButton(
-                key: const Key('bar-clear-filters'),
-                onPressed: _clearFilters,
-                child: const Text(MorphicCopy.clearFilters),
+        detail: !hasWorkspaceFilters && viewCommands.isEmpty
+            ? MorphicCopy.noRowsDetail
+            : null,
+        action: hasWorkspaceFilters || viewCommands.isNotEmpty
+            ? MorphicFilterActions(
+                workspaceKey: const Key('bar-clear-filters'),
+                viewKey: const Key('bar-clear-view-filters'),
+                onClearWorkspace: hasWorkspaceFilters ? _clearFilters : null,
+                onClearView: viewCommands.isEmpty ? null : () => _send(viewCommands),
+                busy: _busy,
               )
             : null,
       );

@@ -17,6 +17,7 @@ import 'package:morphic_flutter/engine/bridge_scope.dart';
 import 'package:morphic_flutter/engine/engine_controller.dart';
 import 'package:morphic_flutter/engine/interaction.dart';
 import 'package:morphic_flutter/features/poc/poc_screen.dart';
+import 'package:morphic_flutter/features/workspace/workspace_screen.dart';
 import 'package:morphic_flutter/runtime/component_registry.dart';
 import 'package:morphic_flutter/runtime/components/bar_chart_view.dart';
 import 'package:morphic_flutter/runtime/components/data_table_view.dart';
@@ -43,8 +44,8 @@ Map<String, dynamic> _barSpec() => {
       'interactions': {'filter': true, 'sort': true},
     };
 
-ScriptedBridge _barBridge() => ScriptedBridge(
-      rows: [
+ScriptedBridge _barBridge({List<List<dynamic>>? rows}) => ScriptedBridge(
+      rows: rows ?? [
         ['eu', 10],
         ['us', 5],
         ['eu', 30],
@@ -71,8 +72,8 @@ Map<String, dynamic> _lineSpec() => {
       'interactions': {'filter': true, 'select': true},
     };
 
-ScriptedBridge _lineBridge() => ScriptedBridge(
-      rows: [
+ScriptedBridge _lineBridge({List<List<dynamic>>? rows}) => ScriptedBridge(
+      rows: rows ?? [
         [0, 'api', 10],
         [60000, 'api', 20],
         [120000, 'api', 30],
@@ -97,8 +98,8 @@ Map<String, dynamic> _timelineSpec() => {
       'interactions': {'filter': true, 'select': true},
     };
 
-ScriptedBridge _timelineBridge() => ScriptedBridge(
-      rows: [
+ScriptedBridge _timelineBridge({List<List<dynamic>>? rows}) => ScriptedBridge(
+      rows: rows ?? [
         [0, 'ERROR', 'a'],
         [0, 'INFO', 'c'],
         [60000, 'WARN', 'd'],
@@ -250,17 +251,106 @@ void main() {
 
     testWidgets('an empty chart with no filters names the next step',
         (tester) async {
-      await _pumpChart(tester, _barBridge(), (e) => BarChartView(
+      await _pumpChart(tester, _barBridge(rows: []), (e) => BarChartView(
             ctx: ComponentContext(spec: e.components.first, engine: e),
           ));
-      // No filter applied and rows present: no empty state at all.
-      expect(find.text(MorphicCopy.noRowsMatch), findsNothing);
+      expect(find.text(MorphicCopy.noRowsMatch), findsOneWidget);
+      expect(find.text(MorphicCopy.noRowsDetail), findsOneWidget);
       expect(find.byKey(const Key('bar-clear-filters')), findsNothing);
+      expect(find.byKey(const Key('bar-clear-view-filters')), findsNothing);
+    });
+
+    testWidgets('bar view filters can be cleared without changing workspace filters',
+        (tester) async {
+      final bridge = _barBridge();
+      final engine = await _pumpChart(tester, bridge, (e) => BarChartView(
+            ctx: ComponentContext(spec: e.components.first, engine: e),
+          ));
+      final workspaceFilter = filterNode('eq', field: 'region', value: 'eu');
+      await engine.applyCommands([
+        Commands.setGlobalFilter([workspaceFilter]),
+        Commands.setComponentFilter('breakdown_by_region',
+            filterNode('eq', field: 'region', value: 'nope')),
+      ]);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('bar-clear-filters')), findsOneWidget);
+      expect(find.byKey(const Key('bar-clear-view-filters')), findsOneWidget);
+      await tester.tap(find.byKey(const Key('bar-clear-view-filters')));
+      await tester.pumpAndSettle();
+      expect(engine.globalFilters, [workspaceFilter]);
+      expect(ComponentInteraction.fromSpec(engine.components.first).filter, isNull);
+      expect(bridge.commandBatches.last, [
+        Commands.setComponentFilter('breakdown_by_region', null),
+      ]);
+      expect(find.byKey(const Key('bar-eu')), findsOneWidget);
+    });
+
+    testWidgets('line view-filter rejection is visible and retryable', (tester) async {
+      final bridge = _lineBridge();
+      final engine = await _pumpChart(tester, bridge, (e) => LineChartView(
+            ctx: ComponentContext(spec: e.components.first, engine: e),
+          ));
+      await engine.applyCommands([
+        Commands.setComponentFilter('trend_over_time',
+            filterNode('eq', field: 'service', value: 'nope')),
+      ]);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('line-clear-view-filters')), findsOneWidget);
+      bridge.failCommands = true;
+      await tester.tap(find.byKey(const Key('line-clear-view-filters')));
+      await tester.pumpAndSettle();
+      expect(find.text(MorphicCopy.updateFailure), findsOneWidget);
+      expect(find.textContaining(bridge.commandError), findsOneWidget);
+      expect(ComponentInteraction.fromSpec(engine.components.first).filter, isNotNull);
+      bridge.failCommands = false;
+      await tester.tap(find.byKey(const Key('line-clear-view-filters')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('line-plot')), findsOneWidget);
+      expect(ComponentInteraction.fromSpec(engine.components.first).filter, isNull);
+    });
+
+    testWidgets('timeline offers to clear a view-only filter', (tester) async {
+      final bridge = _timelineBridge();
+      final engine = await _pumpChart(tester, bridge, (e) => TimelineView(
+            ctx: ComponentContext(spec: e.components.first, engine: e),
+          ));
+      await engine.applyCommands([
+        Commands.setComponentFilter('event_timeline',
+            filterNode('eq', field: 'level', value: 'nope')),
+      ]);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('timeline-clear-filters')), findsNothing);
+      expect(find.byKey(const Key('timeline-clear-view-filters')), findsOneWidget);
+      await tester.tap(find.byKey(const Key('timeline-clear-view-filters')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('timeline-plot')), findsOneWidget);
+      expect(bridge.commandBatches.last, [
+        Commands.setComponentFilter('event_timeline', null),
+      ]);
+    });
+
+    testWidgets('empty values and undated rows give an actionable next step',
+        (tester) async {
+      await _pumpChart(tester, _lineBridge(rows: [
+        [0, 'api', null],
+      ]), (e) => LineChartView(
+            ctx: ComponentContext(spec: e.components.first, engine: e),
+          ));
+      expect(find.text('No values in range: every bucket is empty.'), findsOneWidget);
+      expect(find.text(MorphicCopy.noRowsDetail), findsOneWidget);
+
+      await _pumpChart(tester, _timelineBridge(rows: [
+        [null, 'INFO', 'undated'],
+      ]), (e) => TimelineView(
+            ctx: ComponentContext(spec: e.components.first, engine: e),
+          ));
+      expect(find.text('No dated rows match the current filters.'), findsOneWidget);
+      expect(find.text(MorphicCopy.noRowsDetail), findsOneWidget);
     });
   });
 
   group('data table', () {
-    Map<String, dynamic> tableSpec() => {
+    Map<String, dynamic> tableSpec({bool search = true, bool filter = false}) => {
           'id': 'data_table',
           'type': 'data_table',
           'title': 'Data',
@@ -269,7 +359,7 @@ void main() {
             'columns': <String>[],
             'page_size': 2,
           },
-          'interactions': {'search': true},
+          'interactions': {'search': search, 'filter': filter},
         };
 
     testWidgets('a search with no matches offers Clear search and filters',
@@ -312,6 +402,164 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('eu'), findsOneWidget);
       expect(find.text('No rows match “zzzz”.'), findsNothing);
+      expect(bridge.commandBatches.last, [Commands.setSearch('data_table', null)]);
+    });
+
+    testWidgets('a workspace filter is not mistaken for an empty dataset',
+        (tester) async {
+      final bridge = ScriptedBridge(
+        components: [tableSpec()],
+        order: const ['data_table'],
+      );
+      final engine = EngineController(bridge: bridge, storageRoot: '/tmp/m');
+      await engine.open('w1');
+      await engine.applyCommands([
+        Commands.setGlobalFilter([
+          filterNode('eq', field: 'region', value: 'nope'),
+        ]),
+      ]);
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: AnimatedBuilder(
+              animation: engine,
+              builder: (context, _) => DataTableView(
+                ctx: ComponentContext(spec: engine.components.first, engine: engine),
+                height: 400,
+                searchDebounce: Duration.zero,
+              ),
+            ),
+          ),
+        ),
+      ));
+      await tester.pumpAndSettle();
+      expect(find.text(MorphicCopy.noWorkspaceRows), findsOneWidget);
+      expect(find.text('This dataset has no rows.'), findsNothing);
+      expect(find.byKey(const Key('table-clear-global-filters')), findsOneWidget);
+      expect(find.byKey(const Key('table-clear-empty')), findsNothing);
+      await tester.tap(find.byKey(const Key('table-clear-global-filters')));
+      await tester.pumpAndSettle();
+      expect(engine.globalFilters, isEmpty);
+      expect(bridge.commandBatches.last, [Commands.setGlobalFilter([])]);
+      expect(find.text('eu'), findsOneWidget);
+    });
+
+    testWidgets('table recovery keeps workspace and view filters separate',
+        (tester) async {
+      final bridge = ScriptedBridge(
+        components: [tableSpec()],
+        order: const ['data_table'],
+      );
+      final engine = EngineController(bridge: bridge, storageRoot: '/tmp/m');
+      await engine.open('w1');
+      await engine.applyCommands([
+        Commands.setGlobalFilter([
+          filterNode('eq', field: 'region', value: 'eu'),
+        ]),
+      ]);
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: AnimatedBuilder(
+              animation: engine,
+              builder: (context, _) => DataTableView(
+                ctx: ComponentContext(spec: engine.components.first, engine: engine),
+                height: 400,
+                searchDebounce: Duration.zero,
+              ),
+            ),
+          ),
+        ),
+      ));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), 'zzzz');
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('table-clear-global-filters')), findsOneWidget);
+      expect(find.byKey(const Key('table-clear-empty')), findsOneWidget);
+      await tester.tap(find.byKey(const Key('table-clear-global-filters')));
+      await tester.pumpAndSettle();
+      expect(engine.globalFilters, isEmpty);
+      expect(ComponentInteraction.fromSpec(engine.components.first).search, 'zzzz');
+      expect(find.text('No rows match “zzzz”.'), findsOneWidget);
+      expect(bridge.commandBatches.last, [Commands.setGlobalFilter([])]);
+      await tester.tap(find.byKey(const Key('table-clear-empty')));
+      await tester.pumpAndSettle();
+      expect(ComponentInteraction.fromSpec(engine.components.first).search, isNull);
+      expect(find.text('eu'), findsOneWidget);
+    });
+
+    testWidgets('clearing a rejected search preserves it and can be retried',
+        (tester) async {
+      final bridge = ScriptedBridge(
+        components: [tableSpec()],
+        order: const ['data_table'],
+      );
+      final engine = EngineController(bridge: bridge, storageRoot: '/tmp/m');
+      await engine.open('w1');
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: AnimatedBuilder(
+              animation: engine,
+              builder: (context, _) => DataTableView(
+                ctx: ComponentContext(spec: engine.components.first, engine: engine),
+                height: 400,
+                searchDebounce: Duration.zero,
+              ),
+            ),
+          ),
+        ),
+      ));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), 'zzzz');
+      await tester.pumpAndSettle();
+      bridge.failCommands = true;
+      await tester.tap(find.byKey(const Key('table-clear-empty')));
+      await tester.pumpAndSettle();
+      expect(find.text(MorphicCopy.updateFailure), findsOneWidget);
+      expect(find.textContaining(bridge.commandError), findsOneWidget);
+      expect(tester.widget<TextField>(find.byType(TextField)).controller!.text, 'zzzz');
+      expect(ComponentInteraction.fromSpec(engine.components.first).search, 'zzzz');
+      bridge.failCommands = false;
+      await tester.tap(find.byKey(const Key('table-clear-empty')));
+      await tester.pumpAndSettle();
+      expect(tester.widget<TextField>(find.byType(TextField)).controller!.text, isEmpty);
+      expect(find.text('eu'), findsOneWidget);
+    });
+
+    testWidgets('a filter-only table clears its view without sending a search command',
+        (tester) async {
+      final bridge = ScriptedBridge(
+        components: [tableSpec(search: false, filter: true)],
+        order: const ['data_table'],
+      );
+      final engine = EngineController(bridge: bridge, storageRoot: '/tmp/m');
+      await engine.open('w1');
+      await engine.applyCommands([
+        Commands.setComponentFilter('data_table',
+            filterNode('eq', field: 'region', value: 'nope')),
+      ]);
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: AnimatedBuilder(
+              animation: engine,
+              builder: (context, _) => DataTableView(
+                ctx: ComponentContext(spec: engine.components.first, engine: engine),
+                height: 400,
+              ),
+            ),
+          ),
+        ),
+      ));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('table-clear-empty')), findsOneWidget);
+      await tester.tap(find.byKey(const Key('table-clear-empty')));
+      await tester.pumpAndSettle();
+      expect(bridge.commandBatches.last, [
+        Commands.setComponentFilter('data_table', null),
+      ]);
+      expect(find.text('eu'), findsOneWidget);
     });
 
     testWidgets('a genuinely empty dataset names the next step',
@@ -338,8 +586,7 @@ void main() {
       ));
       await tester.pumpAndSettle();
       expect(find.text('This dataset has no rows.'), findsOneWidget);
-      expect(find.text('Import a file with data rows to fill this table.'),
-          findsOneWidget);
+      expect(find.text(MorphicCopy.noTableRowsDetail), findsOneWidget);
       expect(find.byKey(const Key('table-clear-empty')), findsNothing);
     });
   });
@@ -354,6 +601,45 @@ void main() {
             'aggregation': {'op': 'count', 'field': null},
           },
         };
+
+    testWidgets('a metric view filter can be cleared independently', (tester) async {
+      final spec = metricSpec()..['interactions'] = {'filter': true};
+      final bridge = ScriptedBridge(
+        metrics: {'total_records': null},
+        components: [spec],
+        order: const ['total_records'],
+      );
+      final engine = EngineController(bridge: bridge, storageRoot: '/tmp/m');
+      await engine.open('w1');
+      final workspaceFilter = filterNode('eq', field: 'region', value: 'eu');
+      await engine.applyCommands([
+        Commands.setGlobalFilter([workspaceFilter]),
+        Commands.setComponentFilter('total_records',
+            filterNode('eq', field: 'region', value: 'nope')),
+      ]);
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: AnimatedBuilder(
+              animation: engine,
+              builder: (context, _) => MetricCardView(
+                ctx: ComponentContext(spec: engine.components.first, engine: engine),
+              ),
+            ),
+          ),
+        ),
+      ));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('metric-clear-filters-total_records')), findsOneWidget);
+      expect(find.byKey(const Key('metric-clear-view-filters-total_records')), findsOneWidget);
+      await tester.tap(find.byKey(const Key('metric-clear-view-filters-total_records')));
+      await tester.pumpAndSettle();
+      expect(engine.globalFilters, [workspaceFilter]);
+      expect(ComponentInteraction.fromSpec(engine.components.first).filter, isNull);
+      expect(bridge.commandBatches.last, [
+        Commands.setComponentFilter('total_records', null),
+      ]);
+    });
 
     testWidgets('a null metric under filters offers Clear filters',
         (tester) async {
@@ -379,6 +665,9 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('No data for this metric'), findsOneWidget);
+      expect(find.text(MorphicCopy.metricFiltersHint), findsOneWidget);
+      expect(find.text(MorphicCopy.noRowsMatch), findsNothing,
+          reason: 'a null aggregate does not prove that no rows matched');
       expect(
           find.byKey(const Key('metric-clear-filters-total_records')),
           findsOneWidget);
@@ -387,6 +676,7 @@ void main() {
           find.byKey(const Key('metric-clear-filters-total_records')));
       await tester.pumpAndSettle();
       expect(engine.globalFilters, isEmpty);
+      expect(find.text(MorphicCopy.noRowsDetail), findsOneWidget);
       expect(
           find.byKey(const Key('metric-clear-filters-total_records')),
           findsNothing);
@@ -413,6 +703,29 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('No workspace open.'), findsOneWidget);
       expect(find.text(MorphicCopy.noWorkspaceOpenDetail), findsOneWidget);
+    });
+
+    testWidgets('a failed open without a retry callback names the next step',
+        (tester) async {
+      final bridge = ScriptedBridge()..failSnapshot = true;
+      final engine = EngineController(bridge: bridge, storageRoot: '/tmp/m');
+      await engine.open('w1');
+      await tester.pumpWidget(host(WorkspaceView(
+        controller: engine,
+        registry: ComponentRegistry(),
+      )));
+      await tester.pumpAndSettle();
+      expect(find.text('Could not open this workspace'), findsOneWidget);
+      expect(find.textContaining('store: not found'), findsOneWidget);
+      expect(find.text(MorphicCopy.workspaceOpenFailureDetail), findsOneWidget);
+    });
+
+    testWidgets('a missing structural document does not claim data was lost',
+        (tester) async {
+      await tester.pumpWidget(const MaterialApp(home: WorkspaceScreen()));
+      await tester.pumpAndSettle();
+      expect(find.text('No workspace document.'), findsOneWidget);
+      expect(find.text(MorphicCopy.noWorkspaceDocumentDetail), findsOneWidget);
     });
 
     testWidgets('no components names the next step', (tester) async {
@@ -462,6 +775,34 @@ void main() {
   });
 
   group('proof of concept', () {
+    testWidgets('a generation failure retries the import rather than profiling',
+        (tester) async {
+      final bridge = ScriptedBridge();
+      final runner = FakeImportRunner(
+        failure: const MorphicBridgeException('store: no space left'),
+      );
+      await tester.pumpWidget(MaterialApp(
+        home: BridgeScope(
+          bridge: bridge,
+          storageRoot: '/tmp/m',
+          importRunner: runner,
+          child: const PocScreen(),
+        ),
+      ));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('Generate workspace'));
+      await tester.tap(find.text('Generate workspace'));
+      await tester.pumpAndSettle();
+      expect(runner.runs, 1);
+      expect(find.text(MorphicCopy.sampleBuildFailureDetail), findsOneWidget);
+      expect(find.textContaining('store: no space left'), findsOneWidget);
+      await tester.ensureVisible(find.byKey(const Key('poc-retry-button')));
+      await tester.tap(find.byKey(const Key('poc-retry-button')));
+      await tester.pumpAndSettle();
+      expect(runner.runs, 2);
+      expect(find.text(MorphicCopy.sampleBuildFailureDetail), findsOneWidget);
+    });
+
     testWidgets('a load failure offers Try again', (tester) async {
       final bridge = _ProfileFlakyBridge();
       await tester.pumpWidget(MaterialApp(
@@ -473,6 +814,7 @@ void main() {
       ));
       await tester.pumpAndSettle();
       expect(find.textContaining('Error:'), findsOneWidget);
+      expect(find.text(MorphicCopy.sampleLoadFailureDetail), findsOneWidget);
       expect(find.byKey(const Key('poc-retry-button')), findsOneWidget);
 
       bridge.failProfile = false;

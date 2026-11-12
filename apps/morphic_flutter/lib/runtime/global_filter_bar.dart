@@ -9,6 +9,7 @@ library;
 
 import 'package:flutter/material.dart';
 
+import '../design_system/copy.dart';
 import '../design_system/tokens.dart';
 import '../engine/engine_controller.dart';
 import '../engine/interaction.dart';
@@ -142,13 +143,7 @@ class _GlobalFilterBarState extends State<GlobalFilterBar> {
             ),
           ),
         if (_error != null)
-          Padding(
-            padding: const EdgeInsets.only(top: MorphicSpace.xs),
-            child: Text(
-              _error!,
-              style: theme.textTheme.labelSmall?.copyWith(color: MorphicColors.error),
-            ),
-          ),
+          MorphicCommandError(evidence: _error!),
       ],
     );
   }

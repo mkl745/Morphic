@@ -257,6 +257,7 @@ void main() {
     final bridge = _bridge()..failChart = true;
     await _pump(tester, bridge);
     expect(find.byKey(const Key('line-retry')), findsOneWidget);
+    expect(find.text('This chart could not be built.'), findsOneWidget);
     expect(find.textContaining('not a chart'), findsOneWidget);
     bridge.failChart = false;
     await tester.tap(find.byKey(const Key('line-retry')));

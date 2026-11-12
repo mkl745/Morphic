@@ -9,6 +9,7 @@ library;
 
 import 'package:flutter/material.dart';
 
+import '../design_system/copy.dart';
 import '../design_system/tokens.dart';
 import '../engine/engine_controller.dart';
 import '../engine/interaction.dart';
@@ -262,7 +263,7 @@ class _FieldCorrectionsSheetState extends State<FieldCorrectionsSheet> {
                   style: theme.textTheme.bodySmall),
               const SizedBox(height: MorphicSpace.sm),
               Text(
-                'Try reopening the workspace to reload its field information.',
+                MorphicCopy.noProfileDetail,
                 style: theme.textTheme.bodySmall,
               ),
             ]

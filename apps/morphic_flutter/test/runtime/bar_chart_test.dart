@@ -390,6 +390,7 @@ void main() {
     final bridge = _bridge()..failChart = true;
     await _pump(tester, bridge);
     expect(find.byKey(const Key('bar-retry')), findsOneWidget);
+    expect(find.text('This chart could not be built.'), findsOneWidget);
     expect(find.textContaining('not a chart'), findsOneWidget);
     expect(find.byKey(const Key('bar-eu')), findsNothing);
 

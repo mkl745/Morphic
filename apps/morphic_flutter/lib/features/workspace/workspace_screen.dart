@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
+import '../../design_system/copy.dart';
 import '../../design_system/tokens.dart';
 import '../../engine/autosave.dart';
 import '../../engine/engine_controller.dart';
@@ -167,8 +168,7 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
                     const Text('No workspace document.'),
                     const SizedBox(height: MorphicSpace.sm),
                     Text(
-                      'Nothing was saved for this workspace. '
-                      'Open it from Home to load it.',
+                      MorphicCopy.noWorkspaceDocumentDetail,
                       style: Theme.of(context).textTheme.bodySmall,
                       textAlign: TextAlign.center,
                     ),
