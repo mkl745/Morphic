@@ -290,7 +290,10 @@ void main() {
             child: AnimatedBuilder(
               animation: engine,
               builder: (context, _) => DataTableView(
-                ctx: ComponentContext(spec: tableSpec(), engine: engine),
+                // The spec must come from the engine document, rebuilt on every
+                // notification, so persisted search state reaches the widget.
+                ctx: ComponentContext(
+                    spec: engine.components.first, engine: engine),
                 height: 400,
                 searchDebounce: Duration.zero,
               ),
@@ -326,7 +329,8 @@ void main() {
         home: Scaffold(
           body: Center(
             child: DataTableView(
-              ctx: ComponentContext(spec: tableSpec(), engine: engine),
+              ctx: ComponentContext(
+                  spec: engine.components.first, engine: engine),
               height: 400,
             ),
           ),
