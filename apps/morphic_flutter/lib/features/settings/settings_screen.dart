@@ -36,7 +36,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void _retryUsage() {
     final root = _root;
     if (root != null) {
-      setState(() => _usage = (widget.storageUsage ?? measureStorageBytes)(root));
+      final next = (widget.storageUsage ?? measureStorageBytes)(root);
+      setState(() {
+        _usage = next;
+      });
     }
   }
 
@@ -46,8 +49,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final preference = MorphicThemeScope.maybeOf(context);
     final mode = preference?.mode ??
         (theme.brightness == Brightness.dark ? ThemeMode.dark : ThemeMode.light);
-    final sizeMiB = FilePickerSource.defaultMaxBytes ~/ (1024 * 1024);
-    final memoryMiB = ImportLimits.memoryBytes ~/ (1024 * 1024);
+    const sizeMiB = FilePickerSource.defaultMaxBytes ~/ (1024 * 1024);
+    const memoryMiB = ImportLimits.memoryBytes ~/ (1024 * 1024);
 
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),

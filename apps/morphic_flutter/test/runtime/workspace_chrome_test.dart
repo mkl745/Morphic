@@ -43,6 +43,9 @@ void main() {
         isNull,
         reason: 'empty titles cannot be submitted');
     await tester.enterText(find.byKey(const Key('workspace-title-input')), '  Sales review  ');
+    await tester.pump();
+    expect(tester.widget<FilledButton>(find.byKey(const Key('workspace-title-save'))).onPressed,
+        isNotNull);
     await tester.tap(find.byKey(const Key('workspace-title-save')));
     await tester.pumpAndSettle();
 
@@ -77,6 +80,7 @@ void main() {
     await tester.tap(find.byKey(const Key('workspace-rename')));
     await tester.pumpAndSettle();
     await tester.enterText(find.byKey(const Key('workspace-title-input')), 'New title');
+    await tester.pump();
     await tester.tap(find.byKey(const Key('workspace-title-save')));
     await tester.pumpAndSettle();
     expect(engine.doc!['workspace']['title'], 'Scripted');

@@ -139,12 +139,12 @@ class _ResultCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final color = !result.ran
-        ? MorphicColors.error
+        ? theme.colorScheme.error
         : !result.representative
-            ? MorphicColors.warning
+            ? MorphicColors.warningText(theme.brightness)
             : result.passes
-                ? MorphicColors.success
-                : MorphicColors.error;
+                ? MorphicColors.successText(theme.brightness)
+                : theme.colorScheme.error;
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(MorphicSpace.lg),

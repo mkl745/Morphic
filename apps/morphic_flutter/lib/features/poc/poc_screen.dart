@@ -121,7 +121,7 @@ class _PocScreenState extends State<PocScreen> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text('Error: $_error',
-                        style: const TextStyle(color: MorphicColors.error)),
+                        style: TextStyle(color: scheme.error)),
                     const SizedBox(height: MorphicSpace.sm),
                     Text(
                       _generationFailed
@@ -170,7 +170,7 @@ class _PocScreenState extends State<PocScreen> {
             style: Theme.of(context)
                 .textTheme
                 .bodySmall
-                ?.copyWith(color: scheme.onSurface.withValues(alpha: 0.6)),
+                ?.copyWith(color: scheme.onSurfaceVariant),
           ),
         ],
       ),
@@ -185,7 +185,9 @@ class _PocScreenState extends State<PocScreen> {
           Icon(
             done ? Icons.check_circle : Icons.radio_button_unchecked,
             size: 18,
-            color: done ? MorphicColors.success : MorphicColors.textSecondaryDark,
+            color: done
+                ? MorphicColors.successText(Theme.of(context).brightness)
+                : Theme.of(context).colorScheme.onSurfaceVariant,
           ),
           const SizedBox(width: MorphicSpace.md),
           Text('$n. $label'),
@@ -246,7 +248,7 @@ class _ProfileView extends StatelessWidget {
         color: accent ? scheme.primary.withValues(alpha: 0.15) : scheme.surface,
         borderRadius: BorderRadius.circular(MorphicRadius.sm),
         border: Border.all(
-          color: accent ? scheme.primary : MorphicColors.borderDark,
+          color: accent ? scheme.primary : scheme.outline,
         ),
       ),
       child: Text(text, style: Theme.of(context).textTheme.labelSmall),
