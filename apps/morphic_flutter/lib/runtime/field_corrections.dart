@@ -257,9 +257,15 @@ class _FieldCorrectionsSheetState extends State<FieldCorrectionsSheet> {
               style: theme.textTheme.bodySmall,
             ),
             const SizedBox(height: MorphicSpace.md),
-            if (fields.isEmpty)
+            if (fields.isEmpty) ...[
               Text('No field profile is available for this workspace.',
-                  style: theme.textTheme.bodySmall)
+                  style: theme.textTheme.bodySmall),
+              const SizedBox(height: MorphicSpace.sm),
+              Text(
+                'Try reopening the workspace to reload its field information.',
+                style: theme.textTheme.bodySmall,
+              ),
+            ]
             else ...[
               DropdownButton<String>(
                 key: const Key('field-name-dropdown'),

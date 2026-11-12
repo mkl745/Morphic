@@ -70,6 +70,13 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  void _reloadEngine() {
+    final scope = BridgeScope.of(context);
+    setState(() {
+      _engineInfo = Future(() => scope.bridge.engineInfo());
+    });
+  }
+
   /// Import a `.morphic` bundle picked by the user. Rust verifies the manifest and every
   /// dataset hash; Dart only chooses the file and reports the outcome.
   Future<void> _importBundle(BuildContext context) async {
@@ -141,7 +148,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ?.copyWith(color: MorphicColors.textSecondaryDark),
           ),
           const SizedBox(height: MorphicSpace.lg),
-          _EngineStatusCard(future: _engineInfo),
+          _EngineStatusCard(future: _engineInfo, onRetry: _reloadEngine),
           const SizedBox(height: MorphicSpace.lg),
           FilledButton.icon(
             onPressed: () async {
@@ -178,6 +185,7 @@ class _HomeScreenState extends State<HomeScreen> {
             bundleWriter: widget.bundleWriter ?? const FileBundleWriter(),
             sampleLauncher: widget.sampleLauncher,
             onChanged: _reloadWorkspaces,
+            onRetry: _reloadWorkspaces,
           ),
           const SizedBox(height: MorphicSpace.xl),
           Row(
@@ -199,8 +207,9 @@ class _HomeScreenState extends State<HomeScreen> {
 }
 
 class _EngineStatusCard extends StatelessWidget {
-  const _EngineStatusCard({required this.future});
+  const _EngineStatusCard({required this.future, required this.onRetry});
   final Future<EngineInfo>? future;
+  final VoidCallback onRetry;
 
   @override
   Widget build(BuildContext context) {
@@ -224,11 +233,33 @@ class _EngineStatusCard extends StatelessWidget {
               );
             }
             if (snap.hasError) {
-              return Row(
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.error_outline, color: MorphicColors.error),
-                  const SizedBox(width: MorphicSpace.md),
-                  Expanded(child: Text('Engine unavailable: ${snap.error}')),
+                  Row(
+                    children: [
+                      const Icon(Icons.error_outline,
+                          color: MorphicColors.error),
+                      const SizedBox(width: MorphicSpace.md),
+                      Expanded(
+                          child: Text('Engine unavailable: ${snap.error}')),
+                    ],
+                  ),
+                  const SizedBox(height: MorphicSpace.sm),
+                  Text(
+                    'The engine did not start. Try again; your files are not affected.',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton.icon(
+                      key: const Key('engine-retry-button'),
+                      onPressed: onRetry,
+                      icon: const Icon(Icons.refresh, size: 18),
+                      label: const Text('Try again'),
+                    ),
+                  ),
                 ],
               );
             }
@@ -271,6 +302,7 @@ class _WorkspaceList extends StatelessWidget {
     required this.bundleWriter,
     required this.sampleLauncher,
     required this.onChanged,
+    required this.onRetry,
   });
 
   final Future<List<dynamic>>? future;
@@ -279,6 +311,7 @@ class _WorkspaceList extends StatelessWidget {
   final BundleWriter bundleWriter;
   final SampleLauncher? sampleLauncher;
   final VoidCallback onChanged;
+  final VoidCallback onRetry;
 
   @override
   Widget build(BuildContext context) {
@@ -293,7 +326,27 @@ class _WorkspaceList extends StatelessWidget {
           );
         }
         if (snap.hasError) {
-          return Text('Could not load workspaces: ${snap.error}');
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('Could not load workspaces: ${snap.error}'),
+              const SizedBox(height: MorphicSpace.sm),
+              Text(
+                'Your workspaces are still saved. Try loading the list again.',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  key: const Key('workspaces-retry-button'),
+                  onPressed: onRetry,
+                  icon: const Icon(Icons.refresh, size: 18),
+                  label: const Text('Try again'),
+                ),
+              ),
+            ],
+          );
         }
         final items = snap.data ?? [];
         if (items.isEmpty) {

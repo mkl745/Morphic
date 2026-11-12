@@ -158,7 +158,24 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
     return Scaffold(
       appBar: AppBar(title: Text(ws?['title'] as String? ?? 'Workspace')),
       body: ws == null
-          ? const Center(child: Text('No workspace document.'))
+          ? Center(
+              child: Padding(
+                padding: const EdgeInsets.all(MorphicSpace.xl),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text('No workspace document.'),
+                    const SizedBox(height: MorphicSpace.sm),
+                    Text(
+                      'Nothing was saved for this workspace. '
+                      'Open it from Home to load it.',
+                      style: Theme.of(context).textTheme.bodySmall,
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ),
+              ),
+            )
           : ListView(
               padding: const EdgeInsets.all(MorphicSpace.lg),
               children: [

@@ -11,6 +11,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../design_system/copy.dart';
 import '../design_system/tokens.dart';
 import '../engine/engine_controller.dart';
 import '../engine/interaction.dart';
@@ -97,7 +98,21 @@ class WorkspaceView extends StatelessWidget {
         );
       }
       return Center(
-        child: Text('No workspace open.', style: theme.textTheme.bodySmall),
+        child: Padding(
+          padding: const EdgeInsets.all(MorphicSpace.xl),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('No workspace open.', style: theme.textTheme.bodySmall),
+              const SizedBox(height: MorphicSpace.sm),
+              Text(
+                MorphicCopy.noWorkspaceOpenDetail,
+                style: theme.textTheme.bodySmall,
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
       );
     }
 
@@ -106,9 +121,20 @@ class WorkspaceView extends StatelessWidget {
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(MorphicSpace.xl),
-          child: Text(
-            'The engine generated no components for this file.',
-            style: theme.textTheme.bodySmall,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'The engine generated no components for this file.',
+                style: theme.textTheme.bodySmall,
+              ),
+              const SizedBox(height: MorphicSpace.sm),
+              Text(
+                MorphicCopy.noComponentsDetail,
+                style: theme.textTheme.bodySmall,
+                textAlign: TextAlign.center,
+              ),
+            ],
           ),
         ),
       );

@@ -38,6 +38,7 @@ class _PocScreenState extends State<PocScreen> {
 
   Future<void> _loadAndProfile() async {
     final scope = BridgeScope.of(context);
+    setState(() => _error = null);
     try {
       final data = await rootBundle.load('assets/samples/sample_logs.csv');
       final bytes = data.buffer.asUint8List();
@@ -100,8 +101,28 @@ class _PocScreenState extends State<PocScreen> {
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(MorphicSpace.lg),
-                child: Text('Error: $_error',
-                    style: const TextStyle(color: MorphicColors.error)),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text('Error: $_error',
+                        style: const TextStyle(color: MorphicColors.error)),
+                    const SizedBox(height: MorphicSpace.sm),
+                    const Text(
+                      'The sample data could not be loaded. '
+                      'Try again; nothing was saved.',
+                    ),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: TextButton.icon(
+                        key: const Key('poc-retry-button'),
+                        onPressed: _generating ? null : _loadAndProfile,
+                        icon: const Icon(Icons.refresh, size: 18),
+                        label: const Text('Try again'),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           if (_profile != null) ...[

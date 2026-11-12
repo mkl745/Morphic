@@ -27,8 +27,10 @@ library;
 
 import 'package:flutter/material.dart';
 
+import '../../design_system/copy.dart';
 import '../../design_system/tokens.dart';
 import '../../engine/chart_scene.dart';
+import '../../engine/interaction.dart';
 import '../change_type_button.dart';
 import '../component_registry.dart';
 import '../explanation_sheet.dart';
@@ -246,15 +248,28 @@ class _LineChartViewState extends State<LineChartView> {
         ),
       );
 
+  /// Recovery action for the empty surfaces (design-system §7): clearing the workspace
+  /// filters is the only way rows come back, so the empty states offer it.
+  Future<void> _clearFilters() async {
+    final affected = await widget.ctx.engine.applyCommands(
+      [Commands.setGlobalFilter([])],
+    );
+    if (!mounted) return;
+    if (affected != null) {
+      _seenRevision = widget.ctx.engine.revision;
+      await _fetch();
+    }
+  }
+
   Widget _body(ThemeData theme, bool dark, SeriesScene? scene, LineGeometry geo) {
     if (_state == _Load.failed) {
-      return _Message(
+      return MorphicStateMessage(
         icon: Icons.error_outline,
-        text: _error ?? 'This chart could not be built.',
+        headline: _error ?? 'This chart could not be built.',
         action: TextButton(
           key: const Key('line-retry'),
           onPressed: _fetch,
-          child: const Text('Retry'),
+          child: const Text(MorphicCopy.retry),
         ),
       );
     }
@@ -271,15 +286,24 @@ class _LineChartViewState extends State<LineChartView> {
       );
     }
     if (scene == null || scene.series.isEmpty) {
-      return const _Message(
+      final hasFilters = widget.ctx.engine.globalFilters.isNotEmpty;
+      return MorphicStateMessage(
         icon: Icons.filter_alt_off_outlined,
-        text: 'No rows match the current filters.',
+        headline: MorphicCopy.noRowsMatch,
+        detail: hasFilters ? null : MorphicCopy.noRowsDetail,
+        action: hasFilters
+            ? TextButton(
+                key: const Key('line-clear-filters'),
+                onPressed: _clearFilters,
+                child: const Text(MorphicCopy.clearFilters),
+              )
+            : null,
       );
     }
     if (geo.series.isEmpty) {
-      return _Message(
+      return MorphicStateMessage(
         icon: Icons.visibility_off_outlined,
-        text: 'All series are hidden.',
+        headline: 'All series are hidden.',
         action: TextButton(
           key: const Key('line-show-all'),
           onPressed: () => setState(() => _hidden = <String>{}),
@@ -288,9 +312,18 @@ class _LineChartViewState extends State<LineChartView> {
       );
     }
     if (geo.isEmpty) {
-      return const _Message(
+      final hasFilters = widget.ctx.engine.globalFilters.isNotEmpty;
+      return MorphicStateMessage(
         icon: Icons.show_chart,
-        text: 'No values in range: every bucket is empty.',
+        headline: 'No values in range: every bucket is empty.',
+        detail: hasFilters ? null : MorphicCopy.noRowsDetail,
+        action: hasFilters
+            ? TextButton(
+                key: const Key('line-clear-filters'),
+                onPressed: _clearFilters,
+                child: const Text(MorphicCopy.clearFilters),
+              )
+            : null,
       );
     }
 
@@ -580,39 +613,5 @@ class _LineChartViewState extends State<LineChartView> {
               ),
             ),
         ],
-      );
-}
-
-class _Message extends StatelessWidget {
-  const _Message({required this.icon, required this.text, this.action});
-
-  final IconData icon;
-  final String text;
-  final Widget? action;
-
-  @override
-  Widget build(BuildContext context) => SizedBox(
-        width: double.infinity,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: MorphicSpace.md),
-          child: Column(
-            children: [
-              Icon(
-                icon,
-                size: 20,
-                color: Theme.of(context).brightness == Brightness.dark
-                    ? MorphicColors.textSecondaryDark
-                    : MorphicColors.textSecondaryLight,
-              ),
-              const SizedBox(height: MorphicSpace.sm),
-              Text(
-                text,
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-              if (action != null) action!,
-            ],
-          ),
-        ),
       );
 }

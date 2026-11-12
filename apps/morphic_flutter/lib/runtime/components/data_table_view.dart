@@ -507,19 +507,47 @@ class _DataTableViewState extends State<DataTableView> {
     }
     if (cols.isEmpty) {
       return Center(
-        child: Text(
-          // A workspace can reopen without its source (docs/architecture/06 §3). Say why,
-          // using the engine's wording, instead of implying the import was malformed.
-          widget.ctx.engine.notice ?? 'No columns to display.',
-          style: theme.textTheme.bodySmall,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              // A workspace can reopen without its source (docs/architecture/06 §3). Say why,
+              // using the engine's wording, instead of implying the import was malformed.
+              widget.ctx.engine.notice ?? 'No columns to display.',
+              style: theme.textTheme.bodySmall,
+            ),
+            const SizedBox(height: MorphicSpace.sm),
+            Text(
+              'Restore the source file, or import it again to rebuild this workspace.',
+              style: theme.textTheme.bodySmall,
+            ),
+          ],
         ),
       );
     }
     if (page.rows.isEmpty) {
+      final narrowed = _search.isNotEmpty || _interaction.filter != null;
       return Center(
-        child: Text(
-          _emptyLabel(),
-          style: theme.textTheme.bodySmall,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              _emptyLabel(),
+              style: theme.textTheme.bodySmall,
+            ),
+            const SizedBox(height: MorphicSpace.sm),
+            if (narrowed)
+              TextButton(
+                key: const Key('table-clear-empty'),
+                onPressed: _commandBusy ? null : _clearAll,
+                child: const Text('Clear search and filters'),
+              )
+            else
+              Text(
+                'Import a file with data rows to fill this table.',
+                style: theme.textTheme.bodySmall,
+              ),
+          ],
         ),
       );
     }

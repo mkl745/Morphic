@@ -32,6 +32,7 @@ library;
 
 import 'package:flutter/material.dart';
 
+import '../../design_system/copy.dart';
 import '../../design_system/tokens.dart';
 import '../../engine/chart_scene.dart';
 import '../../engine/interaction.dart';
@@ -104,6 +105,12 @@ class _TimelineViewState extends State<TimelineView> {
         _result = result;
       }
     });
+  }
+
+  /// Recovery action for the empty-after-filter surface (design-system §7): clearing the
+  /// workspace filters is the only way rows come back, so the empty state offers it.
+  Future<void> _clearFilters() async {
+    await _send([Commands.setGlobalFilter([])]);
   }
 
   Future<void> _send(List<Map<String, dynamic>> commands) async {
@@ -393,13 +400,13 @@ class _TimelineViewState extends State<TimelineView> {
     int? active,
   ) {
     if (_state == _Load.failed) {
-      return _Message(
+      return MorphicStateMessage(
         icon: Icons.error_outline,
-        text: _error ?? 'This timeline could not be built.',
+        headline: _error ?? 'This timeline could not be built.',
         action: TextButton(
           key: const Key('timeline-retry'),
           onPressed: _fetch,
-          child: const Text('Retry'),
+          child: const Text(MorphicCopy.retry),
         ),
       );
     }
@@ -416,9 +423,18 @@ class _TimelineViewState extends State<TimelineView> {
       );
     }
     if (scene == null || scene.buckets.isEmpty) {
-      return const _Message(
+      final hasFilters = widget.ctx.engine.globalFilters.isNotEmpty;
+      return MorphicStateMessage(
         icon: Icons.filter_alt_off_outlined,
-        text: 'No dated rows match the current filters.',
+        headline: 'No dated rows match the current filters.',
+        detail: hasFilters ? null : MorphicCopy.noRowsDetail,
+        action: hasFilters
+            ? TextButton(
+                key: const Key('timeline-clear-filters'),
+                onPressed: _clearFilters,
+                child: const Text(MorphicCopy.clearFilters),
+              )
+            : null,
       );
     }
     if (geo.columns.every((c) => c.visibleCount == 0)) {
@@ -725,38 +741,4 @@ class _TimelineViewState extends State<TimelineView> {
       ),
     );
   }
-}
-
-class _Message extends StatelessWidget {
-  const _Message({required this.icon, required this.text, this.action});
-
-  final IconData icon;
-  final String text;
-  final Widget? action;
-
-  @override
-  Widget build(BuildContext context) => SizedBox(
-        width: double.infinity,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: MorphicSpace.md),
-          child: Column(
-            children: [
-              Icon(
-                icon,
-                size: 20,
-                color: Theme.of(context).brightness == Brightness.dark
-                    ? MorphicColors.textSecondaryDark
-                    : MorphicColors.textSecondaryLight,
-              ),
-              const SizedBox(height: MorphicSpace.sm),
-              Text(
-                text,
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-              if (action != null) action!,
-            ],
-          ),
-        ),
-      );
 }

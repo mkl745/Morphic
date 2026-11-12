@@ -286,11 +286,24 @@ class _MetricCardViewState extends State<MetricCardView> {
               // A null aggregate means "no data", which is not the number zero.
               semanticsLabel: isNull ? 'No data' : formatCell(_value),
             ),
-            if (isNull)
+            if (isNull) ...[
               Text(
                 'No data for this metric',
                 style: theme.textTheme.bodySmall,
               ),
+              if (widget.ctx.engine.globalFilters.isNotEmpty) ...[
+                const SizedBox(height: MorphicSpace.sm),
+                Text(
+                  'No rows match the current filters.',
+                  style: theme.textTheme.bodySmall,
+                ),
+                TextButton(
+                  key: Key('metric-clear-filters-${widget.ctx.id}'),
+                  onPressed: _busy ? null : () => _send([]),
+                  child: const Text('Clear filters'),
+                ),
+              ],
+            ],
           ],
         );
     }
