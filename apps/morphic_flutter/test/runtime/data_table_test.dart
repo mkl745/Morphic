@@ -320,8 +320,14 @@ void main() {
       reason: 'a header inside the ListView would scroll away with the rows',
     );
     expect(find.text('region'), findsOneWidget);
-    // Both header and rows share one horizontal viewport, so they move together.
-    expect(find.byType(SingleChildScrollView), findsOneWidget);
+    // Both header and rows share one horizontal viewport, so they move together. A separate
+    // vertical viewport may hold filter chips or command-error evidence above the grid.
+    final horizontal = find.byWidgetPredicate(
+      (w) => w is SingleChildScrollView && w.scrollDirection == Axis.horizontal,
+    );
+    expect(horizontal, findsOneWidget);
+    expect(find.descendant(of: horizontal, matching: find.text('region')), findsOneWidget);
+    expect(find.descendant(of: horizontal, matching: listFinder), findsOneWidget);
   });
 
   group('column sizing (defect found on a real phone)', () {
