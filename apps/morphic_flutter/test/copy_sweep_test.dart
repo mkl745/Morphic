@@ -274,10 +274,14 @@ void main() {
 
     testWidgets('a search with no matches offers Clear search and filters',
         (tester) async {
-      final bridge = ScriptedBridge(rows: [
-        ['eu', 10, null],
-        ['us', 20, 'alpha'],
-      ]);
+      final bridge = ScriptedBridge(
+        rows: [
+          ['eu', 10, null],
+          ['us', 20, 'alpha'],
+        ],
+        components: [tableSpec()],
+        order: const ['data_table'],
+      );
       final engine = EngineController(bridge: bridge, storageRoot: '/tmp/m');
       await engine.open('w1');
       await tester.pumpWidget(MaterialApp(
@@ -310,7 +314,13 @@ void main() {
     testWidgets('a genuinely empty dataset names the next step',
         (tester) async {
       final engine = EngineController(
-          bridge: ScriptedBridge(rows: []), storageRoot: '/tmp/m');
+        bridge: ScriptedBridge(
+          rows: [],
+          components: [tableSpec()],
+          order: const ['data_table'],
+        ),
+        storageRoot: '/tmp/m',
+      );
       await engine.open('w1');
       await tester.pumpWidget(MaterialApp(
         home: Scaffold(
