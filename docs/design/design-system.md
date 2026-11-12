@@ -71,6 +71,11 @@ inferred) · overflow menu (Why this view? · Change type · Resize · Move · R
 content · footer state (row counts, filter-active indicator). Empty-after-filter and
 binding-error states are designed surfaces with recovery actions, never blank boxes.
 
+Task 1.6.5 adds shared recovery copy, scoped filter-clearing actions and human-readable chart
+failures with the engine evidence retained. It is not the complete component-chrome, responsive,
+contrast or accessibility sweep; those remain in 1.6.1–1.6.3. See
+[m1.6-status.md](../roadmap/m1.6-status.md) §3.
+
 ## 8. Key screens (MVP)
 
 - **Home**: wordmark, recent workspaces (title, dataset chip, modified), primary "Import

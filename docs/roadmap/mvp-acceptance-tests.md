@@ -189,6 +189,12 @@ CI-green at `354f1ad` / run **43100359669** (6/6 ✅). No acceptance test is att
 M1.6 task; it makes no device claim and does not change AT-18 or any milestone exit. See
 [m1.6-status.md](m1.6-status.md) §2.
 
+*1.6.5 note.* Empty/error surfaces gained shared recovery copy and actionable scoped filter
+clearing. The final code tip `23d41b9` / run **43283304890** is CI-green (6/6). This improves
+some AT-11 states but does not supply its all-five-component golden coverage; AT-11 remains
+partial. It does not satisfy AT-18 or change any milestone exit. See
+[m1.6-status.md](m1.6-status.md) §3.
+
 **AT-18 — Responsive & accessibility.**
 Given compact/medium/expanded widths and text scale 1.3, then layouts follow the design
 rules (focus mode on phones, no clipped text — goldens), all targets ≥ 48 dp, contrast
@@ -204,6 +210,7 @@ smoke offline, and native libs pass alignment checks. *(manual + CI)*
 
 ## Reporting
 
-Each milestone updates a status table (pass/fail/not-yet) in this file's companion
-`acceptance-status.md` (created at M1.1). MVP exit requires **all 19 green** with (H)
+Acceptance evidence is summarized in [phase-1-standing-report.md](phase-1-standing-report.md)
+and the individual milestone status reports. The originally proposed companion
+`acceptance-status.md` has not been created. MVP exit requires **all 19 green** with (H)
 thresholds either met or formally re-planned with recorded evidence and user visibility.

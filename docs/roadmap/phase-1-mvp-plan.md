@@ -138,15 +138,13 @@ the remaining evidence. The chaos suite runs as a named gate in `ci.yml` and is 
 | 1.6.5 | Empty/error/edge copy sweep (every failure has human language + next action) | S | |
 | 1.6.6 | ◇ Workspace templates ("keep this layout for future imports") — only if 1.5 lands early; else P4 | M | stretch |
 
-*Status, updated for 1.6.4:* **1 of 6 M1.6 rows is done and CI-green.** Task 1.6.4 shipped four
-synthetic bundled samples (server logs, sales CSV, sensor JSON and the existing request-latency
-CSV), a shared catalog/import seam, and an empty-library first-run suggestion on Home plus a
-`Try a bundled sample` row on Import. `API_VERSION` stays **13**; no Rust, FFI, dependency,
-generated schema/fixture or golden image changed. The CI-green tip is `354f1ad` / run
-**43100359669** (6/6 ✅), after two stuck queued runs, a CI concurrency-group reset and a scoped
-analyzer fix for Flutter 3.50's `material.dart` deprecation. The suggestion is an empty-library
-state with no persisted dismissal preference, and the row makes no device claim. 1.6.1–1.6.3,
-1.6.5 and optional ◇1.6.6 remain unstarted. See [m1.6-status.md](m1.6-status.md) §2.
+*Status, updated for 1.6.5:* **2 of 6 M1.6 rows are implemented.** Task 1.6.4 shipped four
+synthetic bundled samples and an empty-library suggestion on Home plus a sample row on Import.
+Task 1.6.5 adds shared recovery copy, separate workspace/view filter-clear actions, and working
+retry paths for chart, home and PoC failures. The final code tip `23d41b9` / run
+**43283304890** is **6/6 ✅**, with 528 Dart tests and 54 live chart goldens. The bridge API stays
+**13**. 1.6.1–1.6.3 and optional ◇1.6.6 remain; neither row supplies device,
+accessibility or external UX-validation evidence. See [m1.6-status.md](m1.6-status.md) §§2–3.
 
 **Exit:** full acceptance suite passes on low/mid devices; UX validation script run with
 ≥3 external people, findings logged; no screen violates token rules.
