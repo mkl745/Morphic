@@ -2,6 +2,7 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:morphic_flutter/design_system/copy.dart';
 import 'package:morphic_flutter/engine/engine_controller.dart';
 import 'package:morphic_flutter/runtime/component_registry.dart';
 import 'package:morphic_flutter/runtime/components/data_table_view.dart';
@@ -139,6 +140,9 @@ void main() {
 
     expect(find.text('Unknown component type “hologram”'), findsOneWidget);
     expect(find.textContaining('renders in'), findsNothing);
+    await tester.tap(find.byType(ExpansionTile));
+    await tester.pumpAndSettle();
+    expect(find.text(MorphicCopy.unsupportedViewDetail), findsOneWidget);
   });
 
   testWidgets('a reserved type is reported as a validation problem', (tester) async {
@@ -158,6 +162,7 @@ void main() {
     await tester.tap(find.byType(ExpansionTile));
     await tester.pumpAndSettle();
     expect(find.textContaining('did not pass validation'), findsOneWidget);
+    expect(find.text(MorphicCopy.unsupportedViewDetail), findsOneWidget);
   });
 
   testWidgets('no workspace open is an explicit empty state', (tester) async {

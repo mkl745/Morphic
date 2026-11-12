@@ -13,6 +13,7 @@ library;
 
 import 'package:flutter/material.dart';
 
+import '../../design_system/copy.dart';
 import '../../design_system/tokens.dart';
 import '../component_registry.dart';
 import '../explanation_sheet.dart';
@@ -87,6 +88,8 @@ class DeferredComponent extends StatelessWidget {
         expandedCrossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(status.detail, style: theme.textTheme.bodySmall),
+          const SizedBox(height: MorphicSpace.sm),
+          Text(MorphicCopy.unsupportedViewDetail, style: theme.textTheme.bodySmall),
           if (explanation != null && explanation.isNotEmpty) ...[
             const SizedBox(height: MorphicSpace.sm),
             Text('Why this was generated: $explanation',

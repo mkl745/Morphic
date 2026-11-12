@@ -43,6 +43,8 @@ abstract final class MorphicCopy {
       'Workspace filters may affect this metric.';
   static const String noProfileDetail =
       'Try reopening the workspace to reload its field information.';
+  static const String unsupportedViewDetail =
+      'Return to Home and open another workspace, or update Morphic if a newer version is available.';
   static const String engineFailureDetail =
       'Try again. If the engine is still unavailable, restart Morphic.';
   static const String libraryFailureDetail =
