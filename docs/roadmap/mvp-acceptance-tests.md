@@ -184,6 +184,11 @@ injectable path/byte-sink seam and imports through the existing picker seam. No 
 attached to this stretch row, it makes no device claim, and it does not change any AT-13…AT-18
 status or the M1.5 exit. See [m1.5-status.md](m1.5-status.md) §8.
 
+*1.6.4 note.* Four bundled sample datasets and an empty-library first-run suggestion shipped
+CI-green at `354f1ad` / run **43100359669** (6/6 ✅). No acceptance test is attached to this
+M1.6 task; it makes no device claim and does not change AT-18 or any milestone exit. See
+[m1.6-status.md](m1.6-status.md) §2.
+
 **AT-18 — Responsive & accessibility.**
 Given compact/medium/expanded widths and text scale 1.3, then layouts follow the design
 rules (focus mode on phones, no clipped text — goldens), all targets ≥ 48 dp, contrast

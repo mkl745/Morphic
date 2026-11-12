@@ -26,7 +26,7 @@ can never silently ship a non-compliant `.so`.
   `READ_EXTERNAL_STORAGE`, no `MANAGE_EXTERNAL_STORAGE`. Permission revocation cannot break
   saved workspaces because we never depend on the original location (spec §11 requirement).
 - **Share-to-Morphic** (`ACTION_SEND` intent filter): P1 stretch; same copy-then-ingest path.
-- Clipboard import + bundled sample datasets: no permissions at all.
+- Clipboard import + **four** bundled sample datasets (1.6.4): no permissions at all.
 - Storage root: `path_provider` application documents dir → passed to `EngineConfig`.
   The Rust core only ever sees an opaque root path (platform-independent).
 

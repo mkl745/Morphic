@@ -74,9 +74,10 @@ binding-error states are designed surfaces with recovery actions, never blank bo
 ## 8. Key screens (MVP)
 
 - **Home**: wordmark, recent workspaces (title, dataset chip, modified), primary "Import
-  data" action, samples row, local-processing status line ("All processing on-device").
-- **Import**: source chooser (file/clipboard/sample) → file facts card (size, detected
-  format/encoding) → morph stages (real events) → workspace.
+  data" action, samples row (**shipped as the empty-library first-run suggestion in 1.6.4**),
+  local-processing status line ("All processing on-device").
+- **Import**: source chooser (file/clipboard/**sample row shipped in 1.6.4**) → file facts card
+  (size, detected format/encoding) → morph stages (real events) → workspace.
 - **Workspace**: app bar (title editable, save state, undo/redo), global filter bar
   (chips), adaptive component flow, command FAB placeholder **hidden until P2**.
 - **Settings**: theme, storage usage, import limits, about/privacy ("No data leaves this

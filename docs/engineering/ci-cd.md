@@ -39,8 +39,10 @@ schedule ───▶ nightly.yml ───────────────�
 | release | ubuntu-latest | decode keystore secret → `flutter build appbundle --release` + `apk --release` → verify alignment → checksums → gh-release | same |
 
 Rules:
-- **Concurrency**: cancel-in-progress on PR branches; never on tag builds.
-- **Pinning**: Flutter version explicit; Actions pinned to commit SHAs; NDK version explicit.
+- **Concurrency**: `ci-${{ github.ref }}-v2` with cancel-in-progress; never on tag builds.
+  The `-v2` suffix resets a stale queued group (§7).
+- **Toolchain**: Flutter stable (3.50.0/Dart 3.14.0 at the 1.6.4 CI-green tip); Actions pinned
+  to commit SHAs; NDK version explicit.
 - **Fail fast ordering**: rust-quality and dart-quality gate the (slower) android-build via
   `needs:` so broken logic doesn't burn NDK minutes.
 - **Artifacts**: debug APK per PR (14-day retention); release artifacts permanent on the
@@ -89,3 +91,25 @@ the pipeline is testable before signing is set up. Keystore generation instructi
 > scorer, the parser fuzz smoke and the named 1.5.4 kill-mid-save chaos suite all run on every
 > push, with the nightly carrying only the longer stream. The chaos suite's nightly step is
 > therefore wired but has not yet fired on a schedule; the per-push CI gate is the evidence.
+
+## 7. 1.6.4 CI-chain notes
+
+Two push runs for the 1.6.4 implementation (`43096883277` for `ddee67c` and the empty
+retrigger `43098442844` for `3d22aed`) stayed `queued` with no jobs during a GitHub Actions
+queue delay. **Neither run is evidence.** `d7142f6` changed only the CI concurrency group to
+`ci-${{ github.ref }}-v2` to escape the stale group; no test gate, Rust command, Dart command or
+enforcement condition changed. The old queued runs remain on the old group and are not cited as
+passes.
+
+Stable Flutter then moved from the previously recorded 3.47.9/Dart 3.13.7 to **3.50.0/Dart
+3.14.0**. Flutter 3.50 marks `package:flutter/material.dart` deprecated in favour of
+`package:material_ui/material_ui.dart`, which is not a dependency. `analysis_options.yaml`
+suppresses only `deprecated_member_use` (an info-level lint) so `flutter analyze` stays green;
+all other analyzer findings remain fatal, and migrating all widget imports to a new UI package
+is logged as follow-up debt rather than smuggled into a sample-dataset task.
+
+`354f1ad` / run **43100359669** is **6/6 ✅**: Rust fmt/clippy/test, the named kill-mid-save
+chaos suite, Dart analyze/test/goldens (500 tests, 54 LIVE goldens), Schema artifacts drift,
+Perf baseline, Android debug APK and emulator smoke. `flutter analyze` reports "No issues
+found!", `STAMP_OK` shows `354f1ad`, `PERMISSIONS_OK`, and the main manifest has no INTERNET
+permission. This is host CI evidence only, not a device or UX-validation claim.

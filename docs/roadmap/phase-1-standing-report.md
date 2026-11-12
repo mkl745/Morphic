@@ -1,4 +1,4 @@
-# Phase 1 standing report — updated for 1.5.6
+# Phase 1 standing report — updated for 1.6.4
 
 Written after task **1.2.5** went CI-green (run **42256267974**, commit **`fccec5c`**, all six
 jobs success). Every number below was read from the plan, the source tree, or a CI report —
@@ -36,6 +36,12 @@ including the optional stretch row; M1.5 remains **not exited** because the devi
 reopen ≤ 500 ms and the other evidence gaps are still owed. See [m1.5-status.md](m1.5-status.md)
 §8.
 
+**Update (1.6.4):** **M1.6 task 1.6.4** (four bundled sample datasets and an empty-library
+first-run suggestion) is done and CI-green at `354f1ad` / run **43100359669**, 6/6 ✅, after two
+stuck queued runs, a concurrency-group reset and a scoped analyzer fix for Flutter 3.50's
+`material.dart` deprecation. `API_VERSION` stays **13**. M1.6 has **1 of 6** rows shipped; its
+exit — and every other formal exit — remains unmet. See [m1.6-status.md](m1.6-status.md) §§1–2.
+
 **Update 2026-11-07:** **M1.3 is code-complete** — all five tasks (plan execution, interaction
 commands, the interactive table, global filters with tap-to-filter, and cross-component
 consistency) are done and CI-green. Tallies below reflect them; `docs/roadmap/m1.3-status.md`
@@ -47,32 +53,32 @@ records the decisions, the measured evidence, and why the milestone's **exit is 
 
 | Question | Answer |
 |---|---|
-| Tasks finished | **30 of 41** (73%) |
-| Tasks not finished | **11** — 10 core + 1 stretch (◇) |
+| Tasks finished | **31 of 41** (76%) |
+| Tasks not finished | **10** — 9 core + 1 stretch (◇) |
 | Milestones core-complete | **5 of 7** (M1.1–M1.5; M1.5 is code-complete including its ◇ stretch row) |
-| Milestones not started | **2** (M1.6, M1.7); M1.5 has 6 of 6 task rows shipped |
+| Milestones not started | **1** (M1.7); M1.6 has 1 of 6 rows shipped |
 | Milestone exits formally met | **0 of 7** |
 | Acceptance tests fully green | **10 of 19** (AT-02, AT-03, AT-05, AT-06, AT-08, AT-10, AT-12, AT-15, AT-16, AT-17) |
 | Acceptance tests partially evidenced | **8** |
 | Acceptance tests not yet started | **1** (AT-18) |
 | Evidence gaps no task row covers | **6** (see §6) |
-| Remaining core effort, by the plan's own S/M/L legend | **14–25 focused days** |
+| Remaining core effort, by the plan's own S/M/L legend | **13–24 focused days** |
 
 **The most important finding is the last row.** The plan estimates *all of Phase 1* at 30–40
-focused days. With M1.3, all seven M1.4 tasks and all six M1.5 rows finished, the **10
-unfinished core tasks sum to 14–25 days** under the plan's own legend (S ≈ ½ day, M ≈ 1–2,
+focused days. With M1.3, all seven M1.4 tasks, all six M1.5 rows and M1.6.4 finished, the **9
+unfinished core tasks sum to 13–24 days** under the plan's own legend (S ≈ ½ day, M ≈ 1–2,
 L ≈ 3–5), excluding the one remaining ◇ stretch item:
 
 | Remaining milestone | Core tasks | Focused days |
 |---|---|---|
 | M1.4 Visualization + planner | 0 | 0 |
 | M1.5 Lifecycle & layout | 0 | 0 |
-| M1.6 Experience pass | 5 | 8–14 |
+| M1.6 Experience pass | 4 | 7–13 |
 | M1.7 Hardening & release | 5 | 6–11 |
-| **Total** | **10** | **14–25** |
+| **Total** | **9** | **13–24** |
 
 The figure is recomputed from the plan's rows on every update rather than decremented by hand.
-The estimate was optimistic before any work started and 30 finished tasks have not made it less
+The estimate was optimistic before any work started and 31 finished tasks have not made it less
 so. §7 proposes a re-baseline.
 
 ---
@@ -86,7 +92,7 @@ so. §7 proposes a re-baseline.
 | M1.3 Interactivity | 5 | 5 | **complete** | **unmet** — AT-06 ✓ AT-08 ✓; AT-07 blocked only on mid-class ARM latency |
 | M1.4 Visualization + planner | 7 | 7 | **code-complete** — all five painters, planner v1, the explanation sheet and `ChangeComponentType` shipped | **unmet** — AT-11 not green; all-five golden coverage false; chart p95 ≤33 ms not device-measured |
 | M1.5 Lifecycle & layout | 6 | 6 | **code-complete** — all five core rows plus the CI-green ◇1.5.6 stretch shipped; the stretch row does not satisfy the exit | **unmet** — AT-13/14 device halves, AT-18, reopen ≤ 500 ms; AT-15/16/17 green as automated tests; named chaos suite CI-green |
-| M1.6 Experience pass | 6 | 0 | not started | — |
+| M1.6 Experience pass | 6 | 1 | **in progress** — 1.6.4 bundled samples / first-run suggestion shipped; 1.6.1–1.6.3, 1.6.5 and ◇1.6.6 not started | **unmet** — full acceptance suite on low/mid devices, UX validation with ≥3 external people and a no-token-violations sweep still owed |
 | M1.7 Hardening & release | 5 | 0 | not started | — |
 
 Phase 0 (architecture, contracts, CI, release pipeline) is complete and was verified by run
@@ -99,7 +105,8 @@ device-measured interaction budget. M1.5 has all five core rows shipped but is n
 automated AT-13/AT-14 halves are green, AT-15/16/17 are fully green as automated tests, and the
 named kill-mid-save chaos suite is CI-green, while the device halves, AT-18 and reopen ≤ 500 ms
 are still owed. The optional ◇1.5.6 stretch row is now shipped and CI-green, but that does not
-change the exit. That distinction is the difference between a demo and a milestone.
+change the exit. M1.6 has started with 1.6.4 while every formal exit stays open. That
+distinction is the difference between a demo and a milestone.
 
 ---
 
@@ -251,7 +258,9 @@ and hash-verified degraded re-link), 1.5.4 (autosave hardening, recovery UI and 
 chaos suite), 1.5.5 (field-correction UI plus targeted recompilation) and 1.5.6 (`.morphic` bundle
 export/import) are recorded in [m1.5-status.md](m1.5-status.md) §§2–8. AT-15, AT-16 and AT-17 are
 green as automated tests. No M1.5 code row remains; neither the shipped ◇1.5.6 stretch row nor the
-now-green chaos suite alone closes the milestone.
+now-green chaos suite alone closes the milestone. **M1.6.4 has since shipped** four bundled
+samples and an empty-library suggestion at `354f1ad` / run **43100359669** (6/6 ✅); it is a
+host-CI code row, not device or UX-validation evidence. See [m1.6-status.md](m1.6-status.md) §2.
 
 **The largest blocker is still one afternoon of mid-class device time.** It gates AT-01's 10 MB
 ≤ 3 s claim, AT-07's ≤ 150 ms sort/filter budget, AT-09's ≤ 500 ms reopen, the device halves of
@@ -261,12 +270,14 @@ AT-07 gate exist, but the measurement still has to be run.
 
 **Keep the cheap checks gated.** The AT-02 scorer (21 labelled files, 90 fields), the 3,000-case
 seeded fuzz smoke, the named 1.5.4 chaos suite, the 54 LIVE goldens, schema drift and the
-build-stamp/permission checks all run on every push. Held-out detection files, coverage-guided
+build-stamp/permission checks all run on every push. Stable Flutter is now 3.50.0/Dart 3.14.0;
+`analysis_options.yaml` suppresses only the new `material.dart` deprecation info, so analyzer
+findings remain fatal and `flutter analyze` is green. Held-out detection files, coverage-guided
 fuzzing, all-five golden coverage and a bundled font remain owed; the nightly supply-chain audit
 and the nightly chaos copy are blocked on the merge to `main`, not on missing code.
 
-**Re-baseline the estimate.** The remaining **10 core tasks** are **14–25 focused days** — still a
-large slice of the 30–40 the plan allowed for *all* of Phase 1, with **30 tasks** already spent.
+**Re-baseline the estimate.** The remaining **9 core tasks** are **13–24 focused days** — still a
+large slice of the 30–40 the plan allowed for *all* of Phase 1, with **31 tasks** already spent.
 If the calendar cannot absorb that, the honest lever is scope: the one remaining ◇ stretch item
 (templates) is already optional, and M1.6's design sweep can be narrowed without touching
 correctness.
@@ -279,5 +290,6 @@ correctness.
 - Acceptance definitions: [mvp-acceptance-tests.md](mvp-acceptance-tests.md)
 - M1.2 task-by-task notes and CI post-mortems: [m1.2-status.md](m1.2-status.md)
 - M1.5 task-by-task notes and CI post-mortems: [m1.5-status.md](m1.5-status.md)
+- M1.6 task-by-task notes and CI post-mortems: [m1.6-status.md](m1.6-status.md)
 - Device procedure and class matrix: [real-device-testing.md](../engineering/real-device-testing.md)
 - Share-to-Morphic evaluation: [ADR-0015](../decisions/ADR-0015-share-to-morphic.md)
