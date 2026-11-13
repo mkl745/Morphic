@@ -132,19 +132,20 @@ reopen ≤ 500 ms and the other evidence gaps are still owed. The milestone exit
 | # | Task | Size | Notes |
 |---|---|---|---|
 | 1.6.1 | Design-system application sweep: home, import, workspace chrome, settings; dark/light parity; motion tokens (real-event morph stages, stagger ≤400 ms) | L | **done, CI-green**; goldens refreshed |
-| 1.6.2 | Responsive: compact focus mode, medium two-column, expanded rail; landscape; text scale 1.3 goldens | L | AT-18 |
+| 1.6.2 | Responsive: compact focus mode, medium two-column, expanded rail; landscape; text scale 1.3 goldens | L | **done, CI-green**; AT-18 remains partial |
 | 1.6.3 | Accessibility pass: semantic summaries, focus order, targets, contrast, TalkBack on vertical slice | M | a11y checklist signed |
-| 1.6.4 | Sample datasets (3–5 bundled: server logs, sales CSV, sensor JSON) + first-run suggestion | S | |
-| 1.6.5 | Empty/error/edge copy sweep (every failure has human language + next action) | S | |
+| 1.6.4 | Sample datasets (3–5 bundled: server logs, sales CSV, sensor JSON) + first-run suggestion | S | **done, CI-green** |
+| 1.6.5 | Empty/error/edge copy sweep (every failure has human language + next action) | S | **done, CI-green** |
 | 1.6.6 | ◇ Workspace templates ("keep this layout for future imports") — only if 1.5 lands early; else P4 | M | stretch |
 
-*Status, updated for 1.6.1:* **3 of 6 M1.6 rows are implemented.** Task 1.6.4 shipped four
+*Status, updated for 1.6.2:* **4 of 6 M1.6 rows are implemented.** Task 1.6.4 shipped four
 synthetic samples and first-run suggestions; 1.6.5 added shared recovery copy, distinct filter
 scopes and retries. Task 1.6.1 applies dark/light themes, bundled fonts, real-event import
-motion, the editable live workspace title and Settings details, with refreshed screen and
-component goldens. The bridge API is **14**. Tasks 1.6.2, 1.6.3 and optional ◇1.6.6 remain;
-these code rows do not supply physical-device, complete accessibility or external UX evidence.
-See [m1.6-status.md](m1.6-status.md) §§2–5.
+motion, the editable live workspace title and Settings details. Task 1.6.2 adds adaptive
+workspace flow, opt-in compact focus, responsive inspection details and representative 1.3×
+goldens. The bridge API remains **14**. Task 1.6.3 and optional ◇1.6.6 remain; these code rows
+do not supply physical-device, complete accessibility or external UX evidence. See
+[m1.6-status.md](m1.6-status.md) §§2–6.
 
 **Exit:** full acceptance suite passes on low/mid devices; UX validation script run with
 ≥3 external people, findings logged; no screen violates token rules.

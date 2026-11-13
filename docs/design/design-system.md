@@ -61,7 +61,7 @@ Reduced-motion setting disables stagger/translation, keeps opacity.
 
 Task 1.6.1 applies the event-driven stage transition and a shared ≤400 ms post-import entrance;
 reopening a workspace is immediate. Layout-change size/position animation is not yet established
-as a design-token guarantee and remains part of the responsive/motion follow-up.
+as a design-token guarantee; it remains a motion follow-up after the 1.6.2 responsive work.
 
 ## 6. Responsive layout
 
@@ -72,7 +72,13 @@ as a design-token guarantee and remains part of the responsive/motion follow-up.
 | expanded | > 840 dp | multi-column canvas-like flow; persistent detail rail (tablet/landscape) |
 
 Phones never get a shrunk desktop grid. Layout `hints` (span/height) from the schema map to
-these classes; manual reorder/resize works in all classes (M1.5).
+these classes; manual reorder/resize works in all classes (M1.5). In the 1.6.2 implementation,
+focus mode is opt-in, expanded uses two or three columns depending on the space left by its
+rail, and an open inspection detail migrates between presentations when the window class
+changes. Explanations, row details and chart data tables use that presenter. Filter and
+field-correction editing forms remain modal bottom sheets at every width. Representative 1.3×
+goldens and responsive widget tests are live in CI; they do not establish the complete AT-18
+no-clipping, target, contrast and TalkBack matrix. See [M1.6 status](../roadmap/m1.6-status.md) §5.
 
 ## 7. Component chrome (shared)
 
@@ -83,8 +89,8 @@ binding-error states are designed surfaces with recovery actions, never blank bo
 
 Task 1.6.5 adds shared recovery copy, scoped filter-clearing actions and human-readable chart
 failures with the engine evidence retained. Task 1.6.1 applies key-screen chrome and theme tokens;
-responsive behavior, the full component-chrome/contrast audit and accessibility work remain.
-See [m1.6-status.md](../roadmap/m1.6-status.md).
+1.6.2 adds responsive layouts. The full component-chrome/contrast audit and accessibility work
+remain. See [m1.6-status.md](../roadmap/m1.6-status.md).
 
 ## 8. Key screens (MVP)
 

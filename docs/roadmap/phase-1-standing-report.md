@@ -1,4 +1,4 @@
-# Phase 1 standing report — updated for 1.6.1
+# Phase 1 standing report — updated for 1.6.2
 
 Written after task **1.2.5** went CI-green (run **42256267974**, commit **`fccec5c`**, all six
 jobs success). Every number below was read from the plan, the source tree, or a CI report —
@@ -51,7 +51,13 @@ had two shipped rows and no formal exit. See [m1.6-status.md](m1.6-status.md) §
 real-event motion, an undoable live title and readable goldens for all five component families.
 The final code follow-up `3cc9edf` / run **43367563320** passed **6/6 ✅**, including 82 live
 image comparisons. The bridge is now **v14**. AT-11 and AT-18 are still partial, and all formal
-exits remain open; see [m1.6-status.md](m1.6-status.md) §§4–5.
+exits remain open; see [m1.6-status.md](m1.6-status.md) §§4, 6.
+
+**Update (1.6.2):** Adaptive workspace flow, opt-in compact focus, responsive inspection
+surfaces and 1.3× dark/light examples shipped. The unmarked live-golden verification
+`ec57a26` / run **43381823333** passed **6/6 ✅**, including 581 behavioral tests and 100
+live golden tests against 102 PNGs. AT-18 remains partial and all formal exits remain open;
+see [m1.6-status.md](m1.6-status.md) §§5–6.
 
 **Update 2026-11-07:** **M1.3 is code-complete** — all five tasks (plan execution, interaction
 commands, the interactive table, global filters with tap-to-filter, and cross-component
@@ -64,32 +70,32 @@ records the decisions, the measured evidence, and why the milestone's **exit is 
 
 | Question | Answer |
 |---|---|
-| Tasks finished | **33 of 41** (80%) |
-| Tasks not finished | **8** — 7 core + 1 stretch (◇) |
+| Tasks finished | **34 of 41** (83%) |
+| Tasks not finished | **7** — 6 core + 1 stretch (◇) |
 | Milestones core-complete | **5 of 7** (M1.1–M1.5; M1.5 is code-complete including its ◇ stretch row) |
-| Milestones not started | **1** (M1.7); M1.6 has 3 of 6 rows shipped |
+| Milestones not started | **1** (M1.7); M1.6 has 4 of 6 rows shipped |
 | Milestone exits formally met | **0 of 7** |
 | Acceptance tests fully green | **10 of 19** (AT-02, AT-03, AT-05, AT-06, AT-08, AT-10, AT-12, AT-15, AT-16, AT-17) |
-| Acceptance tests partially evidenced | **9** (including AT-18's limited token and chart-scale evidence) |
+| Acceptance tests partially evidenced | **9** (including AT-18's representative responsive and token evidence) |
 | Acceptance tests not yet started | **0** |
 | Evidence gaps no task row fully covers | **6** (see §6) |
-| Remaining core effort, by the plan's own S/M/L legend | **10–17 focused days** |
+| Remaining core effort, by the plan's own S/M/L legend | **7–12 focused days** |
 
 **The most important finding is the last row.** The plan estimates *all of Phase 1* at 30–40
-focused days. With M1.3, all seven M1.4 tasks, all six M1.5 rows and 1.6.1/1.6.4/1.6.5 finished,
-the **7 unfinished core tasks sum to 10–17 days** under the plan's own legend (S ≈ ½ day,
-M ≈ 1–2, L ≈ 3–5), excluding the one remaining ◇ stretch item:
+focused days. With M1.3, all seven M1.4 tasks, all six M1.5 rows and 1.6.1/1.6.2/1.6.4/1.6.5
+finished, the **6 unfinished core tasks sum to 7–12 days** under the plan's own legend
+(S ≈ ½ day, M ≈ 1–2, L ≈ 3–5), excluding the one remaining ◇ stretch item:
 
 | Remaining milestone | Core tasks | Focused days |
 |---|---|---|
 | M1.4 Visualization + planner | 0 | 0 |
 | M1.5 Lifecycle & layout | 0 | 0 |
-| M1.6 Experience pass (one L + one M) | 2 | 4–7 |
+| M1.6 Experience pass (one M) | 1 | 1–2 |
 | M1.7 Hardening & release (one L + two M + two S) | 5 | 6–10 |
-| **Total** | **7** | **10–17** |
+| **Total** | **6** | **7–12** |
 
 The figure is recomputed from the plan's rows on every update rather than decremented by hand.
-The estimate was optimistic before any work started and 33 finished tasks have not made it less
+The estimate was optimistic before any work started and 34 finished tasks have not made it less
 so. §7 proposes a re-baseline.
 
 ---
@@ -103,7 +109,7 @@ so. §7 proposes a re-baseline.
 | M1.3 Interactivity | 5 | 5 | **complete** | **unmet** — AT-06 ✓ AT-08 ✓; AT-07 blocked only on mid-class ARM latency |
 | M1.4 Visualization + planner | 7 | 7 | **code-complete** — all five painters, planner v1, the explanation sheet and `ChangeComponentType` shipped | **unmet** — AT-11's full state matrix is incomplete and chart p95 ≤33 ms is not device-measured; all five families now have some goldens |
 | M1.5 Lifecycle & layout | 6 | 6 | **code-complete** — all five core rows plus the CI-green ◇1.5.6 stretch shipped; the stretch row does not satisfy the exit | **unmet** — AT-13/14 device halves, AT-18, reopen ≤ 500 ms; AT-15/16/17 green as automated tests; named chaos suite CI-green |
-| M1.6 Experience pass | 6 | 3 | **in progress** — 1.6.1 design pass, 1.6.4 samples and 1.6.5 copy/recovery shipped; 1.6.2, 1.6.3 and ◇1.6.6 remain | **unmet** — full acceptance suite on low/mid devices, UX validation with ≥3 external people and a no-token-violations sweep still owed |
+| M1.6 Experience pass | 6 | 4 | **in progress** — 1.6.1 design pass, 1.6.2 responsive layouts, 1.6.4 samples and 1.6.5 copy/recovery shipped; 1.6.3 and ◇1.6.6 remain | **unmet** — full acceptance suite on low/mid devices, UX validation with ≥3 external people and a no-token-violations sweep still owed |
 | M1.7 Hardening & release | 5 | 0 | not started | — |
 
 Phase 0 (architecture, contracts, CI, release pipeline) is complete and was verified by run
@@ -116,8 +122,8 @@ and a device-measured interaction budget. M1.5 has all five core rows shipped bu
 its automated AT-13/AT-14 halves are green, AT-15/16/17 are fully green as automated tests, and
 the named kill-mid-save chaos suite is CI-green, while the device halves, AT-18 and reopen ≤ 500 ms
 are still owed. The optional ◇1.5.6 stretch row is shipped and CI-green, but that does not change
-the exit. M1.6 has shipped 1.6.1, 1.6.4 and 1.6.5 while every formal exit stays open. That
-distinction is the difference between a demo and a milestone.
+the exit. M1.6 has shipped 1.6.1, 1.6.2, 1.6.4 and 1.6.5 while every formal exit stays open.
+That distinction is the difference between a demo and a milestone.
 
 ---
 
@@ -187,20 +193,22 @@ physical device above. Workspace templates and sharing into Morphic have not shi
 | **1.6.1 design sweep + initial live comparison** | **`890f318`** | **43305457290** | **6/6 ✅** (78 images; recovery follow-up later) |
 | **1.6.1 compact-title follow-up** | **`3748377`** | **43366494089** | **6/6 ✅** (82 images regenerated) |
 | **1.6.1 empty-recovery follow-up + live images** | **`3cc9edf`** | **43367563320** | **6/6 ✅** (82 images compared live) |
+| **1.6.2 responsive fixes + regenerated images** | **`915a4e9`** | **43380517761** | **6/6 ✅** (regeneration, bot `283ee8e`) |
+| **1.6.2 committed-image verification** | **`ec57a26`** | **43381823333** | **6/6 ✅** (102 images compared live) |
 
 Current source contains **703 Rust `#[test]` functions** across 8 engine crates and the bridge.
-The 1.6.1 image suite loads the bundled Inter, JetBrains Mono and Material icon fonts, and includes
+The image suite loads the bundled Inter, JetBrains Mono and Material icon fonts, and includes
 bar, line, timeline, metric, table and key-screen images in both themes. The live comparison on
-`3cc9edf` passed 80 golden tests against all 82 committed PNGs (`bootstrapped: false`), alongside
-549 behavioral tests and clean analysis. The full AT-11 state matrix remains incomplete. The
-generated UI schema artifact is unchanged;
-previous totals and per-task test additions are recorded in the individual milestone reports.
+`ec57a26` passed 100 golden tests against 102 committed PNGs (`bootstrapped: false`), alongside
+581 behavioral tests and clean analysis. The full AT-11 state matrix remains incomplete. The
+generated UI schema artifact is unchanged; previous totals and per-task test additions are
+recorded in the individual milestone reports.
 
-Run **43367563320** also reports `STAMP_OK`, `PERMISSIONS_OK`, `ENGINE_FFI_OK`, `POC_OK`,
-`RUNTIME_OK: range 1-256 of 600` and `PAGING_OK`. The main manifest still has no INTERNET
-permission (debug INTERNET is expected). The runtime smoke runs on an emulator, not a physical
-device. Toolchain: rustc 1.100.0, Flutter 3.50.0 / Dart 3.14.0, AGP 9.1, SDK 36 / min 24,
-16 KB pages and three ABIs.
+Run **43381823333** also reports `STAMP_OK`, `PERMISSIONS_OK`, `ENGINE_FFI_OK`, `POC_OK`,
+`RUNTIME_OK: range 1-256 of 600` and `PAGING_OK`, with the range changing to 257-512 of 600.
+The 600-row probe correctly refuses an AT-07 performance verdict. The main manifest still has no INTERNET permission (debug
+INTERNET is expected). The runtime smoke runs on an emulator, not a physical device. Toolchain:
+rustc 1.100.0, Flutter 3.50.0 / Dart 3.14.0, AGP 9.1, SDK 36 / min 24, 16 KB pages and three ABIs.
 
 ---
 
@@ -225,7 +233,7 @@ device. Toolchain: rustc 1.100.0, Flutter 3.50.0 / Dart 3.14.0, AGP 9.1, SDK 36 
 | AT-15 | Library lifecycle | **green** | 3 workspaces, rename/duplicate/delete, one shared dataset on disk and two healthy survivors proven in Rust + Dart on run 42970337214; no device claim |
 | AT-16 | Missing-source resilience | **green** | Degraded notice offers re-link (with an additional app-bar action on wide screens); hash-verified re-link restores `metric_data`. Named CI chaos gate covers interrupted writes, torn journals, quarantine, torn-index repair and migration backup. Automated only, no device claim |
 | AT-17 | User corrections | **green** | 1.5.5 (`23513e0`, run 43024916235): only affected bindings recompile, the override persists across reopen, undo restores the semantic state hash; automated only, no device claim |
-| AT-18 | Responsive & a11y | partial | Selected theme-pair contrast checks and 1.3× chart images exist; compact/medium/expanded coverage, full ≥48 dp/contrast audit and TalkBack vertical slice are not established |
+| AT-18 | Responsive & a11y | partial | Responsive widget tests and representative compact/medium/expanded 1.3× dark/light images pass live; the full no-clipping/≥48 dp/contrast matrix and TalkBack vertical slice remain unverified |
 | AT-19 | Release artifact | partial | dry-run APK only; unsigned; ~48 MB fat vs ≤ 40 MB per-ABI target |
 
 **A plan defect worth fixing:** M1.2's exit says "AT-04 passes", but AT-04 requires that "a
@@ -275,9 +283,10 @@ and hash-verified degraded re-link), 1.5.4 (autosave hardening, recovery UI and 
 chaos suite), 1.5.5 (field-correction UI plus targeted recompilation) and 1.5.6 (`.morphic` bundle
 export/import) are recorded in [m1.5-status.md](m1.5-status.md) §§2–8. AT-15, AT-16 and AT-17 are
 green as automated tests. No M1.5 code row remains; neither the shipped ◇1.5.6 stretch row nor the
-now-green chaos suite alone closes the milestone. **M1.6.1, 1.6.4 and 1.6.5 have since shipped**
-the key-screen design pass, bundled samples and empty/error recovery copy. They are code rows,
-not device or UX-validation evidence. See [m1.6-status.md](m1.6-status.md) §§2–5.
+now-green chaos suite alone closes the milestone. **M1.6.1, 1.6.2, 1.6.4 and 1.6.5 have since
+shipped** the key-screen design pass, responsive layouts, bundled samples and empty/error recovery
+copy. They are code rows, not device or UX-validation evidence. See
+[m1.6-status.md](m1.6-status.md) §§2–6.
 
 **The largest blocker is still one afternoon of mid-class device time.** It gates AT-01's 10 MB
 ≤ 3 s claim, AT-07's ≤ 150 ms sort/filter budget, AT-09's ≤ 500 ms reopen, the device halves of
@@ -293,8 +302,8 @@ findings remain fatal and `flutter analyze` is green. Held-out detection files, 
 fuzzing and the complete AT-11 image state matrix remain owed; the nightly supply-chain audit
 and the nightly chaos copy are blocked on the merge to `main`, not on missing code.
 
-**Re-baseline the estimate.** The remaining **7 core tasks** are **10–17 focused days** — still a
-large slice of the 30–40 the plan allowed for *all* of Phase 1, with **33 tasks** already spent.
+**Re-baseline the estimate.** The remaining **6 core tasks** are **7–12 focused days** — still a
+large slice of the 30–40 the plan allowed for *all* of Phase 1, with **34 tasks** already spent.
 If the calendar cannot absorb that, the one remaining ◇ stretch item (templates) is already
 optional; narrowing acceptance, accessibility or device evidence requires an explicit re-plan.
 

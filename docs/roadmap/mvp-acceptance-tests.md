@@ -203,7 +203,15 @@ key screens in both themes; `3cc9edf` / run **43367563320** passed 80 live golde
 binding-error images are not established for every component in both themes. AT-11 remains partial. The new theme-pair contrast checks and existing 1.3× chart
 images give AT-18 partial evidence, but do not prove the full responsive/target/contrast matrix
 or the TalkBack vertical slice. No milestone exit is implied. See
-[m1.6-status.md](m1.6-status.md) §§4–5.
+[m1.6-status.md](m1.6-status.md) §§4, 6.
+
+*1.6.2 note.* Compact focus, medium flow, expanded rail and representative portrait/landscape
+1.3× images are now covered by widget tests and live goldens; `ec57a26` / run **43381823333**
+passed all six jobs. Inspection details use bottom/side/rail presentation; editing filters and
+field corrections still uses modal bottom sheets. Some long labels can be abbreviated, so
+these examples do not prove the full no-clipping matrix. AT-18 remains **partial** pending a
+complete responsive, ≥48 dp target and contrast audit plus the TalkBack vertical slice; the
+emulator smoke is not physical-device evidence. See [m1.6-status.md](m1.6-status.md) §§5–6.
 
 **AT-18 — Responsive & accessibility.**
 Given compact/medium/expanded widths and text scale 1.3, then layouts follow the design
