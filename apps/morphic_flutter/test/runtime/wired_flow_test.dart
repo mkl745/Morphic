@@ -62,13 +62,12 @@ void main() {
     await tester.pumpAndSettle();
     await tester.ensureVisible(find.byKey(const Key('table-next-page')));
     await tester.pumpAndSettle();
-    final next = find.semantics.byLabel('Next page');
-    expect(
-      next,
-      findsOne,
-      reason: 'Visible semantics: '
-          '${tester.semantics.simulatedAccessibilityTraversal().map((node) => node.label).toList()}',
+    // IconButton tooltips are a separate semantics field in Flutter 3.50; Android
+    // uses the tooltip as the content description when no other label is present.
+    final next = find.semantics.byPredicate(
+      (node) => node.getSemanticsData().tooltip == 'Next page',
     );
+    expect(next, findsOne);
     tester.semantics.tap(next);
     await tester.pumpAndSettle();
     expect(find.semantics.byLabel('3–4 of 4'), findsOne);

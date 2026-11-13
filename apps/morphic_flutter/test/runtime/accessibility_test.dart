@@ -2,6 +2,7 @@
 /// tree, but do not replace a TalkBack pass or establish the complete AT-18 device matrix.
 library;
 
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -12,6 +13,8 @@ import 'package:morphic_flutter/design_system/tokens.dart';
 import 'package:morphic_flutter/engine/engine_controller.dart';
 import 'package:morphic_flutter/runtime/component_registry.dart';
 import 'package:morphic_flutter/runtime/components/data_table_view.dart';
+import 'package:morphic_flutter/runtime/components/line_chart_painter.dart';
+import 'package:morphic_flutter/runtime/components/timeline_painter.dart';
 
 import '../support/scripted_bridge.dart';
 
@@ -49,6 +52,7 @@ Future<EngineController> _pumpTable(
   Brightness brightness = Brightness.light,
   double scale = 1,
   Size size = const Size(800, 800),
+  double height = 500,
 }) async {
   _surface(tester, size);
   final engine = EngineController(bridge: bridge, storageRoot: '/tmp/m');
@@ -67,7 +71,7 @@ Future<EngineController> _pumpTable(
             animation: engine,
             builder: (context, _) => DataTableView(
               ctx: ComponentContext(spec: engine.components.first, engine: engine),
-              height: 500,
+              height: height,
               searchDebounce: Duration.zero,
             ),
           ),
@@ -124,15 +128,29 @@ ScriptedBridge _chartBridge(String type) => ScriptedBridge(
       order: const ['chart'],
     );
 
+class _GatedCommandsController extends EngineController {
+  _GatedCommandsController({required super.bridge, required super.storageRoot});
+
+  final releaseCommand = Completer<void>();
+
+  @override
+  Future<List<String>?> applyCommands(List<Map<String, dynamic>> commands) async {
+    await releaseCommand.future;
+    return super.applyCommands(commands);
+  }
+}
+
 Future<EngineController> _pumpChart(
   WidgetTester tester,
   String type, {
   Brightness brightness = Brightness.light,
   double scale = 1,
+  ScriptedBridge? bridge,
+  EngineController? controller,
 }) async {
   _surface(tester, const Size(800, 1000));
-  final bridge = _chartBridge(type);
-  final engine = EngineController(bridge: bridge, storageRoot: '/tmp/m');
+  final engine =
+      controller ?? EngineController(bridge: bridge ?? _chartBridge(type), storageRoot: '/tmp/m');
   await engine.open('w1');
   await tester.pumpWidget(MaterialApp(
     theme: brightness == Brightness.dark ? MorphicTheme.dark() : MorphicTheme.light(),
@@ -183,7 +201,28 @@ void main() {
     }
   }
 
-  testWidgets('row, headers and pager expose one meaningful action in reading order', (tester) async {
+  testWidgets('a short narrow table can scroll a complete 48 dp row into view', (tester) async {
+    await _pumpTable(tester, _tableBridge(), size: const Size(360, 400), height: 280);
+    final viewport = find.byKey(const Key('table-short-scroll'));
+    expect(viewport, findsOneWidget);
+    final row = find.byKey(const Key('table-row-1'));
+    await tester.ensureVisible(row);
+    await tester.pumpAndSettle();
+    final bounds = tester.getRect(viewport);
+    final rowBounds = tester.getRect(row);
+    expect(rowBounds.height, greaterThanOrEqualTo(48));
+    expect(rowBounds.top, greaterThanOrEqualTo(bounds.top));
+    expect(rowBounds.bottom, lessThanOrEqualTo(bounds.bottom));
+    expect(tester.takeException(), isNull);
+    tester.semantics.tap(
+      find.semantics.byLabel('Row 1: region: eu, amount: 10, note: No value'),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Row 1'), findsOneWidget);
+  });
+
+  testWidgets('row, headers and pager expose one meaningful action in reading order',
+      (tester) async {
     final bridge = _tableBridge();
     await _pumpTable(tester, bridge);
 
@@ -193,17 +232,24 @@ void main() {
     expect(second, findsOne);
     expect(first.evaluate().single.getSemanticsData().hasAction(ui.SemanticsAction.tap), isTrue);
     expect(find.semantics.byLabel('eu'), findsNothing, reason: 'cells are not duplicate actions');
-    final labels = tester.semantics.simulatedAccessibilityTraversal().map((node) => node.label);
-    expect(labels, containsAllInOrder([
-      'Column region, Not sorted',
-      'Filter region',
-      'Column amount, Not sorted',
-      'Filter amount',
-      'Row 1: region: eu, amount: 10, note: No value',
-      'Row 2: region: us, amount: 20, note: Empty string',
-      '1–2 of 4',
-      'Next page',
-    ]));
+    // Flutter 3.50 stores IconButton tooltips separately from ordinary labels. Android
+    // exposes a tooltip-only node as its content description when it has no other label.
+    final labels = tester.semantics.simulatedAccessibilityTraversal().map((node) {
+      final data = node.getSemanticsData();
+      return data.label.isEmpty ? data.tooltip : data.label;
+    });
+    expect(
+        labels,
+        containsAllInOrder([
+          'Column region, Not sorted',
+          'Filter region',
+          'Column amount, Not sorted',
+          'Filter amount',
+          'Row 1: region: eu, amount: 10, note: No value',
+          'Row 2: region: us, amount: 20, note: Empty string',
+          '1–2 of 4',
+          'Next page',
+        ]));
 
     tester.semantics.tap(first);
     await tester.pumpAndSettle();
@@ -212,7 +258,9 @@ void main() {
     await tester.tap(find.byKey(const Key('row-detail-close')));
     await tester.pumpAndSettle();
 
-    tester.semantics.tap(find.semantics.byLabel('Next page'));
+    tester.semantics.tap(
+      find.semantics.byPredicate((node) => node.getSemanticsData().tooltip == 'Next page'),
+    );
     await tester.pumpAndSettle();
     expect(find.semantics.byLabel('Row 3: region: apac, amount: 30, note: beta'), findsOne);
     expect(find.semantics.byLabel('3–4 of 4'), findsOne);
@@ -229,7 +277,10 @@ void main() {
     tester.semantics.longPress(header);
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('field-corrections-sheet')), findsOneWidget);
-    await tester.tap(find.byKey(const Key('field-correction-close')));
+    final cancel = find.text('Cancel');
+    await tester.ensureVisible(cancel);
+    await tester.pumpAndSettle();
+    await tester.tap(cancel);
     await tester.pumpAndSettle();
     tester.semantics.tap(find.semantics.byLabel('Column amount, Not sorted'));
     await tester.pumpAndSettle();
@@ -240,8 +291,15 @@ void main() {
   testWidgets('keyboard traverses table controls and can open row and correction', (tester) async {
     await _pumpTable(tester, _tableBridge());
     final order = [
-      'sort-region', 'filter-region', 'sort-amount', 'filter-amount',
-      'sort-note', 'filter-note', 'table-row-1', 'table-row-2', 'table-next-page',
+      'sort-region',
+      'filter-region',
+      'sort-amount',
+      'filter-amount',
+      'sort-note',
+      'filter-note',
+      'table-row-1',
+      'table-row-2',
+      'table-next-page',
     ];
     _innerFocus(tester, order.first).requestFocus();
     await tester.pump();
@@ -289,7 +347,8 @@ void main() {
 
   for (final brightness in Brightness.values) {
     for (final type in ['line_chart', 'timeline']) {
-      testWidgets('$type legend reports visibility and text contrast in $brightness', (tester) async {
+      testWidgets('$type legend reports visibility and text contrast in $brightness',
+          (tester) async {
         await _pumpChart(tester, type, brightness: brightness, scale: 1.3);
         final prefix = type == 'line_chart' ? 'line' : 'timeline';
         final suffix = type == 'line_chart' ? 'series' : 'lane';
@@ -306,9 +365,8 @@ void main() {
           of: find.byKey(Key('$prefix-legend-api')),
           matching: find.text('api'),
         ));
-        final surface = brightness == Brightness.dark
-            ? MorphicColors.surfaceDark
-            : MorphicColors.surfaceLight;
+        final surface =
+            brightness == Brightness.dark ? MorphicColors.surfaceDark : MorphicColors.surfaceLight;
         expect(_contrast(text.style!.color!, surface), greaterThanOrEqualTo(4.5));
         tester.semantics.tap(semantic);
         await tester.pumpAndSettle();
@@ -319,7 +377,8 @@ void main() {
     }
   }
 
-  testWidgets('line plot exposes actual semantic adjustment and keyboard bucket values', (tester) async {
+  testWidgets('line plot exposes actual semantic adjustment and keyboard bucket values',
+      (tester) async {
     await _pumpChart(tester, 'line_chart');
     final plot = find.semantics.byLabel(RegExp('^Line chart of ts'));
     var data = plot.evaluate().single.getSemanticsData();
@@ -344,6 +403,44 @@ void main() {
     expect(plot.evaluate().single.getSemanticsData().value, contains('Bucket 1 of 3'));
   });
 
+  testWidgets('line adjustment respects ends, hidden series, and repaint separation',
+      (tester) async {
+    await _pumpChart(tester, 'line_chart');
+    final plot = find.semantics.byLabel(RegExp('^Line chart of ts'));
+    LineChartPainter base() => tester
+        .widget<CustomPaint>(
+          find.byKey(const Key('line-base-paint')),
+        )
+        .painter! as LineChartPainter;
+    ScrubOverlayPainter overlay() => tester
+        .widget<CustomPaint>(
+          find.byKey(const Key('line-overlay-paint')),
+        )
+        .painter! as ScrubOverlayPainter;
+    final oldBase = base();
+    final oldOverlay = overlay();
+    tester.semantics.decrease(plot);
+    await tester.pumpAndSettle();
+    expect(plot.evaluate().single.getSemanticsData().value, contains('Bucket 3 of 3'));
+    expect(base().shouldRepaint(oldBase), isFalse);
+    expect(overlay().shouldRepaint(oldOverlay), isTrue);
+    tester.semantics.increase(plot);
+    await tester.pumpAndSettle();
+    expect(plot.evaluate().single.getSemanticsData().value, contains('Bucket 3 of 3'));
+    for (var i = 0; i < 4; i++) {
+      tester.semantics.decrease(plot);
+      await tester.pumpAndSettle();
+    }
+    expect(plot.evaluate().single.getSemanticsData().value, contains('Bucket 1 of 3'));
+    tester.semantics.tap(find.semantics.byLabel('web series'));
+    await tester.pumpAndSettle();
+    tester.semantics.increase(plot);
+    await tester.pumpAndSettle();
+    final value = plot.evaluate().single.getSemanticsData().value;
+    expect(value, contains('api 10'));
+    expect(value, isNot(contains('web')));
+  });
+
   testWidgets('timeline previews a middle bucket, applies and clears through semantics',
       (tester) async {
     final engine = await _pumpChart(tester, 'timeline');
@@ -365,6 +462,71 @@ void main() {
     tester.semantics.tap(plot);
     await tester.pumpAndSettle();
     expect(engine.globalFilters, isEmpty);
+  });
+
+  testWidgets('timeline preview respects ends, hidden lanes, and repaints selection',
+      (tester) async {
+    final engine = await _pumpChart(tester, 'timeline');
+    final plot = find.semantics.byLabel(RegExp('^Timeline of ts'));
+    TimelinePainter painter() => tester
+        .widget<CustomPaint>(
+          find.byKey(const Key('timeline-paint')),
+        )
+        .painter! as TimelinePainter;
+    final before = painter();
+    tester.semantics.decrease(plot);
+    await tester.pumpAndSettle();
+    expect(plot.evaluate().single.getSemanticsData().value, contains('00:02 UTC'));
+    expect(painter().shouldRepaint(before), isTrue);
+    tester.semantics.increase(plot);
+    await tester.pumpAndSettle();
+    expect(plot.evaluate().single.getSemanticsData().value, contains('00:02 UTC'));
+    for (var i = 0; i < 4; i++) {
+      tester.semantics.decrease(plot);
+      await tester.pumpAndSettle();
+    }
+    expect(plot.evaluate().single.getSemanticsData().value, contains('00:00 UTC'));
+    tester.semantics.tap(find.semantics.byLabel('web lane'));
+    await tester.pumpAndSettle();
+    final value = plot.evaluate().single.getSemanticsData().value;
+    expect(value, contains('api 1'));
+    expect(value, isNot(contains('web')));
+    expect(engine.globalFilters, isEmpty);
+  });
+
+  testWidgets('timeline without filter permission is not an adjustable action', (tester) async {
+    final bridge = _chartBridge('timeline');
+    bridge.components.first['interactions'] = {'filter': false, 'select': false};
+    await _pumpChart(tester, 'timeline', bridge: bridge);
+    final plot = find.semantics.byLabel(RegExp('^Timeline of ts'));
+    final data = plot.evaluate().single.getSemanticsData();
+    expect(data.hasAction(ui.SemanticsAction.increase), isFalse);
+    expect(data.hasAction(ui.SemanticsAction.decrease), isFalse);
+    expect(data.hasAction(ui.SemanticsAction.tap), isFalse);
+    expect(
+        Focus.of(tester.element(find.byKey(const Key('timeline-plot')))).canRequestFocus, isFalse);
+    final lane = find.semantics.byLabel('web lane');
+    expect(lane.evaluate().single.getSemanticsData().hasAction(ui.SemanticsAction.tap), isFalse);
+  });
+
+  testWidgets('timeline disables semantic adjustment while a command is pending', (tester) async {
+    final engine =
+        _GatedCommandsController(bridge: _chartBridge('timeline'), storageRoot: '/tmp/m');
+    await _pumpChart(tester, 'timeline', controller: engine);
+    final plot = find.semantics.byLabel(RegExp('^Timeline of ts'));
+    tester.semantics.increase(plot);
+    await tester.pumpAndSettle();
+    tester.semantics.tap(plot);
+    await tester.pump();
+    final pending = plot.evaluate().single.getSemanticsData();
+    expect(pending.hasAction(ui.SemanticsAction.increase), isFalse);
+    expect(pending.hasAction(ui.SemanticsAction.decrease), isFalse);
+    expect(pending.hasAction(ui.SemanticsAction.tap), isFalse);
+    expect(engine.globalFilters, isEmpty);
+    engine.releaseCommand.complete();
+    await tester.pumpAndSettle();
+    expect(engine.globalFilters, hasLength(1));
+    expect(plot.evaluate().single.getSemanticsData().hasAction(ui.SemanticsAction.tap), isTrue);
   });
 
   testWidgets('timeline keyboard can preview, apply and clear a bucket', (tester) async {

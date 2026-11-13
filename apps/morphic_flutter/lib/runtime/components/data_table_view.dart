@@ -660,44 +660,64 @@ class _DataTableViewState extends State<DataTableView> {
       );
     }
 
+    Widget header() => _HeaderRow(
+          columns: cols,
+          widthOf: (name) => widths[name]!,
+          interaction: _interaction,
+          canSort: widget.ctx.canSort,
+          canFilter: widget.ctx.canFilter,
+          corrected: _corrected,
+          busy: _commandBusy,
+          onSort: _toggleSort,
+          onFilter: _openFilter,
+          onCorrect: _openCorrections,
+        );
+    Widget rowAt(BuildContext context, int i) => _DataRow(
+          columns: cols,
+          row: page.rows[i],
+          widthOf: (name) => widths[name]!,
+          striped: i.isOdd,
+          rowNumber: page.offset + i + 1,
+          onTap: () => _inspectRow(i),
+        );
+
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: SizedBox(
         width: totalWidth,
-        child: Column(
-          children: [
-            _HeaderRow(
-              columns: cols,
-              widthOf: (name) => widths[name]!,
-              interaction: _interaction,
-              canSort: widget.ctx.canSort,
-              canFilter: widget.ctx.canFilter,
-              corrected: _corrected,
-              busy: _commandBusy,
-              onSort: _toggleSort,
-              onFilter: _openFilter,
-              onCorrect: _openCorrections,
-            ),
-            const Divider(height: 1),
-            Expanded(
-              child: ListView.builder(
-                itemCount: page.rows.length,
-                itemExtent: _tableRowHeight,
-                itemBuilder: (context, i) {
-                  final row = page.rows[i];
-                  return _DataRow(
-                    columns: cols,
-                    row: row,
-                    widthOf: (name) => widths[name]!,
-                    striped: i.isOdd,
-                    rowNumber: page.offset + i + 1,
-                    onTap: () => _inspectRow(i),
-                  );
-                },
+        child: LayoutBuilder(builder: (context, constraints) {
+          if (constraints.maxHeight < _tableHeaderHeight + 1 + _tableRowHeight) {
+            // On a short window a pinned header would leave less than one full 48 dp row
+            // visible. Scroll the header and lazy rows together instead; horizontal scrolling
+            // still moves them in lockstep. The normal-height layout keeps its pinned header.
+            return CustomScrollView(
+              key: const Key('table-short-scroll'),
+              primary: false,
+              slivers: [
+                SliverToBoxAdapter(
+                  child: Column(children: [header(), const Divider(height: 1)]),
+                ),
+                SliverFixedExtentList(
+                  itemExtent: _tableRowHeight,
+                  delegate: SliverChildBuilderDelegate(rowAt, childCount: page.rows.length),
+                ),
+              ],
+            );
+          }
+          return Column(
+            children: [
+              header(),
+              const Divider(height: 1),
+              Expanded(
+                child: ListView.builder(
+                  itemCount: page.rows.length,
+                  itemExtent: _tableRowHeight,
+                  itemBuilder: rowAt,
+                ),
               ),
-            ),
-          ],
-        ),
+            ],
+          );
+        }),
       ),
     );
   }
@@ -796,6 +816,7 @@ class _HeaderRow extends StatelessWidget {
     return SizedBox(
       width: widthOf(column),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Expanded(
             child: Shortcuts(
