@@ -24,8 +24,9 @@ class ScriptedBridge implements MorphicBridge {
     Map<String, List<String>>? typeOptions,
     this.degraded = false,
     this.notice,
-    this.sourceUnavailable = false,
-  })  : metrics = metrics ?? {'total_records': 1234},
+    bool? sourceUnavailable,
+  })  : sourceUnavailable = sourceUnavailable ?? degraded,
+        metrics = metrics ?? {'total_records': 1234},
         rows = rows ??
             [
               ['eu', 10, null],
@@ -123,7 +124,8 @@ class ScriptedBridge implements MorphicBridge {
   bool failSnapshot = false;
 
   /// Mirrors the engine's degraded snapshot (task 1.1.6): the document loads, the data
-  /// does not. Data calls then fail with the typed engine error.
+  /// does not. By default a degraded fixture also fails data calls, as the real engine does.
+  /// Tests may explicitly override [sourceUnavailable] to simulate an inconsistent response.
   bool degraded;
   String? notice;
   bool sourceUnavailable;
@@ -415,6 +417,7 @@ class ScriptedBridge implements MorphicBridge {
           'generated workspace failed validation: source does not match workspace');
     }
     degraded = false;
+    sourceUnavailable = false;
     notice = null;
     return {'relinked': true};
   }

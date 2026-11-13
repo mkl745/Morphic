@@ -416,7 +416,8 @@ void main() {
   });
 
   testWidgets('missing or ambiguous source metadata is not treated as null cells', (tester) async {
-    final missing = await _open(ScriptedBridge(degraded: true));
+    // A deliberately inconsistent bridge returns a page while omitting its source profile.
+    final missing = await _open(ScriptedBridge(degraded: true, sourceUnavailable: false));
     await tester.pumpWidget(_host(DataTableView(
       ctx: ComponentContext(spec: _spec(columns: ['region']), engine: missing),
       height: 400,

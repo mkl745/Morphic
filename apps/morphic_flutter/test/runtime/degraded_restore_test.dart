@@ -59,8 +59,13 @@ void main() {
       _host(WorkspaceScreen(controller: controller, fileSource: source),
           size: const Size(800, 900)),
     );
-    // The notice and the table's degraded panel both quote the engine's explanation.
+    // The actual engine has no profile or page in degraded mode: its notice explains why,
+    // while the table reports the failed query rather than presenting invented null cells.
     expect(find.text(_notice), findsWidgets);
+    expect(find.text('Could not load rows'), findsOneWidget);
+    expect(find.textContaining('source data for workspace'), findsWidgets);
+    expect(find.textContaining('Source column information'), findsNothing);
+    expect(find.semantics.byLabel(RegExp('^Row 1:')), findsNothing);
     expect(find.byKey(const Key('restore-source-button')), findsOneWidget);
     expect(
       find.byKey(const Key('restore-source-notice-button')),
@@ -78,6 +83,11 @@ void main() {
     expect(controller.degraded, isFalse);
     expect(find.byKey(const Key('restore-source-button')), findsNothing);
     expect(find.text('Source data restored'), findsOneWidget);
+    final row = find.byKey(const Key('table-row-1'));
+    await tester.ensureVisible(row);
+    await tester.pump();
+    expect(find.semantics.byLabel('Row 1: region: eu, amount: 10, note: No value'), findsOne);
+    expect(find.text('Could not load rows'), findsNothing);
   });
 
   testWidgets('a rejected re-link keeps degraded mode and shows the error', (tester) async {

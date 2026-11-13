@@ -1,8 +1,8 @@
-/// Ready-state host coverage across representative window classes, themes and text scales.
+/// Representative host coverage across window classes, themes, text scales and load states.
 ///
 /// These tests use the bundled fonts and real runtime renderers in isolated component hosts,
-/// not the full workspace layout. They cover selected controls and short labels, not every state
-/// or a physical-device/TalkBack review (AT-18 remains open).
+/// not the full workspace layout. They cover selected controls and labels, not every state or a
+/// physical-device/TalkBack review (AT-18 remains open).
 library;
 
 import 'dart:math' as math;
@@ -113,9 +113,12 @@ Future<void> _pumpComponent(
   String type,
   Size window,
   Brightness brightness,
-  double scale,
-) async {
-  final engine = EngineController(bridge: _bridge(type), storageRoot: '/tmp/m');
+  double scale, {
+  ScriptedBridge? bridge,
+}) async {
+  // Each configuration starts with a fresh scroll position and component state.
+  await tester.pumpWidget(const SizedBox.shrink());
+  final engine = EngineController(bridge: bridge ?? _bridge(type), storageRoot: '/tmp/m');
   await engine.open('w1');
   await tester.pumpWidget(MaterialApp(
     theme: brightness == Brightness.dark ? MorphicTheme.dark() : MorphicTheme.light(),
@@ -145,16 +148,18 @@ Future<void> _pumpComponent(
   await tester.pumpAndSettle();
 }
 
-Future<void> _reachableTarget(WidgetTester tester, String key) async {
-  final target = find.byKey(Key(key));
-  expect(target, findsOneWidget, reason: key);
+Future<void> _reachableFinder(WidgetTester tester, Finder target, String name) async {
+  expect(target, findsOneWidget, reason: name);
   await tester.ensureVisible(target);
   await tester.pumpAndSettle();
-  expect(target.hitTestable(), findsOneWidget, reason: '$key must be reachable after scrolling');
+  expect(target.hitTestable(), findsOneWidget, reason: '$name must be reachable after scrolling');
   final size = tester.getSize(target);
-  expect(size.width, greaterThanOrEqualTo(48), reason: '$key width');
-  expect(size.height, greaterThanOrEqualTo(48), reason: '$key height');
+  expect(size.width, greaterThanOrEqualTo(48), reason: '$name width');
+  expect(size.height, greaterThanOrEqualTo(48), reason: '$name height');
 }
+
+Future<void> _reachableTarget(WidgetTester tester, String key) =>
+    _reachableFinder(tester, find.byKey(Key(key)), key);
 
 void _unclipped(WidgetTester tester, String text) {
   final finder = find.text(text);
@@ -221,6 +226,80 @@ void main() {
             expect(tester.takeException(), isNull, reason: '$type after scrolling');
           }
         });
+      }
+    }
+  }
+
+  for (final window in _windows.entries) {
+    for (final brightness in Brightness.values) {
+      for (final scale in [1.0, 1.3]) {
+        for (final type in ['metric_card', 'data_table', 'bar_chart', 'line_chart', 'timeline']) {
+          testWidgets('empty and retry: $type, ${window.key}, $brightness, ${scale}x',
+              (tester) async {
+            tester.view.devicePixelRatio = 1;
+            tester.view.physicalSize = window.value;
+            addTearDown(tester.view.resetPhysicalSize);
+            addTearDown(tester.view.resetDevicePixelRatio);
+
+            final empty = _bridge(type);
+            if (type == 'metric_card') {
+              empty.metrics['metric'] = null;
+            } else {
+              empty.rows.clear();
+            }
+            await _pumpComponent(tester, type, window.value, brightness, scale, bridge: empty);
+            final emptyLabel = switch (type) {
+              'metric_card' => 'No data for this metric',
+              'data_table' => 'This dataset has no rows.',
+              'timeline' => 'No dated rows match the current filters.',
+              _ => 'No rows match the current filters.',
+            };
+            final message = find.text(emptyLabel);
+            expect(message, findsOneWidget);
+            await tester.ensureVisible(message);
+            await tester.pumpAndSettle();
+            _unclipped(tester, emptyLabel);
+            await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+            await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+            expect(tester.takeException(), isNull, reason: '$type empty state must lay out');
+
+            final failed = _bridge(type)
+              ..failMetric = type == 'metric_card'
+              ..failQuery = type == 'data_table'
+              ..failChart = type != 'metric_card' && type != 'data_table';
+            await _pumpComponent(tester, type, window.value, brightness, scale, bridge: failed);
+            final errorLabel = switch (type) {
+              'metric_card' => 'Could not compute this metric',
+              'data_table' => 'Could not load rows',
+              'timeline' => 'This timeline could not be built.',
+              _ => 'This chart could not be built.',
+            };
+            expect(find.text(errorLabel), findsOneWidget);
+            final retry = find.widgetWithText(TextButton, 'Retry');
+            await _reachableFinder(tester, retry, '$type retry');
+            final retrySemantics = find.semantics.byLabel('Retry');
+            expect(retrySemantics, findsOne);
+            await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+            await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+            failed
+              ..failMetric = false
+              ..failQuery = false
+              ..failChart = false;
+            tester.semantics.tap(retrySemantics);
+            await tester.pumpAndSettle();
+            expect(find.text(errorLabel), findsNothing);
+            final readyTarget = switch (type) {
+              'metric_card' => 'metric-tap-metric',
+              'data_table' => 'table-row-1',
+              'bar_chart' => 'bar-api',
+              'line_chart' => 'line-legend-api',
+              _ => 'timeline-legend-api',
+            };
+            await _reachableTarget(tester, readyTarget);
+            expect(tester.takeException(), isNull,
+                reason: '$type retry must recover without overflow');
+          });
+        }
       }
     }
   }

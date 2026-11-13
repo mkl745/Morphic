@@ -26,6 +26,21 @@ each check with observations. An omitted component, inaudible speech, unavailabl
 unreachable control is not a pass. Preserve failures and their retests rather than overwriting
 them. Do not insert a template or simulated result as hardware evidence.
 
+## Supplemental automated evidence
+
+- [`954a06c` / CI 43398112819](https://github.com/mkl745/Morphic/actions/runs/43398112819):
+  all six jobs passed, including 638 host behavioral tests and 106 live golden tests. The
+  isolated-component ready-state matrix covered 390×844, 560×360, 700×900, 800×500 and
+  1100×800 logical-pixel windows, each in light/dark at 1.0×/1.3×. It checked selected short
+  labels, semantics, target sizes/reachability and Flutter accessibility guidelines. It also
+  measured table text colors against plain and striped row surfaces in both themes.
+- The same run's emulator checked the bundled sample's named table values on rows 1 and 257
+  and the paging range. It was not a TalkBack or physical-device test, and correctly refused
+  its 600-row performance probe as AT-07 evidence.
+- Additional full-workspace and empty/error host cases are being added; their results are not
+  included above until their own CI run completes. Neither the passing tests nor those cases
+  enumerate every text/background pair, target, focus path or UI state.
+
 ## Setup
 
 1. Obtain a build matching the tested commit; record the APK checksum and confirm the build
@@ -74,7 +89,7 @@ or order by TalkBack version; meaning and successful operation are what matter.
 | Semantic summaries and focus | Every component and key screen, all states, sensible keyboard and TalkBack order, no missing/duplicate actions, and accessible errors and recovery | Partial automated coverage; manual audit not run |
 | Targets | Every interactive target is at least **48 × 48 logical dp**, including visible portions in scrolling areas, both themes, orientations and scales | Selected direct size/guideline tests only; full audit not run |
 | Contrast | Every rendered text/background pair at least **4.5:1**, including hidden/disabled/selected/error states in both themes | Selected token and state tests only; full audit not run |
-| Responsive / text | Compact, medium and expanded widths, both orientations and scales 1.0–1.3, all content/recovery states without inaccessible clipped text | Representative goldens only; full matrix not run |
+| Responsive / text | Compact, medium and expanded widths, both orientations and scales 1.0–1.3, all content/recovery states without inaccessible clipped text | Representative goldens and selected ready-state host cases; full matrix not run |
 | TalkBack | Human completes and records the vertical slice above on physical hardware | Not run |
 
 Run and record the applicable matrix; fix each failure and retest the exact changed build. The

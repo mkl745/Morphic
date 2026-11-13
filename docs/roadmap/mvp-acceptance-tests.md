@@ -219,11 +219,12 @@ expose summaries; chart keyboard adjustment, legend controls and timeline previe
 are exercised in host tests. The [checklist](../engineering/accessibility-checklist.md) is
 unsigned: the full responsive/no-clipping/target/contrast matrix and physical-device TalkBack
 vertical slice remain unverified. The emulator log for `4e92e72` exposed a pre-existing
-field/value mismatch when a binding reorders source columns. The correction in `6773f4c` /
-**43396617222** passed all six jobs, including 617 behavioral tests, 106 **live** golden tests
-and a sample field/value assertion on two emulator pages. An additional ready-state host matrix
-is being added; its results and the complete audit remain outstanding. AT-18 is **partial**;
-no milestone exit is implied.
+field/value mismatch when a binding reorders source columns. The correction passed on
+`6773f4c` / **43396617222**, including a sample field/value assertion on two emulator pages.
+`954a06c` / **43398112819** passed all six jobs with 638 behavioral tests and 106 **live**
+golden tests, including a selected ready-state host matrix across five sizes, two themes and
+two scales. Additional workspace and empty/error host cases await CI; the complete audit remains
+outstanding. AT-18 is **partial**; no milestone exit is implied.
 
 **AT-18 — Responsive & accessibility.**
 Given compact/medium/expanded widths and text scale 1.3, then layouts follow the design
