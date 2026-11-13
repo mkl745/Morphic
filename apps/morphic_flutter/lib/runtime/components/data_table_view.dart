@@ -440,7 +440,9 @@ class _DataTableViewState extends State<DataTableView> {
     if (_state != _Load.ready ||
         page == null ||
         index >= page.rows.length ||
-        _pageProblem(page) != null) return;
+        _pageProblem(page) != null) {
+      return;
+    }
     final source = _sourceColumns!;
     final indices = _sourceIndices(source);
     final visible = _columns;
