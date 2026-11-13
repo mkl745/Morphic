@@ -2,6 +2,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:morphic_flutter/design_system/responsive.dart';
 import 'package:morphic_flutter/design_system/tokens.dart';
@@ -161,7 +162,8 @@ void main() {
       expect(tester.getSize(page).width, closeTo(390, 0.1));
       if (name == 'import') {
         final guidance = find.textContaining('Morphic reports how it read the file');
-        await tester.ensureVisible(guidance);
+        final scrollable = find.descendant(of: page, matching: find.byType(Scrollable)).first;
+        await tester.scrollUntilVisible(guidance, 200, scrollable: scrollable);
         await tester.pumpAndSettle();
         expect(tester.getRect(guidance).bottom, lessThanOrEqualTo(tester.getRect(page).bottom));
       }
@@ -469,7 +471,9 @@ void main() {
       expect(bridge.commandBatches.last.single['kind'], 'setGlobalFilter');
 
       final header = find.byKey(const Key('sort-region'));
-      await tester.ensureVisible(header);
+      final flow = find.byKey(const Key('workspace-component-flow'));
+      final scrollable = find.descendant(of: flow, matching: find.byType(Scrollable)).first;
+      await tester.scrollUntilVisible(header, 120, scrollable: scrollable);
       await tester.pumpAndSettle();
       await tester.longPress(header);
       await tester.pumpAndSettle();
@@ -594,6 +598,68 @@ void main() {
       await tester.tap(close);
       await tester.pumpAndSettle();
       expect(close, findsNothing);
+      expect(find.byType(WorkspaceScreen), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  for (final type in ['line', 'timeline']) {
+    testWidgets('$type rail wraps multi-series detail at 1.3x', (tester) async {
+      _resetSurface(tester);
+      _setSurface(tester, const Size(1100, 800));
+      const groups = [
+        'api',
+        'auth',
+        'billing',
+        'cache',
+        'ingest',
+        'metrics',
+        'queue',
+        'zulu_service_with_a_very_long_name',
+      ];
+      final componentType = type == 'line' ? 'line_chart' : 'timeline';
+      final binding = type == 'line'
+          ? {
+              'kind': 'line_chart',
+              'x': 'ts',
+              'y': [
+                {'op': 'avg', 'field': 'value'},
+              ],
+              'group_by': 'group',
+            }
+          : {'kind': 'timeline', 'time_field': 'ts', 'severity_field': 'group'};
+      final bridge = ScriptedBridge(
+        fields: ['ts', 'group', 'value'],
+        dtypes: {'ts': 'timestamp', 'value': 'float64'},
+        rows: [
+          for (var i = 0; i < groups.length; i++) [0, groups[i], 10 + i],
+          [60000, 'api', 20],
+        ],
+        components: [
+          {'id': 'chart', 'type': componentType, 'title': 'Chart', 'binding': binding},
+        ],
+        order: ['chart'],
+      );
+      final engine = EngineController(bridge: bridge, storageRoot: '/tmp/m');
+      await engine.open('w1');
+      await tester.pumpWidget(_app(engine, scale: 1.3));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(Key('$type-view-as-table')));
+      await tester.pumpAndSettle();
+      final rail = find.byKey(const Key('workspace-detail-rail'));
+      final text = find.byKey(
+        Key(type == 'line' ? 'line-table-series-0-7' : 'timeline-table-lanes-0'),
+      );
+      expect(find.descendant(of: rail, matching: text), findsOneWidget);
+      final widget = tester.widget<Text>(text);
+      expect(widget.data, contains('zulu_service_with_a_very_long_name'));
+      expect(tester.renderObject<RenderParagraph>(text).didExceedMaxLines, isFalse);
+      expect(tester.getSize(text).height, greaterThan(25), reason: 'long text must wrap');
+      if (type == 'line') {
+        expect(find.byKey(const Key('line-table-value-0-7')), findsOneWidget);
+      }
+      await tester.tap(find.byKey(Key('$type-table-close')));
+      await tester.pumpAndSettle();
       expect(find.byType(WorkspaceScreen), findsOneWidget);
       expect(tester.takeException(), isNull);
     });

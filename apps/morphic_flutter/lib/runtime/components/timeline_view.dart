@@ -645,8 +645,8 @@ class _TimelineViewState extends State<TimelineView> {
 
   /// The accessibility escape hatch: the scene's own numbers as text.
   ///
-  /// A scene can hold 2000 buckets, so rows are built lazily and each is two lines — a bucket and
-  /// its lane breakdown — rather than ten columns squeezed onto a phone.
+  /// A scene can hold 2000 buckets, so rows are built lazily. Bucket labels and lane breakdowns
+  /// can wrap rather than squeezing or truncating up to eight lanes in a narrow detail rail.
   Future<void> _showTable(ThemeData theme) async {
     final scene = _scene;
     if (scene == null) return;
@@ -688,50 +688,51 @@ class _TimelineViewState extends State<TimelineView> {
                 const Divider(height: MorphicSpace.md),
                 Expanded(
                   child: ListView.builder(
+                    key: const Key('timeline-table-buckets'),
                     itemCount: geo.columns.length,
-                    itemExtent: 52,
                     itemBuilder: (context, i) {
                       final c = geo.columns[i];
                       final parts = <String>[
                         for (final s in c.segments)
                           '${geo.lanes[s.laneIndex].displayLabel} ${s.count}',
                       ];
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Row(
-                            children: [
-                              Expanded(
-                                flex: 3,
-                                child: Text(
-                                  formatBucketLabel(
-                                    c.startMs.toDouble(),
-                                    temporal: true,
-                                    bucketMs: scene.bucketing.bucketMs,
+                      return Padding(
+                        key: Key('timeline-table-bucket-$i'),
+                        padding: const EdgeInsets.symmetric(vertical: MorphicSpace.xs),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Expanded(
+                                  flex: 3,
+                                  child: Text(
+                                    formatBucketLabel(
+                                      c.startMs.toDouble(),
+                                      temporal: true,
+                                      bucketMs: scene.bucketing.bucketMs,
+                                    ),
+                                    style: theme.textTheme.bodySmall,
                                   ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: theme.textTheme.bodySmall,
                                 ),
-                              ),
-                              Expanded(
-                                child: Text(
-                                  '${c.count}',
-                                  textAlign: TextAlign.right,
-                                  style: theme.textTheme.labelMedium,
+                                Expanded(
+                                  child: Text(
+                                    '${c.count}',
+                                    textAlign: TextAlign.right,
+                                    style: theme.textTheme.labelMedium,
+                                  ),
                                 ),
-                              ),
-                            ],
-                          ),
-                          if (parts.isNotEmpty)
-                            Text(
-                              parts.join(' · '),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: theme.textTheme.labelSmall,
+                              ],
                             ),
-                        ],
+                            if (parts.isNotEmpty)
+                              Text(
+                                parts.join(' · '),
+                                key: Key('timeline-table-lanes-$i'),
+                                style: theme.textTheme.labelSmall,
+                              ),
+                          ],
+                        ),
                       );
                     },
                   ),

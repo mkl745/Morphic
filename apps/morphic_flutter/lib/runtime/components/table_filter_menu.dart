@@ -316,27 +316,31 @@ class _FilterMenuState extends State<_FilterMenu> {
               ],
             ],
             const SizedBox(height: MorphicSpace.lg),
-            Row(
-              children: [
-                TextButton(
-                  key: const Key('filter-clear'),
-                  onPressed: widget.current == null
-                      ? null
-                      : () => Navigator.of(context).pop(const FilterChoice.clear()),
-                  child: const Text('Clear'),
-                ),
-                const Spacer(),
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('Cancel'),
-                ),
-                const SizedBox(width: MorphicSpace.sm),
-                FilledButton(
-                  key: const Key('filter-apply'),
-                  onPressed: _canApply ? _apply : null,
-                  child: const Text('Apply'),
-                ),
-              ],
+            Align(
+              alignment: Alignment.centerRight,
+              child: Wrap(
+                alignment: WrapAlignment.end,
+                spacing: MorphicSpace.sm,
+                runSpacing: MorphicSpace.xs,
+                children: [
+                  TextButton(
+                    key: const Key('filter-clear'),
+                    onPressed: widget.current == null
+                        ? null
+                        : () => Navigator.of(context).pop(const FilterChoice.clear()),
+                    child: const Text('Clear'),
+                  ),
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('Cancel'),
+                  ),
+                  FilledButton(
+                    key: const Key('filter-apply'),
+                    onPressed: _canApply ? _apply : null,
+                    child: const Text('Apply'),
+                  ),
+                ],
+              ),
             ),
           ],
         ),

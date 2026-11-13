@@ -555,8 +555,8 @@ class _LineChartViewState extends State<LineChartView> {
 
   /// The accessibility escape hatch: the scene's own numbers as text.
   ///
-  /// A line scene can hold 2000 buckets, so the rows are built lazily — a `Table` of 2000 rows
-  /// would lay out all of them to show twenty.
+  /// A line scene can hold 2000 buckets, so the rows are built lazily. Each bucket lists its
+  /// series by name instead of squeezing up to eight columns into a narrow detail rail.
   Future<void> _showTable(ThemeData theme) async {
     final scene = _scene;
     if (scene == null) return;
@@ -587,26 +587,54 @@ class _LineChartViewState extends State<LineChartView> {
                     style: theme.textTheme.bodySmall,
                   ),
                 const SizedBox(height: MorphicSpace.md),
-                _tableRow(
-                  theme,
-                  [scene.xField, for (final s in geo.series) s.name],
-                  bold: true,
-                ),
+                Text('Bucket · ${scene.xField}', style: theme.textTheme.labelMedium),
                 const Divider(height: MorphicSpace.md),
                 Expanded(
-                  child: ListView.builder(
+                  child: ListView.separated(
+                    key: const Key('line-table-buckets'),
                     itemCount: geo.firstPoints.length,
-                    itemExtent: 32,
-                    itemBuilder: (context, i) => _tableRow(
-                      theme,
-                      [
-                        formatBucketLabel(
-                          geo.firstPoints[i].x,
-                          temporal: scene.temporal,
-                          bucketMs: scene.bucketing.bucketMs,
+                    separatorBuilder: (_, __) => const Divider(height: MorphicSpace.md),
+                    itemBuilder: (context, i) => Column(
+                      key: Key('line-table-bucket-$i'),
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          formatBucketLabel(
+                            geo.firstPoints[i].x,
+                            temporal: scene.temporal,
+                            bucketMs: scene.bucketing.bucketMs,
+                          ),
+                          style: theme.textTheme.labelMedium,
                         ),
-                        for (final s in geo.series)
-                          i < s.points.length ? formatChartValue(s.points[i].y) : '—',
+                        for (var j = 0; j < geo.series.length; j++)
+                          Padding(
+                            padding: const EdgeInsets.only(top: MorphicSpace.xs),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Expanded(
+                                  flex: 3,
+                                  child: Text(
+                                    geo.series[j].name,
+                                    key: Key('line-table-series-$i-$j'),
+                                    style: theme.textTheme.bodySmall,
+                                  ),
+                                ),
+                                const SizedBox(width: MorphicSpace.sm),
+                                Expanded(
+                                  flex: 2,
+                                  child: Text(
+                                    i < geo.series[j].points.length
+                                        ? formatChartValue(geo.series[j].points[i].y)
+                                        : '—',
+                                    key: Key('line-table-value-$i-$j'),
+                                    textAlign: TextAlign.right,
+                                    style: theme.textTheme.bodySmall,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                       ],
                     ),
                   ),
@@ -626,19 +654,4 @@ class _LineChartViewState extends State<LineChartView> {
       ),
     );
   }
-
-  static Widget _tableRow(ThemeData theme, List<String> cells, {bool bold = false}) => Row(
-        children: [
-          for (var i = 0; i < cells.length; i++)
-            Expanded(
-              flex: i == 0 ? 3 : 2,
-              child: Text(
-                cells[i],
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: bold ? theme.textTheme.labelMedium : theme.textTheme.bodySmall,
-              ),
-            ),
-        ],
-      );
 }

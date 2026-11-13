@@ -333,26 +333,30 @@ class _FieldCorrectionsSheetState extends State<FieldCorrectionsSheet> {
                 ],
               ),
               const SizedBox(height: MorphicSpace.lg),
-              Row(
-                children: [
-                  if (facts.overridden)
+              Align(
+                alignment: Alignment.centerRight,
+                child: Wrap(
+                  alignment: WrapAlignment.end,
+                  spacing: MorphicSpace.sm,
+                  runSpacing: MorphicSpace.xs,
+                  children: [
+                    if (facts.overridden)
+                      TextButton(
+                        key: const Key('field-correction-clear'),
+                        onPressed: _busy ? null : _clear,
+                        child: const Text('Reset'),
+                      ),
                     TextButton(
-                      key: const Key('field-correction-clear'),
-                      onPressed: _busy ? null : _clear,
-                      child: const Text('Reset'),
+                      onPressed: _busy ? null : () => Navigator.of(context).pop(),
+                      child: const Text('Cancel'),
                     ),
-                  const Spacer(),
-                  TextButton(
-                    onPressed: _busy ? null : () => Navigator.of(context).pop(),
-                    child: const Text('Cancel'),
-                  ),
-                  const SizedBox(width: MorphicSpace.sm),
-                  FilledButton(
-                    key: const Key('field-correction-apply'),
-                    onPressed: _busy ? null : _apply,
-                    child: const Text('Apply'),
-                  ),
-                ],
+                    FilledButton(
+                      key: const Key('field-correction-apply'),
+                      onPressed: _busy ? null : _apply,
+                      child: const Text('Apply'),
+                    ),
+                  ],
+                ),
               ),
             ],
           ],

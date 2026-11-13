@@ -70,13 +70,17 @@ ScriptedBridge _bridge() => ScriptedBridge(
       ],
     );
 
-Future<void> _pump(WidgetTester tester, Size size, Brightness brightness) async {
+Future<void> _pump(
+  WidgetTester tester,
+  Size size,
+  Brightness brightness, {
+  ScriptedBridge? bridge,
+}) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
-  final bridge = _bridge();
-  final engine = EngineController(bridge: bridge, storageRoot: '/local/morphic');
+  final engine = EngineController(bridge: bridge ?? _bridge(), storageRoot: '/local/morphic');
   await engine.open('w1');
   await tester.pumpWidget(RepaintBoundary(
     key: const Key('responsive-snapshot'),
@@ -91,6 +95,37 @@ Future<void> _pump(WidgetTester tester, Size size, Brightness brightness) async 
     ),
   ));
   await tester.pumpAndSettle();
+}
+
+ScriptedBridge _chartBridge(String type) {
+  const groups = ['api', 'auth', 'billing', 'cache', 'ingest', 'metrics', 'queue', 'zulu-service'];
+  final binding = type == 'line'
+      ? {
+          'kind': 'line_chart',
+          'x': 'ts',
+          'y': [
+            {'op': 'avg', 'field': 'value'},
+          ],
+          'group_by': 'group',
+        }
+      : {'kind': 'timeline', 'time_field': 'ts', 'severity_field': 'group'};
+  return ScriptedBridge(
+    fields: ['ts', 'group', 'value'],
+    dtypes: {'ts': 'timestamp', 'value': 'float64'},
+    rows: [
+      for (var i = 0; i < groups.length; i++) [0, groups[i], 10 + i],
+      [60000, 'api', 20],
+    ],
+    components: [
+      {
+        'id': 'chart',
+        'type': type == 'line' ? 'line_chart' : 'timeline',
+        'title': type == 'line' ? 'Service values' : 'Service events',
+        'binding': binding,
+      },
+    ],
+    order: ['chart'],
+  );
 }
 
 Future<void> _pumpGateway(WidgetTester tester, String name, Brightness brightness) async {
@@ -158,6 +193,21 @@ void main() {
           expect(tester.renderObject<RenderParagraph>(helper).didExceedMaxLines, isFalse);
         }
         await _snapshot(tester, 'responsive_${screen}_130_${theme.key}');
+      });
+    }
+
+    for (final type in ['line', 'timeline']) {
+      testWidgets('$type multi-series detail rail at 1.3x ${theme.key}', (tester) async {
+        await _pump(tester, const Size(1100, 800), theme.value, bridge: _chartBridge(type));
+        await tester.tap(find.byKey(Key('$type-view-as-table')));
+        await tester.pumpAndSettle();
+        final rail = find.byKey(const Key('workspace-detail-rail'));
+        final detail = find.byKey(
+          Key(type == 'line' ? 'line-table-series-0-7' : 'timeline-table-lanes-0'),
+        );
+        expect(find.descendant(of: rail, matching: detail), findsOneWidget);
+        expect(tester.renderObject<RenderParagraph>(detail).didExceedMaxLines, isFalse);
+        await _snapshot(tester, 'responsive_${type}_rail_130_${theme.key}');
       });
     }
 
