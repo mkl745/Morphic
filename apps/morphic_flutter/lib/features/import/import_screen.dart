@@ -357,6 +357,7 @@ class _ImportScreenState extends State<ImportScreen> {
               decoration: const InputDecoration(
                 labelText: 'Format',
                 helperText: 'Detect automatically unless the result looks wrong.',
+                helperMaxLines: 3,
               ),
               items: [
                 const DropdownMenuItem<String>(

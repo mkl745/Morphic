@@ -1,7 +1,9 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:morphic_flutter/design_system/tokens.dart';
 import 'package:morphic_flutter/engine/engine_controller.dart';
 import 'package:morphic_flutter/runtime/component_registry.dart';
 import 'package:morphic_flutter/runtime/components/data_table_view.dart';
@@ -388,6 +390,42 @@ void main() {
       await tester.pumpAndSettle();
       expect(headerWidth(tester, 'note'), before,
           reason: 'column widths must not jitter between pages');
+    });
+
+    testWidgets('text scale changes expand headings without re-querying the page', (tester) async {
+      final spec = {
+        ..._spec(),
+        'interactions': {'search': true, 'sort': true, 'filter': true},
+      };
+      final bridge = _bridgeWith([
+        ['eu', 10, 'short'],
+        ['us', 20, 'another'],
+      ], spec: spec);
+      final engine = await _open(bridge);
+      Widget host(double scale) => MaterialApp(
+            theme: MorphicTheme.light(),
+            builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(scale)),
+              child: child!,
+            ),
+            home: Scaffold(
+              body: DataTableView(
+                ctx: ComponentContext(spec: spec, engine: engine),
+                height: 400,
+              ),
+            ),
+          );
+
+      await tester.pumpWidget(host(1));
+      await tester.pumpAndSettle();
+      final originalWidth = headerWidth(tester, 'amount');
+      final calls = bridge.pageCalls.length;
+      await tester.pumpWidget(host(1.3));
+      await tester.pumpAndSettle();
+      expect(headerWidth(tester, 'amount'), greaterThan(originalWidth));
+      expect(tester.renderObject<RenderParagraph>(find.text('amount')).didExceedMaxLines, isFalse);
+      expect(bridge.pageCalls.length, calls, reason: 'a text-scale change is not an engine query');
+      expect(tester.takeException(), isNull);
     });
 
     testWidgets('an enormous value is capped rather than dominating the viewport',

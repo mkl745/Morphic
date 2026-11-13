@@ -554,6 +554,7 @@ class _FocusContentState extends State<_FocusContent> {
         key: const Key('focus-content'),
         padding: const EdgeInsets.all(MorphicSpace.lg),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             for (var i = 0; i < widget.blocks.length; i++) ...[
               if (i > 0) const SizedBox(height: MorphicSpace.md),

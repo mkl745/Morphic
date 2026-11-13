@@ -4,6 +4,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:morphic_flutter/design_system/theme_preference.dart';
 import 'package:morphic_flutter/design_system/tokens.dart';
@@ -151,6 +152,11 @@ void main() {
     for (final screen in ['home', 'import', 'settings']) {
       testWidgets('$screen at 1.3x ${theme.key}', (tester) async {
         await _pumpGateway(tester, screen, theme.value);
+        if (screen == 'import') {
+          final helper = find.text('Detect automatically unless the result looks wrong.');
+          expect(helper, findsOneWidget);
+          expect(tester.renderObject<RenderParagraph>(helper).didExceedMaxLines, isFalse);
+        }
         await _snapshot(tester, 'responsive_${screen}_130_${theme.key}');
       });
     }
@@ -194,6 +200,9 @@ void main() {
       await tester.tap(find.byKey(const Key('explain-records')));
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('workspace-detail-rail')), findsOneWidget);
+      final heading = find.text('amount');
+      expect(heading, findsOneWidget);
+      expect(tester.renderObject<RenderParagraph>(heading).didExceedMaxLines, isFalse);
       await _snapshot(tester, 'responsive_expanded_rail_${theme.key}');
     });
   }

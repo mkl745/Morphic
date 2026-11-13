@@ -12,6 +12,7 @@
 library;
 
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
@@ -313,13 +314,37 @@ class _DataTableViewState extends State<DataTableView> {
     _fetch();
   }
 
-  double _columnWidth(String name) {
-    final measured = _widths?[name];
-    if (measured != null) return measured;
-    final w = name.length * 9.0 + 32;
-    if (w < 96) return 96;
-    if (w > 300) return 300;
-    return w;
+  /// Preserve the first page's stable content estimate while adapting it to the current text
+  /// scale. Measure each heading with the actual font and reserve room for visible controls;
+  /// otherwise even a short heading such as "amount" can be ellipsized at 1.3x. Calculate
+  /// once per column per build, not once per row. Very long values remain capped and are
+  /// readable in the row detail.
+  Map<String, double> _columnWidths(ThemeData theme, List<String> columns) {
+    final scaler = MediaQuery.textScalerOf(context);
+    final direction = Directionality.of(context);
+    final fontSize = theme.textTheme.bodySmall?.fontSize ?? 12.0;
+    final dataScale = scaler.scale(fontSize) / fontSize;
+    final corrected = _corrected;
+    final interaction = _interaction;
+    final result = <String, double>{};
+    for (final name in columns) {
+      final base = _widths?[name] ?? (name.length * 9.0 + 32).clamp(96.0, 300.0);
+      final dataWidth = 24 + (base - 24) * dataScale;
+      final painter = TextPainter(
+        text: TextSpan(text: name, style: theme.textTheme.labelMedium),
+        textDirection: direction,
+        textScaler: scaler,
+        maxLines: 1,
+      )..layout();
+      final headingWidth = painter.width +
+          MorphicSpace.sm * 2 +
+          (widget.ctx.canFilter ? 28 : 0) +
+          (interaction.sortFor(name) == null ? 0 : 14) +
+          (corrected.contains(name) ? 12 : 0);
+      painter.dispose();
+      result[name] = math.max(dataWidth, headingWidth).clamp(96.0, 300.0).toDouble();
+    }
+    return result;
   }
 
   /// A capped or long value must still be readable in full, and a wide row is not readable in
@@ -343,9 +368,8 @@ class _DataTableViewState extends State<DataTableView> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cols = _columns;
-    final totalWidth = cols.isEmpty
-        ? 0.0
-        : cols.fold<double>(0, (sum, c) => sum + _columnWidth(c));
+    final widths = _columnWidths(theme, cols);
+    final totalWidth = cols.fold<double>(0, (sum, c) => sum + widths[c]!);
     final height = widget.height ??
         (MediaQuery.sizeOf(context).height * 0.55).clamp(280.0, 560.0);
 
@@ -393,7 +417,7 @@ class _DataTableViewState extends State<DataTableView> {
                   ),
                 ),
               ],
-              Expanded(child: _content(theme, cols, totalWidth)),
+              Expanded(child: _content(theme, cols, widths, totalWidth)),
               const SizedBox(height: MorphicSpace.sm),
               _footer(theme),
             ],
@@ -406,7 +430,12 @@ class _DataTableViewState extends State<DataTableView> {
   /// Keep empty/error recovery and any engine evidence reachable even in a small table.
   /// The status body and its filter/error chrome scroll together; the populated grid keeps
   /// its own bounded viewport and gives a long command error a separate bounded scroll area.
-  Widget _content(ThemeData theme, List<String> cols, double totalWidth) {
+  Widget _content(
+    ThemeData theme,
+    List<String> cols,
+    Map<String, double> widths,
+    double totalWidth,
+  ) {
     final firstPageLoading = _state == _Load.pending && _page == null;
     final statusBody = _state == _Load.failed ||
         (!firstPageLoading && (_page == null || cols.isEmpty || _page!.rows.isEmpty));
@@ -414,7 +443,7 @@ class _DataTableViewState extends State<DataTableView> {
       if (widget.ctx.canFilter || widget.ctx.canSearch) _activeFilters(theme),
       if (_commandError != null) MorphicCommandError(evidence: _commandError!),
     ];
-    final body = _body(theme, cols, totalWidth);
+    final body = _body(theme, cols, widths, totalWidth);
     if (statusBody) {
       return SingleChildScrollView(
         key: const Key('table-state-scroll'),
@@ -523,7 +552,12 @@ class _DataTableViewState extends State<DataTableView> {
     );
   }
 
-  Widget _body(ThemeData theme, List<String> cols, double totalWidth) {
+  Widget _body(
+    ThemeData theme,
+    List<String> cols,
+    Map<String, double> widths,
+    double totalWidth,
+  ) {
     if (_state == _Load.failed) {
       // _content scrolls this state together with filter chips and command errors, so even
       // a long engine message remains reachable inside the fixed-height table.
@@ -625,7 +659,7 @@ class _DataTableViewState extends State<DataTableView> {
           children: [
             _HeaderRow(
               columns: cols,
-              widthOf: _columnWidth,
+              widthOf: (name) => widths[name]!,
               interaction: _interaction,
               canSort: widget.ctx.canSort,
               canFilter: widget.ctx.canFilter,
@@ -645,7 +679,7 @@ class _DataTableViewState extends State<DataTableView> {
                   return _DataRow(
                     columns: cols,
                     row: row,
-                    widthOf: _columnWidth,
+                    widthOf: (name) => widths[name]!,
                     striped: i.isOdd,
                     rowNumber: page.offset + i + 1,
                     onTap: () => _inspectRow(i),
