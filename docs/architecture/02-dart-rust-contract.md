@@ -237,6 +237,17 @@ Future<MetricValue> metricData(Session s, String componentId);
 - `ChartSeries` / `MetricValue` are **pre-aggregated in Rust** (bucketed counts, top-N
   categories, time buckets). Charts never receive raw tables.
 
+**Current MVP implementation:** the shipped `queryPage` and `componentPage` return JSON
+row arrays, not the aspirational typed `ColumnChunk` buffers above. Each row includes *all*
+source columns in the same order as `profile.fields`; the table binding names a potentially
+reordered or narrower display projection. The Flutter table maps by field name, uses the
+same mapping for accessible summaries, and includes the remaining source fields in row
+detail. Missing/ambiguous metadata or a mismatched row is an error, not an invented null or a
+positional guess. The renderer hides stale pages while a new selection is loading and discards
+responses if their read context or source order has changed. This documents the existing page
+shape; it does not add a bridge field or change API v14. Typed, projected buffers remain future
+work.
+
 ### 2.6 Events
 
 ```dart
@@ -319,7 +330,8 @@ Errors MUST NOT embed raw user data rows (privacy in logs); they carry positions
    downsamples/buckets beyond that — LTTB or uniform bucketing, decided in M1.4).
 2. No call may transfer an entire dataset. Ever. (`queryPage` hard-caps `limit`.)
 3. Snapshot size is bounded by component cap (64) — kilobytes, not megabytes.
-4. String columns are the expensive case; pages carry only visible columns when the table
-   binding specifies a projection.
+4. String columns are the expensive case; **target:** pages should carry only visible columns
+   when the table binding specifies a projection. The current JSON page still carries all source
+   columns (see §2.5), so this optimization is not yet shipped.
 5. Budget (hypothesis): p95 round-trip for a 256-row page ≤ 16 ms on mid-range devices;
    measured in the perf harness, not assumed.

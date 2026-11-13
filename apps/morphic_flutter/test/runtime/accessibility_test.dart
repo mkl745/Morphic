@@ -53,9 +53,10 @@ Future<EngineController> _pumpTable(
   double scale = 1,
   Size size = const Size(800, 800),
   double height = 500,
+  EngineController? controller,
 }) async {
   _surface(tester, size);
-  final engine = EngineController(bridge: bridge, storageRoot: '/tmp/m');
+  final engine = controller ?? EngineController(bridge: bridge, storageRoot: '/tmp/m');
   await engine.open('w1');
   await tester.pumpWidget(MaterialApp(
     theme: brightness == Brightness.dark ? MorphicTheme.dark() : MorphicTheme.light(),
@@ -231,6 +232,16 @@ void main() {
     expect(first, findsOne);
     expect(second, findsOne);
     expect(first.evaluate().single.getSemanticsData().hasAction(ui.SemanticsAction.tap), isTrue);
+    expect(
+      find.semantics
+          .byLabel('1–2 of 4')
+          .evaluate()
+          .single
+          .getSemanticsData()
+          .flagsCollection
+          .isLiveRegion,
+      isTrue,
+    );
     expect(find.semantics.byLabel('eu'), findsNothing, reason: 'cells are not duplicate actions');
     // Flutter 3.50 stores IconButton tooltips separately from ordinary labels. Android
     // exposes a tooltip-only node as its content description when it has no other label.
@@ -286,6 +297,44 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.semantics.byLabel('Column amount, Sorted ascending'), findsOne);
     expect(bridge.commandBatches.last.single['kind'], 'setComponentSort');
+  });
+
+  testWidgets('persisted filter and correction are reported in table semantics', (tester) async {
+    final bridge = _tableBridge();
+    bridge.components.first['state'] = {
+      'filter': {'op': 'eq', 'field': 'region', 'value': 'eu'},
+    };
+    bridge.fieldOverrides.add({'field': 'amount', 'dtype': 'int64', 'role': 'measure'});
+    await _pumpTable(tester, bridge);
+    final activeFilter = find.semantics.byPredicate(
+      (node) => node.getSemanticsData().tooltip == 'Filter region, active',
+    );
+    expect(activeFilter, findsOne);
+    expect(activeFilter.evaluate().single.getSemanticsData().hasAction(ui.SemanticsAction.tap),
+        isTrue);
+    expect(find.semantics.byLabel('Column amount, Not sorted, Corrected field'), findsOne);
+  });
+
+  testWidgets('table header and filter actions are disabled while sorting is pending',
+      (tester) async {
+    final bridge = _tableBridge();
+    final engine = _GatedCommandsController(bridge: bridge, storageRoot: '/tmp/m');
+    await _pumpTable(tester, bridge, controller: engine);
+    final header = find.semantics.byLabel('Column amount, Not sorted');
+    tester.semantics.tap(header);
+    await tester.pump();
+    final pending = header.evaluate().single.getSemanticsData();
+    expect(pending.hasAction(ui.SemanticsAction.tap), isFalse);
+    expect(pending.hasAction(ui.SemanticsAction.longPress), isFalse);
+    final filter = find.semantics.byPredicate(
+      (node) => node.getSemanticsData().tooltip == 'Filter amount',
+    );
+    expect(filter.evaluate().single.getSemanticsData().hasAction(ui.SemanticsAction.tap), isFalse);
+    expect(bridge.commandBatches, isEmpty);
+    engine.releaseCommand.complete();
+    await tester.pumpAndSettle();
+    expect(bridge.commandBatches, hasLength(1));
+    expect(find.semantics.byLabel('Column amount, Sorted ascending'), findsOne);
   });
 
   testWidgets('keyboard traverses table controls and can open row and correction', (tester) async {
@@ -375,6 +424,25 @@ void main() {
         await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
       });
     }
+  }
+
+  for (final type in ['line_chart', 'timeline']) {
+    testWidgets('$type plot is one keyboard stop followed by its legend', (tester) async {
+      await _pumpChart(tester, type);
+      final prefix = type == 'line_chart' ? 'line' : 'timeline';
+      final plotFocus = Focus.of(tester.element(find.byKey(Key('$prefix-plot'))));
+      plotFocus.requestFocus();
+      await tester.pump();
+      expect(plotFocus.hasPrimaryFocus, isTrue);
+      await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+      await tester.pump();
+      expect(_innerFocus(tester, '$prefix-legend-api').hasPrimaryFocus, isTrue);
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+      await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+      await tester.pump();
+      expect(plotFocus.hasPrimaryFocus, isTrue);
+    });
   }
 
   testWidgets('line plot exposes actual semantic adjustment and keyboard bucket values',

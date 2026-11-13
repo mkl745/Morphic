@@ -182,6 +182,8 @@ void main() {
     expect(find.text('2'), findsOneWidget);
     expect(_inTable(find.text('1–2 of 4')), findsNothing,
         reason: 'the old selection must not be painted next to the new one');
+    expect(_inTable(find.text('us')), findsNothing,
+        reason: 'stale rows must not be readable or actionable while reloading');
     expect(_inTable(find.byType(CircularProgressIndicator)), findsWidgets);
 
     slow.complete();

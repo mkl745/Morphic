@@ -139,7 +139,8 @@ fn share(top: &[ValueCount], pred: impl Fn(&str) -> bool) -> f64 {
     hits as f64 / n as f64
 }
 
-/// Profile every column of a table.
+/// Profile every column of a table, preserving `Table.columns` order. This is also the cell
+/// order of query pages; a component's binding can name a different display projection.
 pub fn profile(table: &Table) -> DatasetProfile {
     let fields = table.columns.iter().map(profile_field).collect();
     DatasetProfile {

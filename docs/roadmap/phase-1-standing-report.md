@@ -59,6 +59,15 @@ surfaces and 1.3× dark/light examples shipped. The unmarked live-golden verific
 live golden tests against 102 PNGs. AT-18 remains partial and all formal exits remain open;
 see [m1.6-status.md](m1.6-status.md) §§5–6.
 
+**Update (1.6.3 in progress):** Table, metric, line and timeline accessibility changes have
+host semantics, target, keyboard and 1.3× image coverage. `4e92e72` / run **43388590711**
+passed **6/6**, including 605 behavioral tests and 106 live golden tests. Its emulator log
+revealed incorrectly paired table columns/values; a follow-up fix and assertion await CI. The
+[accessibility checklist](../engineering/accessibility-checklist.md) is unsigned: physical
+TalkBack and the full responsive/target/contrast matrix are still owed. AT-18, the 1.6.3 row
+and all milestone exits remain open; the task totals below are unchanged. See
+[m1.6-status.md](m1.6-status.md) §7.
+
 **Update 2026-11-07:** **M1.3 is code-complete** — all five tasks (plan execution, interaction
 commands, the interactive table, global filters with tap-to-filter, and cross-component
 consistency) are done and CI-green. Tallies below reflect them; `docs/roadmap/m1.3-status.md`
@@ -109,7 +118,7 @@ so. §7 proposes a re-baseline.
 | M1.3 Interactivity | 5 | 5 | **complete** | **unmet** — AT-06 ✓ AT-08 ✓; AT-07 blocked only on mid-class ARM latency |
 | M1.4 Visualization + planner | 7 | 7 | **code-complete** — all five painters, planner v1, the explanation sheet and `ChangeComponentType` shipped | **unmet** — AT-11's full state matrix is incomplete and chart p95 ≤33 ms is not device-measured; all five families now have some goldens |
 | M1.5 Lifecycle & layout | 6 | 6 | **code-complete** — all five core rows plus the CI-green ◇1.5.6 stretch shipped; the stretch row does not satisfy the exit | **unmet** — AT-13/14 device halves, AT-18, reopen ≤ 500 ms; AT-15/16/17 green as automated tests; named chaos suite CI-green |
-| M1.6 Experience pass | 6 | 4 | **in progress** — 1.6.1 design pass, 1.6.2 responsive layouts, 1.6.4 samples and 1.6.5 copy/recovery shipped; 1.6.3 and ◇1.6.6 remain | **unmet** — full acceptance suite on low/mid devices, UX validation with ≥3 external people and a no-token-violations sweep still owed |
+| M1.6 Experience pass | 6 | 4 | **in progress** — 1.6.1 design pass, 1.6.2 responsive layouts, 1.6.4 samples and 1.6.5 copy/recovery shipped; 1.6.3 is underway and ◇1.6.6 remains | **unmet** — full acceptance suite on low/mid devices, UX validation with ≥3 external people and a no-token-violations sweep still owed |
 | M1.7 Hardening & release | 5 | 0 | not started | — |
 
 Phase 0 (architecture, contracts, CI, release pipeline) is complete and was verified by run
@@ -233,7 +242,7 @@ rustc 1.100.0, Flutter 3.50.0 / Dart 3.14.0, AGP 9.1, SDK 36 / min 24, 16 KB pag
 | AT-15 | Library lifecycle | **green** | 3 workspaces, rename/duplicate/delete, one shared dataset on disk and two healthy survivors proven in Rust + Dart on run 42970337214; no device claim |
 | AT-16 | Missing-source resilience | **green** | Degraded notice offers re-link (with an additional app-bar action on wide screens); hash-verified re-link restores `metric_data`. Named CI chaos gate covers interrupted writes, torn journals, quarantine, torn-index repair and migration backup. Automated only, no device claim |
 | AT-17 | User corrections | **green** | 1.5.5 (`23513e0`, run 43024916235): only affected bindings recompile, the override persists across reopen, undo restores the semantic state hash; automated only, no device claim |
-| AT-18 | Responsive & a11y | partial | Responsive widget tests and representative compact/medium/expanded 1.3× dark/light images pass live; the full no-clipping/≥48 dp/contrast matrix and TalkBack vertical slice remain unverified |
+| AT-18 | Responsive & a11y | partial | Responsive and new semantics/target/keyboard tests plus selected 1.3× images pass on host; the full no-clipping/≥48 dp/contrast matrix and physical-device TalkBack vertical slice remain unverified |
 | AT-19 | Release artifact | partial | dry-run APK only; unsigned; ~48 MB fat vs ≤ 40 MB per-ABI target |
 
 **A plan defect worth fixing:** M1.2's exit says "AT-04 passes", but AT-04 requires that "a

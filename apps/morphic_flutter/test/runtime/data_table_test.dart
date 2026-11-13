@@ -1,5 +1,7 @@
 library;
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -78,6 +80,22 @@ const _rows = [
   ['apac', 30, 'beta'],
   ['latam', 40, null],
 ];
+
+/// Capture the next page eagerly, but delay its delivery to exercise source/revision races.
+class _HeldPageController extends EngineController {
+  _HeldPageController({required super.bridge, required super.storageRoot});
+
+  Completer<void>? holdNext;
+
+  @override
+  Future<PageResult?> componentPage(String componentId, {int offset = 0, int limit = 0}) async {
+    final gate = holdNext;
+    holdNext = null;
+    final result = await super.componentPage(componentId, offset: offset, limit: limit);
+    if (gate != null) await gate.future;
+    return result;
+  }
+}
 
 void main() {
   testWidgets('renders the page the engine returned, with headers from the profile',
@@ -301,6 +319,219 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('region'), findsOneWidget);
     expect(find.text('amount'), findsNothing);
+  });
+
+  testWidgets('reordered projection keeps cells, semantics and full row detail aligned',
+      (tester) async {
+    final spec = _spec(columns: ['amount', 'region']);
+    spec['interactions'] = {'search': true, 'sort': true, 'filter': true};
+    final bridge = _bridgeWith([
+      ['eu', 30, 'hidden note'],
+      ['us', 10, ''],
+      ['apac', 20, null],
+    ], spec: spec);
+    final engine = await _open(bridge);
+    await tester.pumpWidget(_live(engine));
+    await tester.pumpAndSettle();
+
+    final first = find.semantics.byLabel('Row 1: amount: 30, region: eu');
+    expect(first, findsOne);
+    final firstRow = find.byKey(const Key('table-row-1'));
+    final amount = find.descendant(of: firstRow, matching: find.text('30'));
+    final region = find.descendant(of: firstRow, matching: find.text('eu'));
+    expect(tester.getTopLeft(amount).dx, lessThan(tester.getTopLeft(region).dx));
+    expect(find.text('note'), findsNothing, reason: 'the grid uses the binding projection');
+    expect(find.text('hidden note'), findsNothing);
+
+    tester.semantics.tap(first);
+    await tester.pumpAndSettle();
+    expect(find.text('note'), findsOneWidget, reason: 'detail includes unprojected fields');
+    for (final pair in {'amount': '30', 'region': 'eu', 'note': 'hidden note'}.entries) {
+      expect(
+        find.byWidgetPredicate((widget) {
+          if (widget is! Column || widget.children.length < 3) return false;
+          final heading = widget.children.first;
+          final value = widget.children.last;
+          return heading is Text &&
+              heading.data == pair.key &&
+              value is SelectableText &&
+              value.data == pair.value;
+        }),
+        findsOneWidget,
+        reason: 'detail must pair ${pair.key} with ${pair.value}',
+      );
+    }
+    await tester.tap(find.byKey(const Key('row-detail-close')));
+    await tester.pumpAndSettle();
+
+    tester.semantics.tap(find.semantics.byLabel('Row 2: amount: 10, region: us'));
+    await tester.pumpAndSettle();
+    expect(find.text('Empty string'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('row-detail-close')));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Next page'));
+    await tester.pumpAndSettle();
+    expect(find.semantics.byLabel('Row 3: amount: 20, region: apac'), findsOne);
+    tester.semantics.tap(find.semantics.byLabel('Column amount, Not sorted'));
+    await tester.pumpAndSettle();
+    expect(find.semantics.byLabel('Row 1: amount: 10, region: us'), findsOne);
+  });
+
+  testWidgets('column widths use the selected field rather than the source position',
+      (tester) async {
+    const long = 'A very long note that needs considerably more width';
+    final bridge = _bridgeWith([
+      ['eu', 7, long],
+    ], spec: _spec(columns: ['note', 'region']));
+    final engine = await _open(bridge);
+    await tester.pumpWidget(_live(engine));
+    await tester.pumpAndSettle();
+    expect(
+      tester.getSize(find.byKey(const Key('sort-note'))).width,
+      greaterThan(tester.getSize(find.byKey(const Key('sort-region'))).width),
+    );
+    expect(find.semantics.byLabel('Row 1: note: $long, region: eu'), findsOne);
+  });
+
+  testWidgets('unknown projected columns and malformed pages fail instead of mislabelling',
+      (tester) async {
+    final unknown = await _open(_bridgeWith(List.of(_rows), spec: _spec(columns: ['ghost'])));
+    await tester.pumpWidget(_live(unknown));
+    await tester.pumpAndSettle();
+    expect(find.text('Could not load rows'), findsOneWidget);
+    expect(find.textContaining('columns that are missing'), findsOneWidget);
+    expect(find.semantics.byLabel(RegExp('^Row 1:')), findsNothing);
+
+    // Replace the controller without unmounting: matching revisions/ids must not reuse the
+    // previous controller's failed page or metadata.
+    final short = await _open(_bridgeWith([
+      ['eu', 30],
+    ]));
+    await tester.pumpWidget(_live(short));
+    await tester.pumpAndSettle();
+    expect(find.text('Could not load rows'), findsOneWidget);
+    expect(find.textContaining('does not match the source column count'), findsOneWidget);
+    expect(find.semantics.byLabel(RegExp('^Row 1:')), findsNothing);
+  });
+
+  testWidgets('missing or ambiguous source metadata is not treated as null cells', (tester) async {
+    final missing = await _open(ScriptedBridge(degraded: true));
+    await tester.pumpWidget(_host(DataTableView(
+      ctx: ComponentContext(spec: _spec(columns: ['region']), engine: missing),
+      height: 400,
+    )));
+    await tester.pumpAndSettle();
+    expect(find.text('Could not load rows'), findsOneWidget);
+    expect(find.textContaining('Source column information'), findsOneWidget);
+    expect(find.semantics.byLabel(RegExp('^Row 1:')), findsNothing);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    final duplicate = await _open(_bridgeWith(
+      [
+        ['eu', 'us'],
+      ],
+      fields: ['region', 'region'],
+      spec: _spec(columns: ['region']),
+    ));
+    await tester.pumpWidget(_live(duplicate));
+    await tester.pumpAndSettle();
+    expect(find.text('Could not load rows'), findsOneWidget);
+    expect(find.textContaining('Source column information'), findsOneWidget);
+    expect(find.semantics.byLabel(RegExp('^Row 1:')), findsNothing);
+  });
+
+  testWidgets('invalid binding metadata fails instead of silently dropping a column',
+      (tester) async {
+    final spec = _spec();
+    (spec['binding'] as Map<String, dynamic>)['columns'] = ['region', 7];
+    final engine = await _open(_bridgeWith(List.of(_rows), spec: spec));
+    await tester.pumpWidget(_live(engine));
+    await tester.pumpAndSettle();
+    expect(find.text('Could not load rows'), findsOneWidget);
+    expect(find.textContaining('invalid column information'), findsOneWidget);
+    expect(find.semantics.byLabel(RegExp('^Row 1:')), findsNothing);
+  });
+
+  testWidgets('a same-revision source reorder hides stale rows until the new page arrives',
+      (tester) async {
+    final bridge = _bridgeWith(
+      [
+        ['eu', 30, 'old'],
+      ],
+      fields: ['region', 'amount', 'note'],
+      spec: _spec(columns: ['amount', 'region']),
+    );
+    final engine = _HeldPageController(bridge: bridge, storageRoot: '/tmp/m');
+    await engine.open('w1');
+    await tester.pumpWidget(_live(engine));
+    await tester.pumpAndSettle();
+    expect(find.semantics.byLabel('Row 1: amount: 30, region: eu'), findsOne);
+
+    final gate = Completer<void>();
+    engine.holdNext = gate;
+    bridge.fields
+      ..clear()
+      ..addAll(['amount', 'region', 'note']);
+    bridge.rows[0] = [99, 'us', 'new'];
+    await engine.open('w1'); // The scripted snapshot still reports revision 1.
+    await tester.pump();
+    await tester.pump();
+    expect(find.byType(CircularProgressIndicator), findsWidgets);
+    expect(find.semantics.byLabel(RegExp('^Row 1:')), findsNothing,
+        reason: 'old source-order cells must not be paired with the new profile');
+    gate.complete();
+    await tester.pumpAndSettle();
+    expect(find.semantics.byLabel('Row 1: amount: 99, region: us'), findsOne);
+  });
+
+  testWidgets('a same-revision reload refreshes rows even when field order is unchanged',
+      (tester) async {
+    final bridge = _bridgeWith([
+      ['eu', 30, 'old'],
+    ], spec: _spec(columns: ['amount', 'region']));
+    final engine = await _open(bridge);
+    await tester.pumpWidget(_live(engine));
+    await tester.pumpAndSettle();
+    expect(find.semantics.byLabel('Row 1: amount: 30, region: eu'), findsOne);
+
+    bridge.rows[0] = ['us', 99, 'new'];
+    await engine.open('w1'); // Same id, revision and field names; a new profile snapshot.
+    await tester.pumpAndSettle();
+    expect(find.semantics.byLabel('Row 1: amount: 99, region: us'), findsOne);
+    expect(bridge.pageCalls, hasLength(2));
+  });
+
+  testWidgets('an in-flight page from a replaced source is discarded at the same revision',
+      (tester) async {
+    final spec = _spec(columns: ['amount', 'region']);
+    final bridge = _bridgeWith(
+      [
+        ['eu', 30, 'old'],
+      ],
+      fields: ['region', 'amount', 'note'],
+      spec: spec,
+    );
+    final engine = _HeldPageController(bridge: bridge, storageRoot: '/tmp/m');
+    await engine.open('w1');
+    final gate = Completer<void>();
+    engine.holdNext = gate;
+    // Deliberately omit an AnimatedBuilder: the request itself must detect the race.
+    await tester.pumpWidget(_host(DataTableView(
+      ctx: ComponentContext(spec: spec, engine: engine),
+      height: 400,
+    )));
+    await tester.pump();
+    bridge.fields
+      ..clear()
+      ..addAll(['amount', 'region', 'note']);
+    bridge.rows[0] = [99, 'us', 'new'];
+    await engine.open('w1');
+    gate.complete();
+    await tester.pumpAndSettle();
+    expect(bridge.pageCalls, hasLength(2), reason: 'the old page must be re-read');
+    expect(find.semantics.byLabel('Row 1: amount: 99, region: us'), findsOne);
+    expect(find.semantics.byLabel('Row 1: amount: eu, region: 30'), findsNothing);
   });
 
   testWidgets('the header lives outside the vertical scroll view (sticky)',

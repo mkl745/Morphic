@@ -213,6 +213,17 @@ these examples do not prove the full no-clipping matrix. AT-18 remains **partial
 complete responsive, ≥48 dp target and contrast audit plus the TalkBack vertical slice; the
 emulator smoke is not physical-device evidence. See [m1.6-status.md](m1.6-status.md) §§5–6.
 
+*1.6.3 in progress.* Table rows and sort/filter controls gained semantic labels, state and
+48 dp target handling, including short viewports. Metrics and interactive line/timeline charts
+expose summaries; chart keyboard adjustment, legend controls and timeline preview/activation
+are exercised in host tests. The [checklist](../engineering/accessibility-checklist.md) is
+unsigned: the full responsive/no-clipping/target/contrast matrix and physical-device TalkBack
+vertical slice remain unverified. `4e92e72` / run **43388590711** passed all six jobs with
+605 behavioral tests and 106 **live** golden tests. Its emulator log revealed a pre-existing
+field/value mismatch when a table binding reorders source columns; a follow-up correction and
+stronger emulator assertion await their own CI run. AT-18 remains **partial**; no milestone
+exit is implied.
+
 **AT-18 — Responsive & accessibility.**
 Given compact/medium/expanded widths and text scale 1.3, then layouts follow the design
 rules (focus mode on phones, no clipped text — goldens), all targets ≥ 48 dp, contrast

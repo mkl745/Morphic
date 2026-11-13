@@ -10,7 +10,8 @@ import 'package:flutter/foundation.dart';
 import 'bridge.dart';
 import 'chart_scene.dart';
 
-/// One page of rows plus the metadata a pager needs.
+/// One page of rows plus the metadata a pager needs. Cells follow the source profile's field
+/// order, not a table binding's potentially reordered or narrower display projection.
 class PageResult {
   const PageResult({
     required this.rows,

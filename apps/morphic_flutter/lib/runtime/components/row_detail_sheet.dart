@@ -103,13 +103,17 @@ class _RowDetail extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: MorphicSpace.xs),
-                if (i < values.length && values[i] != null)
+                if (i >= values.length)
+                  Text('Value unavailable', style: nullStyle)
+                else if (values[i] == null)
+                  Text('No value (null)', style: nullStyle)
+                else if (values[i] is String && (values[i] as String).isEmpty)
+                  Text('Empty string', style: nullStyle)
+                else
                   SelectableText(
                     formatCell(values[i]),
                     style: theme.textTheme.bodyMedium,
-                  )
-                else
-                  Text('No value (null)', style: nullStyle),
+                  ),
               ],
             ),
           ),

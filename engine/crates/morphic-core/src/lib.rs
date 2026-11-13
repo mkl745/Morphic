@@ -2570,6 +2570,52 @@ mod tests {
             .clone()
     }
 
+    #[test]
+    fn table_page_cells_follow_profile_source_order_even_when_binding_is_ranked() {
+        let (engine, root) = imported("table-page-source-order");
+        let snapshot = engine.snapshot("w1").unwrap();
+        let table = table_id(&snapshot.doc);
+        let component = snapshot
+            .doc
+            .workspace
+            .components
+            .iter()
+            .find(|c| c.id == table)
+            .unwrap();
+        let morphic_schema::Binding::DataTable { columns, .. } = &component.binding else {
+            panic!("expected a table binding");
+        };
+        let profile = snapshot.profile.as_ref().unwrap();
+        let source: Vec<&str> = profile.fields.iter().map(|f| f.name.as_str()).collect();
+        assert_eq!(source, vec!["region", "amount"]);
+        let projected: Vec<&str> = columns.iter().map(String::as_str).collect();
+        assert_eq!(projected, vec!["amount", "region"]);
+        let page = engine.component_page("w1", &table, 0, 1).unwrap();
+        assert_eq!(
+            page.rows[0],
+            vec![serde_json::json!("eu"), serde_json::json!(10)]
+        );
+
+        // Rehydration must preserve the same correspondence, not just the initial import.
+        engine.close_session("w1").unwrap();
+        let reopened = engine.open_session("w1").unwrap();
+        let source: Vec<&str> = reopened
+            .profile
+            .as_ref()
+            .unwrap()
+            .fields
+            .iter()
+            .map(|f| f.name.as_str())
+            .collect();
+        assert_eq!(source, vec!["region", "amount"]);
+        let page = engine.component_page("w1", &table, 0, 1).unwrap();
+        assert_eq!(
+            page.rows[0],
+            vec![serde_json::json!("eu"), serde_json::json!(10)]
+        );
+        std::fs::remove_dir_all(&root).ok();
+    }
+
     fn metric_id(doc: &WorkspaceDoc) -> String {
         doc.workspace
             .components

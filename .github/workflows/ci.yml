@@ -138,8 +138,10 @@ jobs:
             -H "Accept: application/vnd.github+json" \
             "https://api.github.com/repos/${{ github.repository }}/commits/${{ github.sha }}/comments" \
             -d @/tmp/payload.json
+      # A failed regeneration can leave partial snapshots behind. Do not stage them, even
+      # when rustfmt also needs fixing; enforce the failed gate instead.
       - name: Auto-format / commit bootstrapped goldens and push back
-        if: steps.fmt.outcome != 'success' || steps.goldens.outputs.bootstrapped == 'true'
+        if: steps.goldens.outcome == 'success' && (steps.fmt.outcome != 'success' || steps.goldens.outputs.bootstrapped == 'true')
         run: |
           cargo fmt --all
           git config user.name "github-actions[bot]"
@@ -234,6 +236,8 @@ jobs:
         run: |
           python3 tools/test_check_device_evidence.py
           python3 tools/test_swipe_workspace.py
+          python3 tools/test_read_row_range.py
+          python3 tools/test_check_sample_row.py
       - name: Analyze
         id: analyze
         continue-on-error: true
@@ -316,9 +320,10 @@ jobs:
             -H "Accept: application/vnd.github+json" \
             "https://api.github.com/repos/${{ github.repository }}/commits/${{ github.sha }}/comments" \
             -d @/tmp/payload.json
+      # Updating goldens may write some PNGs before a test fails; never push that partial set.
       - name: Commit bootstrapped golden images and push back
         id: goldpush
-        if: steps.goldens.outputs.bootstrapped == 'true'
+        if: steps.goldens.outputs.bootstrapped == 'true' && steps.goldens.outcome == 'success'
         continue-on-error: true
         # Repo root, like the Rust push-back. The first attempt ran in apps/morphic_flutter and
         # failed without saying why; a subshell captures the output so the report below can.
@@ -682,6 +687,11 @@ jobs:
             BEFORE="$(python3 tools/read_row_range.py /tmp/ui.xml --signature)"
             echo "RUNTIME_OK: live table rendered, range $(python3 tools/read_row_range.py /tmp/ui.xml)"
             echo "  first row: $BEFORE"
+            # The engine returns source-order cells while the planner can rank the binding's
+            # columns differently. A changed signature alone cannot detect swapped labels.
+            if ! python3 tools/check_sample_row.py "$BEFORE"; then
+              echo "ROW_ASSOCIATION_MISSING: announced values do not match the sample"; exit 1
+            fi
             echo "=== paging must be executed by Rust ==="
             # Belt and braces: confirm the control is really in the dump before tapping it.
             for i in $(seq 1 6); do
@@ -692,6 +702,9 @@ jobs:
               adb pull /sdcard/ui.xml /tmp/ui.xml >/dev/null 2>&1
             done
             BEFORE="$(python3 tools/read_row_range.py /tmp/ui.xml --signature)"
+            if ! python3 tools/check_sample_row.py "$BEFORE"; then
+              echo "ROW_ASSOCIATION_MISSING before paging"; exit 1
+            fi
             python3 tools/tap_poc.py "Next page"
             PAGE=0
             for i in $(seq 1 12); do
@@ -706,6 +719,9 @@ jobs:
               echo "  before: $BEFORE"
               echo "  after:  $AFTER"
               echo "  range:  $(python3 tools/read_row_range.py /tmp/ui.xml)"
+              if ! python3 tools/check_sample_row.py "$AFTER"; then
+                echo "ROW_ASSOCIATION_MISSING after paging"; exit 1
+              fi
             else
               echo "PAGING_MISSING"; echo "--- visible nodes ---"
               python3 tools/ui_texts.py /tmp/ui.xml || head -c 2000 /tmp/ui.xml

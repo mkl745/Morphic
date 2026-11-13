@@ -89,8 +89,11 @@ binding-error states are designed surfaces with recovery actions, never blank bo
 
 Task 1.6.5 adds shared recovery copy, scoped filter-clearing actions and human-readable chart
 failures with the engine evidence retained. Task 1.6.1 applies key-screen chrome and theme tokens;
-1.6.2 adds responsive layouts. The full component-chrome/contrast audit and accessibility work
-remain. See [m1.6-status.md](../roadmap/m1.6-status.md).
+1.6.2 adds responsive layouts. The in-progress 1.6.3 pass adds table/metric/chart semantics,
+keyboard access and selected target/contrast checks. The full component-chrome/contrast audit,
+responsive accessibility matrix and physical TalkBack pass remain open; the
+[accessibility checklist](../engineering/accessibility-checklist.md) is not signed. See
+[m1.6-status.md](../roadmap/m1.6-status.md) §7.
 
 ## 8. Key screens (MVP)
 

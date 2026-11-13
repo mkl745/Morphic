@@ -137,7 +137,8 @@ impl Plan {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Page {
-    /// Row-major cells. Nulls are JSON `null`; timestamps are ISO-8601 UTC strings.
+    /// Row-major cells, in the source `Table.columns` order (not a component binding's
+    /// projection order). Nulls are JSON `null`; timestamps are ISO-8601 UTC strings.
     pub rows: Vec<Vec<serde_json::Value>>,
     /// Rows matching the plan (before paging), so the UI can size its scrollbar.
     pub total_rows: usize,

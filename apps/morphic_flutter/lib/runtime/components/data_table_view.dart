@@ -6,9 +6,9 @@
 /// canonical engine state — and a sort survives save and reopen because it lives in the
 /// document, not in this State object.
 ///
-/// Layout: the header sits *outside* the vertical scroll view but *inside* the shared
-/// horizontal one, so it stays pinned while rows scroll vertically and moves in lockstep
-/// with rows when scrolled horizontally.
+/// Layout: the header and rows share a horizontal viewport. At normal heights the header
+/// stays pinned while rows scroll vertically; on short windows they scroll together so a
+/// complete row can still be reached.
 library;
 
 import 'dart:async';
@@ -77,6 +77,16 @@ class _DataTableViewState extends State<DataTableView> {
   /// here, or a command sent by another component would never refresh this table.
   int _seenRevision = -1;
 
+  // A different workspace/controller can have the same revision and component id. Remember
+  // the read context too, including source order, so old cells are never reinterpreted using
+  // a new profile while a replacement page is loading.
+  late EngineController _seenEngine;
+  String? _seenWorkspaceId;
+  late String _seenComponentId;
+  Map<String, dynamic>? _seenProfile;
+  List<String>? _seenSourceColumns;
+  List<String>? _seenBoundColumns;
+
   /// What the engine has persisted for this component. Read from the document, never held
   /// independently, so a rejected command cannot leave the header showing a sort that is not
   /// actually applied.
@@ -101,18 +111,56 @@ class _DataTableViewState extends State<DataTableView> {
     return raw;
   }
 
-  /// Column order comes from the binding; an empty binding falls back to the profile's
-  /// field order, which Rust already made deterministic.
+  /// Rust pages contain all source cells in the same order as the profile's fields. The
+  /// planner's binding is a separately ordered projection, not the page's cell order.
+  /// Reject malformed metadata rather than dropping a field and shifting every later value.
+  List<String>? get _sourceColumns {
+    final fields = widget.ctx.engine.profile?['fields'];
+    if (fields is! List) return null;
+    final names = <String>[];
+    final seen = <String>{};
+    for (final field in fields) {
+      if (field is! Map) return null;
+      final name = field['name'];
+      if (name is! String || name.isEmpty || !seen.add(name)) return null;
+      names.add(name);
+    }
+    return names;
+  }
+
+  /// Null means malformed binding metadata; an absent or empty list means the whole source.
+  List<String>? get _boundColumns {
+    final raw = widget.ctx.binding['columns'];
+    if (raw == null) return const <String>[];
+    if (raw is! List || raw.any((name) => name is! String || name.isEmpty)) return null;
+    return raw.cast<String>().toList();
+  }
+
+  /// Display order comes from the binding; an empty binding shows the whole source.
   List<String> get _columns {
-    final bound = (widget.ctx.binding['columns'] as List? ?? const [])
-        .whereType<String>()
-        .toList();
+    final bound = _boundColumns;
+    if (bound == null) return const <String>[];
     if (bound.isNotEmpty) return bound;
-    final profile = widget.ctx.engine.profile;
-    final fields = (profile?['fields'] as List? ?? const [])
-        .whereType<Map<String, dynamic>>()
-        .toList();
-    return fields.map((f) => f['name'] as String? ?? '').where((n) => n.isNotEmpty).toList();
+    return _sourceColumns ?? const <String>[];
+  }
+
+  Map<String, int> _sourceIndices(List<String> source) => {
+        for (var i = 0; i < source.length; i++) source[i]: i,
+      };
+
+  /// Do not display a value under the wrong heading if the source metadata or page is bad.
+  String? _pageProblem(PageResult page) {
+    final source = _sourceColumns;
+    if (source == null) return 'Source column information is unavailable or invalid.';
+    if (_boundColumns == null) return 'The table has invalid column information.';
+    final columns = _columns;
+    if (columns.toSet().length != columns.length || !source.toSet().containsAll(columns)) {
+      return 'The table selects columns that are missing from the source or repeated.';
+    }
+    if (page.rows.any((row) => row.length != source.length)) {
+      return 'A returned row does not match the source column count.';
+    }
+    return null;
   }
 
   /// Fields with a persisted correction, shown as a small badge in the header.
@@ -145,18 +193,23 @@ class _DataTableViewState extends State<DataTableView> {
   @override
   void didUpdateWidget(DataTableView old) {
     super.didUpdateWidget(old);
-    final revision = widget.ctx.engine.revision;
-    if (old.ctx.id != widget.ctx.id) {
-      _offset = 0;
-      _seenRevision = revision;
-      _searchCtrl.text = _search;
-      _fetch();
-      return;
-    }
-    if (revision != _seenRevision) {
-      // A new revision means the interaction state or the data changed; either way the
-      // current offset may not exist any more. Reset to the top (AT-07).
-      _seenRevision = revision;
+    final engine = widget.ctx.engine;
+    final contextChanged = !identical(engine, _seenEngine) ||
+        engine.workspaceId != _seenWorkspaceId ||
+        widget.ctx.id != _seenComponentId ||
+        !identical(engine.profile, _seenProfile) ||
+        !_sameNames(_sourceColumns, _seenSourceColumns) ||
+        !_sameNames(_boundColumns, _seenBoundColumns);
+    if (contextChanged || engine.revision != _seenRevision) {
+      // Even two workspaces at the same revision may have different source-column order.
+      // Drop cached sizing/data when the read context changes; a revision alone resets the
+      // page offset but preserves stable column widths across sorts and filters.
+      if (contextChanged) {
+        _page = null;
+        _widths = null;
+        _widthsFor = null;
+      }
+      _seenRevision = engine.revision;
       _offset = 0;
       if (_searchCtrl.text != _search) _searchCtrl.text = _search;
       _fetch();
@@ -172,24 +225,41 @@ class _DataTableViewState extends State<DataTableView> {
 
   Future<void> _fetch() async {
     final attempt = ++_attempt;
-    // The revision this read is *for*. Captured before the await so a response can be
-    // checked against the document it was meant to describe (task 1.3.5).
-    final revision = widget.ctx.engine.revision;
+    // Capture the full read context before the await. A revision alone does not distinguish
+    // different controllers/workspaces or a rehydrated source with the same field names in a
+    // different order.
+    final engine = widget.ctx.engine;
+    final revision = engine.revision;
+    final workspaceId = engine.workspaceId;
+    final componentId = widget.ctx.id;
+    final profile = engine.profile;
+    final source = _sourceColumns;
+    final binding = _boundColumns;
+    _seenEngine = engine;
+    _seenWorkspaceId = workspaceId;
+    _seenComponentId = componentId;
+    _seenProfile = profile;
+    _seenSourceColumns = source;
+    _seenBoundColumns = binding;
     setState(() {
       _state = _Load.pending;
       _error = null;
     });
-    final res = await widget.ctx.engine.componentPage(
-      widget.ctx.id,
+    final res = await engine.componentPage(
+      componentId,
       offset: _offset,
       limit: _pageSize,
     );
     if (!mounted || attempt != _attempt) return;
-    if (revision != widget.ctx.engine.revision) {
-      // The document moved while this read was in flight, so these rows belong to a
-      // selection the workspace is no longer on. Adopting them would paint this component
-      // on the old selection while another is already on the new one — the torn frame
-      // task 1.3.5 exists to rule out. Read again instead.
+    if (!identical(engine, widget.ctx.engine) ||
+        workspaceId != widget.ctx.engine.workspaceId ||
+        componentId != widget.ctx.id ||
+        revision != widget.ctx.engine.revision ||
+        !identical(profile, widget.ctx.engine.profile) ||
+        !_sameNames(source, _sourceColumns) ||
+        !_sameNames(binding, _boundColumns)) {
+      // The document or source moved while this read was in flight. Never adopt rows under
+      // the wrong selection or reinterpret them using a different source order.
       _fetch();
       return;
     }
@@ -198,9 +268,15 @@ class _DataTableViewState extends State<DataTableView> {
         _error = widget.ctx.engine.error ?? 'The engine did not return a page.';
         _state = _Load.failed;
       } else {
-        _page = res;
-        _state = _Load.ready;
-        _measureColumns(res);
+        final problem = _pageProblem(res);
+        if (problem != null) {
+          _error = problem;
+          _state = _Load.failed;
+        } else {
+          _page = res;
+          _state = _Load.ready;
+          _measureColumns(res);
+        }
       }
     });
   }
@@ -212,17 +288,17 @@ class _DataTableViewState extends State<DataTableView> {
     if (cols.isEmpty || page.rows.isEmpty) return;
     if (_widths != null && _widthsFor != null && _listEquals(_widthsFor!, cols)) return;
     final measured = <String, double>{};
-    for (var c = 0; c < cols.length; c++) {
-      var longest = cols[c].length;
+    final indices = _sourceIndices(_sourceColumns!); // Validated before this page was adopted.
+    for (final column in cols) {
+      var longest = column.length;
       for (final row in page.rows) {
-        if (c >= row.length) continue;
-        final s = formatCell(row[c]);
+        final s = formatCell(row[indices[column]!]);
         if (s.length > longest) longest = s.length;
       }
       // ~7.2 dp per character at bodySmall, plus cell padding. Capped so one enormous text
       // blob cannot dominate the viewport; the full value is still reachable by tapping.
       final w = longest * 7.2 + 24;
-      measured[cols[c]] = w < 96 ? 96 : (w > 300 ? 300 : w);
+      measured[column] = w < 96 ? 96 : (w > 300 ? 300 : w);
     }
     _widths = measured;
     _widthsFor = cols;
@@ -235,6 +311,9 @@ class _DataTableViewState extends State<DataTableView> {
     }
     return true;
   }
+
+  bool _sameNames(List<String>? a, List<String>? b) =>
+      a == null || b == null ? a == null && b == null : _listEquals(a, b);
 
   void _onSearchChanged(String value) {
     _debounce?.cancel();
@@ -358,16 +437,27 @@ class _DataTableViewState extends State<DataTableView> {
   /// the grid at all. One tap opens the whole record.
   void _inspectRow(int index) {
     final page = _page;
-    if (page == null || index >= page.rows.length) return;
-    final cols = _columns;
+    if (_state != _Load.ready ||
+        page == null ||
+        index >= page.rows.length ||
+        _pageProblem(page) != null) return;
+    final source = _sourceColumns!;
+    final indices = _sourceIndices(source);
+    final visible = _columns;
+    final visibleSet = visible.toSet();
+    // The planner may project only a subset. Keep the displayed fields first, then expose
+    // every remaining source field in detail, without changing the engine's page or order.
+    final detailColumns = [
+      ...visible,
+      for (final name in source)
+        if (!visibleSet.contains(name)) name,
+    ];
     final row = page.rows[index];
     showRowDetail(
       context,
       rowNumber: page.offset + index + 1,
-      columns: cols,
-      values: [
-        for (var i = 0; i < cols.length; i++) i < row.length ? row[i] : null,
-      ],
+      columns: detailColumns,
+      values: [for (final name in detailColumns) row[indices[name]!]],
     );
   }
 
@@ -443,9 +533,8 @@ class _DataTableViewState extends State<DataTableView> {
     Map<String, double> widths,
     double totalWidth,
   ) {
-    final firstPageLoading = _state == _Load.pending && _page == null;
     final statusBody = _state == _Load.failed ||
-        (!firstPageLoading && (_page == null || cols.isEmpty || _page!.rows.isEmpty));
+        (_state != _Load.pending && (_page == null || cols.isEmpty || _page!.rows.isEmpty));
     final chrome = <Widget>[
       if (widget.ctx.canFilter || widget.ctx.canSearch) _activeFilters(theme),
       if (_commandError != null) MorphicCommandError(evidence: _commandError!),
@@ -589,7 +678,9 @@ class _DataTableViewState extends State<DataTableView> {
         ),
       );
     }
-    if (_state == _Load.pending && _page == null) {
+    if (_state == _Load.pending) {
+      // Old rows belong to an earlier selection or source. Hide them until the new page is
+      // validated instead of allowing a stale value to be read or opened under a new header.
       return const Center(child: CircularProgressIndicator(strokeWidth: 2));
     }
     final page = _page;
@@ -672,9 +763,10 @@ class _DataTableViewState extends State<DataTableView> {
           onFilter: _openFilter,
           onCorrect: _openCorrections,
         );
+    final indices = _sourceIndices(_sourceColumns!);
     Widget rowAt(BuildContext context, int i) => _DataRow(
           columns: cols,
-          row: page.rows[i],
+          row: [for (final column in cols) page.rows[i][indices[column]!]],
           widthOf: (name) => widths[name]!,
           striped: i.isOdd,
           rowNumber: page.offset + i + 1,

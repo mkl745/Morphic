@@ -133,7 +133,7 @@ reopen ≤ 500 ms and the other evidence gaps are still owed. The milestone exit
 |---|---|---|---|
 | 1.6.1 | Design-system application sweep: home, import, workspace chrome, settings; dark/light parity; motion tokens (real-event morph stages, stagger ≤400 ms) | L | **done, CI-green**; goldens refreshed |
 | 1.6.2 | Responsive: compact focus mode, medium two-column, expanded rail; landscape; text scale 1.3 goldens | L | **done, CI-green**; AT-18 remains partial |
-| 1.6.3 | Accessibility pass: semantic summaries, focus order, targets, contrast, TalkBack on vertical slice | M | a11y checklist signed |
+| 1.6.3 | Accessibility pass: semantic summaries, focus order, targets, contrast, TalkBack on vertical slice | M | **in progress** — host coverage added; [checklist](../engineering/accessibility-checklist.md) not signed |
 | 1.6.4 | Sample datasets (3–5 bundled: server logs, sales CSV, sensor JSON) + first-run suggestion | S | **done, CI-green** |
 | 1.6.5 | Empty/error/edge copy sweep (every failure has human language + next action) | S | **done, CI-green** |
 | 1.6.6 | ◇ Workspace templates ("keep this layout for future imports") — only if 1.5 lands early; else P4 | M | stretch |
