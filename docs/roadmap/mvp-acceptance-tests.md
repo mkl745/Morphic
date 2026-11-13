@@ -218,11 +218,12 @@ emulator smoke is not physical-device evidence. See [m1.6-status.md](m1.6-status
 expose summaries; chart keyboard adjustment, legend controls and timeline preview/activation
 are exercised in host tests. The [checklist](../engineering/accessibility-checklist.md) is
 unsigned: the full responsive/no-clipping/target/contrast matrix and physical-device TalkBack
-vertical slice remain unverified. `4e92e72` / run **43388590711** passed all six jobs with
-605 behavioral tests and 106 **live** golden tests. Its emulator log revealed a pre-existing
-field/value mismatch when a table binding reorders source columns; a follow-up correction and
-stronger emulator assertion await their own CI run. AT-18 remains **partial**; no milestone
-exit is implied.
+vertical slice remain unverified. The emulator log for `4e92e72` exposed a pre-existing
+field/value mismatch when a binding reorders source columns. The correction in `6773f4c` /
+**43396617222** passed all six jobs, including 617 behavioral tests, 106 **live** golden tests
+and a sample field/value assertion on two emulator pages. An additional ready-state host matrix
+is being added; its results and the complete audit remain outstanding. AT-18 is **partial**;
+no milestone exit is implied.
 
 **AT-18 — Responsive & accessibility.**
 Given compact/medium/expanded widths and text scale 1.3, then layouts follow the design

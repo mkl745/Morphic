@@ -60,10 +60,10 @@ live golden tests against 102 PNGs. AT-18 remains partial and all formal exits r
 see [m1.6-status.md](m1.6-status.md) §§5–6.
 
 **Update (1.6.3 in progress):** Table, metric, line and timeline accessibility changes have
-host semantics, target, keyboard and 1.3× image coverage. `4e92e72` / run **43388590711**
-passed **6/6**, including 605 behavioral tests and 106 live golden tests. Its emulator log
-revealed incorrectly paired table columns/values; a follow-up fix and assertion await CI. The
-[accessibility checklist](../engineering/accessibility-checklist.md) is unsigned: physical
+host semantics, target, keyboard and 1.3× image coverage. `6773f4c` / run **43396617222**
+passed **6/6**, including 617 behavioral tests, 106 live golden tests and an emulator assertion
+for correctly paired sample-table fields/values. A further ready-state host matrix awaits CI.
+The [accessibility checklist](../engineering/accessibility-checklist.md) is unsigned: physical
 TalkBack and the full responsive/target/contrast matrix are still owed. AT-18, the 1.6.3 row
 and all milestone exits remain open; the task totals below are unchanged. See
 [m1.6-status.md](m1.6-status.md) §7.
