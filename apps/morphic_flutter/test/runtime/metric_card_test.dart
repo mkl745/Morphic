@@ -32,8 +32,6 @@ Widget _host(Widget child) => MaterialApp(home: Scaffold(body: SingleChildScroll
 
 void main() {
   testWidgets('the metric value has an independent meaningful semantic summary', (tester) async {
-    final handle = tester.ensureSemantics();
-    addTearDown(handle.dispose);
     final engine = await _open(ScriptedBridge(metrics: {'total_records': 17.5}));
     await tester.pumpWidget(
         _host(MetricCardView(ctx: _ctx(_spec(op: 'avg', field: 'amount'), engine))));
@@ -42,8 +40,6 @@ void main() {
   });
 
   testWidgets('the metric summary says no data rather than zero', (tester) async {
-    final handle = tester.ensureSemantics();
-    addTearDown(handle.dispose);
     final engine = await _open(ScriptedBridge(metrics: {'total_records': null}));
     await tester.pumpWidget(_host(MetricCardView(ctx: _ctx(_spec(), engine))));
     await tester.pumpAndSettle();

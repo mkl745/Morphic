@@ -151,8 +151,6 @@ void main() {
       });
 
       testWidgets('keyboard or semantic preview at 1.3x', (tester) async {
-        final handle = tester.ensureSemantics();
-        addTearDown(handle.dispose);
         await _pumpChart(tester, brightness: theme.value, textScale: 1.3);
         final plot = find.semantics.byLabel(RegExp('^Timeline of'));
         tester.semantics.increase(plot);

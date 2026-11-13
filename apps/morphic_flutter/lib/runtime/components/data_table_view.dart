@@ -467,8 +467,9 @@ class _DataTableViewState extends State<DataTableView> {
     }
     return LayoutBuilder(
       builder: (context, constraints) {
-        // Do not let a long filter/error strip steal the header's full target height.
-        final reserved = _tableHeaderHeight + 1 + MorphicSpace.sm;
+        // Keep both the header and at least one complete row reachable when a long
+        // filter/error strip scrolls. Otherwise the strip can collapse the rows to zero.
+        const reserved = _tableHeaderHeight + 1 + _tableRowHeight + MorphicSpace.sm;
         final chromeHeight = math.max(0.0, constraints.maxHeight - reserved);
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,

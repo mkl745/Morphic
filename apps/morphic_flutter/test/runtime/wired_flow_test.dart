@@ -31,8 +31,6 @@ Future<void> _pumpApp(WidgetTester tester, ScriptedBridge bridge) async {
 void main() {
   testWidgets('semantics can drive the host vertical slice through row detail and paging',
       (tester) async {
-    final handle = tester.ensureSemantics();
-    addTearDown(handle.dispose);
     tester.view.physicalSize = const Size(800, 1200);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -64,7 +62,14 @@ void main() {
     await tester.pumpAndSettle();
     await tester.ensureVisible(find.byKey(const Key('table-next-page')));
     await tester.pumpAndSettle();
-    tester.semantics.tap(find.semantics.byLabel('Next page'));
+    final next = find.semantics.byLabel('Next page');
+    expect(
+      next,
+      findsOne,
+      reason: 'Visible semantics: '
+          '${tester.semantics.simulatedAccessibilityTraversal().map((node) => node.label).toList()}',
+    );
+    tester.semantics.tap(next);
     await tester.pumpAndSettle();
     expect(find.semantics.byLabel('3–4 of 4'), findsOne);
     expect(bridge.pageCalls.last['offset'], 2);

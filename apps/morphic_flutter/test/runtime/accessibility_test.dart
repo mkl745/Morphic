@@ -81,7 +81,9 @@ Future<EngineController> _pumpTable(
 
 FocusNode _innerFocus(WidgetTester tester, String key) {
   final focus = find.descendant(of: find.byKey(Key(key)), matching: find.byType(Focus)).first;
-  return tester.state<FocusState>(focus).focusNode;
+  // Focus's State is private. An element below the focus inherits its actual FocusNode.
+  final child = find.descendant(of: focus, matching: find.byType(MouseRegion)).first;
+  return Focus.of(tester.element(child));
 }
 
 Map<String, dynamic> _chartSpec(String type) => {
@@ -168,8 +170,6 @@ void main() {
   for (final brightness in Brightness.values) {
     for (final scale in [1.0, 1.3]) {
       testWidgets('table targets and labels: $brightness at ${scale}x', (tester) async {
-        final handle = tester.ensureSemantics();
-        addTearDown(handle.dispose);
         await _pumpTable(tester, _tableBridge(), brightness: brightness, scale: scale);
 
         for (final key in ['sort-region', 'filter-region', 'table-row-1', 'table-next-page']) {
@@ -184,8 +184,6 @@ void main() {
   }
 
   testWidgets('row, headers and pager expose one meaningful action in reading order', (tester) async {
-    final handle = tester.ensureSemantics();
-    addTearDown(handle.dispose);
     final bridge = _tableBridge();
     await _pumpTable(tester, bridge);
 
@@ -222,8 +220,6 @@ void main() {
   });
 
   testWidgets('header semantics sort and expose field correction as a long press', (tester) async {
-    final handle = tester.ensureSemantics();
-    addTearDown(handle.dispose);
     final bridge = _tableBridge();
     await _pumpTable(tester, bridge);
     final header = find.semantics.byLabel('Column amount, Not sorted');
@@ -242,8 +238,6 @@ void main() {
   });
 
   testWidgets('keyboard traverses table controls and can open row and correction', (tester) async {
-    final handle = tester.ensureSemantics();
-    addTearDown(handle.dispose);
     await _pumpTable(tester, _tableBridge());
     final order = [
       'sort-region', 'filter-region', 'sort-amount', 'filter-amount',
@@ -281,8 +275,6 @@ void main() {
 
   testWidgets('a non-sortable header still offers semantic and keyboard field correction',
       (tester) async {
-    final handle = tester.ensureSemantics();
-    addTearDown(handle.dispose);
     await _pumpTable(tester, _tableBridge(canSort: false));
     final header = find.semantics.byLabel('Column region');
     final data = header.evaluate().single.getSemanticsData();
@@ -298,8 +290,6 @@ void main() {
   for (final brightness in Brightness.values) {
     for (final type in ['line_chart', 'timeline']) {
       testWidgets('$type legend reports visibility and text contrast in $brightness', (tester) async {
-        final handle = tester.ensureSemantics();
-        addTearDown(handle.dispose);
         await _pumpChart(tester, type, brightness: brightness, scale: 1.3);
         final prefix = type == 'line_chart' ? 'line' : 'timeline';
         final suffix = type == 'line_chart' ? 'series' : 'lane';
@@ -330,8 +320,6 @@ void main() {
   }
 
   testWidgets('line plot exposes actual semantic adjustment and keyboard bucket values', (tester) async {
-    final handle = tester.ensureSemantics();
-    addTearDown(handle.dispose);
     await _pumpChart(tester, 'line_chart');
     final plot = find.semantics.byLabel(RegExp('^Line chart of ts'));
     var data = plot.evaluate().single.getSemanticsData();
@@ -349,7 +337,7 @@ void main() {
     tester.semantics.increase(plot);
     await tester.pumpAndSettle();
     expect(plot.evaluate().single.getSemanticsData().value, contains('web no value'));
-    tester.state<FocusState>(find.byKey(const Key('line-plot-focus'))).focusNode.requestFocus();
+    Focus.of(tester.element(find.byKey(const Key('line-plot')))).requestFocus();
     await tester.pump();
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
     await tester.pumpAndSettle();
@@ -358,8 +346,6 @@ void main() {
 
   testWidgets('timeline previews a middle bucket, applies and clears through semantics',
       (tester) async {
-    final handle = tester.ensureSemantics();
-    addTearDown(handle.dispose);
     final engine = await _pumpChart(tester, 'timeline');
     final plot = find.semantics.byLabel(RegExp('^Timeline of ts'));
     expect(plot.evaluate().single.getSemanticsData().value, 'No bucket selected');
@@ -382,10 +368,8 @@ void main() {
   });
 
   testWidgets('timeline keyboard can preview, apply and clear a bucket', (tester) async {
-    final handle = tester.ensureSemantics();
-    addTearDown(handle.dispose);
     final engine = await _pumpChart(tester, 'timeline');
-    final focus = tester.state<FocusState>(find.byKey(const Key('timeline-plot-focus'))).focusNode;
+    final focus = Focus.of(tester.element(find.byKey(const Key('timeline-plot'))));
     focus.requestFocus();
     await tester.pump();
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
@@ -402,8 +386,6 @@ void main() {
   });
 
   testWidgets('bar summary and filtering are exposed as semantic actions', (tester) async {
-    final handle = tester.ensureSemantics();
-    addTearDown(handle.dispose);
     final engine = await _pumpChart(tester, 'bar_chart');
     expect(find.semantics.byLabel(RegExp('Bar chart of')), findsOne);
     final bar = find.semantics.byLabel(RegExp('^api,'));
