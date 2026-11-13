@@ -55,10 +55,16 @@ void main() {
         (scheme.onPrimary, scheme.primary),
         (scheme.onSecondary, scheme.secondary),
         (scheme.onSecondaryContainer, scheme.secondaryContainer),
+        (scheme.onErrorContainer, scheme.errorContainer),
+        (
+          Color.alphaBlend(scheme.onErrorContainer.withValues(alpha: 0.7), scheme.errorContainer),
+          scheme.errorContainer,
+        ),
         (scheme.error, scheme.surface),
         (MorphicColors.warningText(theme.brightness), scheme.surface),
         (MorphicColors.successText(theme.brightness), scheme.surface),
         (theme.textButtonTheme.style!.foregroundColor!.resolve({})!, scheme.surface),
+        (theme.textButtonTheme.style!.foregroundColor!.resolve({})!, scheme.errorContainer),
         (theme.outlinedButtonTheme.style!.foregroundColor!.resolve({})!, scheme.surface),
       ];
       for (final (foreground, background) in pairs) {

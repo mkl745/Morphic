@@ -63,9 +63,8 @@ void main() {
     expect(kAppVersion, match!.group(1));
   });
 
-  test('the phase label no longer claims Phase 0', () {
-    expect(kPhaseLabel, isNot(contains('Phase 0')));
-    expect(kPhaseLabel, contains('Phase 1'));
+  test('the phase label does not claim an outdated milestone', () {
+    expect(kPhaseLabel, 'Phase 1');
   });
 
   testWidgets('Settings renders the build identity, not a fixed string', (tester) async {

@@ -26,6 +26,10 @@ abstract final class MorphicColors {
   static const selectionDark = Color(0xFF17423F);
   static const selectionLight = Color(0xFFCDECE8);
 
+  // Tonal error surfaces keep both explanatory text and recovery actions legible.
+  static const errorContainerDark = Color(0xFF402025);
+  static const errorContainerLight = Color(0xFFFFEDEC);
+
   // Semantic (shared hues)
   static const accent = Color(0xFF4FD1C5);
   static const accentDark = Color(0xFF0D9488);
@@ -156,6 +160,8 @@ abstract final class MorphicTheme {
       onSecondaryContainer: text,
       error: dark ? MorphicColors.error : MorphicColors.severityErrorLight,
       onError: dark ? MorphicColors.bgDark : MorphicColors.surfaceLight,
+      errorContainer: dark ? MorphicColors.errorContainerDark : MorphicColors.errorContainerLight,
+      onErrorContainer: text,
       surface: surface,
       onSurface: text,
       onSurfaceVariant: muted,

@@ -2,12 +2,16 @@
 @Tags(<String>['golden'])
 library;
 
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:morphic_flutter/design_system/theme_preference.dart';
 import 'package:morphic_flutter/design_system/tokens.dart';
+import 'package:morphic_flutter/engine/bridge.dart';
 import 'package:morphic_flutter/engine/bridge_scope.dart';
 import 'package:morphic_flutter/engine/engine_controller.dart';
+import 'package:morphic_flutter/engine/file_source.dart';
 import 'package:morphic_flutter/features/home/home_screen.dart';
 import 'package:morphic_flutter/features/import/import_screen.dart';
 import 'package:morphic_flutter/features/settings/settings_screen.dart';
@@ -100,6 +104,31 @@ void main() {
           find.byType(Scaffold), matchesGoldenFile('goldens/screen_import_$name.png'));
     });
 
+    testWidgets('import failure and recovery $name', (tester) async {
+      _surface(tester);
+      await tester.pumpWidget(_host(
+        ScriptedBridge(),
+        brightness,
+        ImportScreen(
+          fileSource: FakeFileSource(
+            file: PickedFile(name: 'sales.csv', bytes: Uint8List.fromList([1, 2, 3])),
+          ),
+          runner: FakeImportRunner(
+            failure: const MorphicBridgeException('ingest: resource limit exceeded: file limit'),
+          ),
+          sampleLauncher: FakeSampleLauncher(),
+        ),
+      ));
+      await tester.tap(find.text('Choose a file'));
+      await tester.pumpAndSettle();
+      await tester.drag(find.byType(ListView), const Offset(0, -1000));
+      await tester.pumpAndSettle();
+      expect(find.text('That file is too large to import.'), findsOneWidget);
+      expect(find.text('Choose another file'), findsOneWidget);
+      await expectLater(
+          find.byType(Scaffold), matchesGoldenFile('goldens/screen_import_error_$name.png'));
+    });
+
     testWidgets('workspace chrome $name', (tester) async {
       _surface(tester);
       final bridge = ScriptedBridge();
@@ -109,6 +138,22 @@ void main() {
       await tester.pumpAndSettle();
       await expectLater(
           find.byType(Scaffold), matchesGoldenFile('goldens/screen_workspace_$name.png'));
+    });
+
+    testWidgets('workspace missing-source recovery $name', (tester) async {
+      _surface(tester);
+      final bridge = ScriptedBridge(
+        degraded: true,
+        sourceUnavailable: true,
+        notice: 'The imported source is unavailable. Restore the same file to recover its data.',
+      );
+      final engine = EngineController(bridge: bridge, storageRoot: '/local/morphic');
+      await engine.open('w1');
+      await tester.pumpWidget(_host(bridge, brightness, WorkspaceScreen(controller: engine)));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('restore-source-notice-button')), findsOneWidget);
+      await expectLater(
+          find.byType(Scaffold), matchesGoldenFile('goldens/screen_workspace_degraded_$name.png'));
     });
 
     testWidgets('settings appearance and storage $name', (tester) async {

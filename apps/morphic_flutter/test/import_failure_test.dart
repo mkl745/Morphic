@@ -31,6 +31,10 @@ void main() {
       );
       expect(size.kind, ImportFailureKind.tooLarge);
       expect(size.suggestSmallerFile, isTrue);
+      expect(size.nextStep, contains('Settings'));
+      expect(size.nextStep, isNot(contains('256 MiB')),
+          reason: 'the production picker and clipboard may impose a smaller limit');
+      expect(size.raw, contains('256 MiB'), reason: 'retain the actual engine evidence');
 
       final memory = describeImportFailure(
         'ingest: resource limit exceeded: the decoded columns exceed the 512 MiB '

@@ -1,7 +1,7 @@
 /// Behavioural tests for the "Why this view?" sheet (M1.4 task 1.4.6).
 ///
-/// No goldens here: Flutter's test font draws boxes, so a PNG could not prove that the words
-/// are right. Everything that matters in this sheet *is* words, and the words are asserted.
+/// The sheet's explanations and actions are asserted behaviorally here. Shipped fonts are now
+/// loaded by the separate golden suite, but this file does not take a sheet screenshot.
 /// The 54 chart goldens still change, because the shared header button is part of their layout.
 library;
 

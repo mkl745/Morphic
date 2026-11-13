@@ -16,9 +16,8 @@ library;
 /// two drift, because a version shown to a user that disagrees with the package is a lie.
 const String kAppVersion = '0.2.0';
 
-/// What this build actually is. The old label claimed "Phase 0 proof of concept" long after
-/// Phase 0 ended.
-const String kPhaseLabel = 'Phase 1 · M1.4';
+/// The broad development phase, without a stale claim about a particular milestone's status.
+const String kPhaseLabel = 'Phase 1';
 
 class BuildInfo {
   const BuildInfo({required this.gitSha, required this.builtAt});

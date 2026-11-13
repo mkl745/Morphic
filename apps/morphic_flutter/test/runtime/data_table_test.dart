@@ -424,7 +424,12 @@ void main() {
       ]));
       await tester.tap(find.text('—').hitTestable());
       await tester.pumpAndSettle();
-      expect(find.text('No value (null)'), findsOneWidget);
+      final nullText = find.text('No value (null)');
+      expect(nullText, findsOneWidget);
+      expect(
+        tester.widget<Text>(nullText).style?.color,
+        Theme.of(tester.element(nullText)).colorScheme.onSurfaceVariant,
+      );
     });
   });
 }

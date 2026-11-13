@@ -47,7 +47,7 @@ class _RowDetail extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final nullStyle = theme.textTheme.bodyMedium
-        ?.copyWith(color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.55));
+        ?.copyWith(color: theme.colorScheme.onSurfaceVariant);
     return DraggableScrollableSheet(
       expand: false,
       initialChildSize: 0.6,

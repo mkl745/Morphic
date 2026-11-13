@@ -98,8 +98,8 @@ ImportFailure describeImportFailure(String raw) {
     return ImportFailure(
       kind: ImportFailureKind.tooLarge,
       headline: 'That file is too large to import.',
-      nextStep: 'Morphic reads files up to 256 MiB. Split the file, or export a smaller '
-          'range from the app that produced it.',
+      nextStep: 'Split the file, or export a smaller range from the app that produced it. '
+          'Settings shows the import limits for this build.',
       raw: raw,
     );
   }
