@@ -73,6 +73,39 @@ void main() {
     expect(find.textContaining('unsaved'), findsNothing);
   });
 
+  testWidgets('compact degraded workspace keeps title editing and recovery visible',
+      (tester) async {
+    tester.view.physicalSize = const Size(360, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final bridge = ScriptedBridge(degraded: true, notice: 'Source unavailable.');
+    final engine = EngineController(bridge: bridge, storageRoot: '/tmp/m');
+    await engine.open('w1');
+    await tester.pumpWidget(MaterialApp(
+      theme: MorphicTheme.dark(),
+      routes: {
+        '/': (context) => Scaffold(
+              body: TextButton(
+                onPressed: () => Navigator.of(context).pushNamed('/workspace'),
+                child: const Text('Open workspace'),
+              ),
+            ),
+        '/workspace': (_) => WorkspaceScreen(controller: engine),
+      },
+    ));
+    await tester.tap(find.text('Open workspace'));
+    await tester.pumpAndSettle();
+    final rename = find.byKey(const Key('workspace-rename'));
+    expect(rename, findsOneWidget);
+    expect(find.descendant(of: rename, matching: find.byIcon(Icons.edit_outlined)), findsOneWidget);
+    expect(find.byKey(const Key('restore-source-notice-button')), findsOneWidget);
+    await tester.tap(rename);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('workspace-title-input')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('an adopted import shows checkpoint status until the debounce completes',
       (tester) async {
     final bridge = ScriptedBridge();

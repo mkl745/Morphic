@@ -123,7 +123,9 @@ class _WorkspaceScreenState extends State<WorkspaceScreen>
                 _historyButton(context, ctl, undo: false),
                 // AT-16: degraded mode must offer a recovery action, not just an explanation.
                 // The engine verifies the picked bytes against the document's dataset hash.
-                if (ctl.degraded)
+                // Compact chrome already has a prominent restore action in the notice;
+                // omit this duplicate so the editable title is not squeezed out.
+                if (ctl.degraded && !phone)
                   IconButton(
                     key: const Key('restore-source-button'),
                     tooltip: 'Restore source file',
@@ -344,7 +346,9 @@ class _WorkspaceTitle extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Flexible(child: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis)),
-                  if (constraints.maxWidth > 80) ...[
+                  // Leave room for an ellipsis as well as the 16 dp edit affordance.
+                  if (constraints.maxWidth >=
+                      MorphicSpace.lg + MorphicSpace.xs + MorphicSpace.sm) ...[
                     const SizedBox(width: MorphicSpace.xs),
                     const Icon(Icons.edit_outlined, size: 16),
                   ],

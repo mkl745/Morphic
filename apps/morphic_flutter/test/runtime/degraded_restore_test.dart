@@ -20,10 +20,10 @@ import '../support/scripted_bridge.dart';
 const _notice =
     'the imported source file is no longer available; re-import the same file to restore the data';
 
-Widget _host(Widget home) => MaterialApp(
+Widget _host(Widget home, {Size size = const Size(420, 900)}) => MaterialApp(
       home: MediaQuery(
-        data: const MediaQueryData(size: Size(420, 900)),
-        child: SizedBox(width: 420, height: 900, child: home),
+        data: MediaQueryData(size: size),
+        child: SizedBox(width: size.width, height: size.height, child: home),
       ),
     );
 
@@ -45,7 +45,8 @@ void main() {
 
     await _pump(
       tester,
-      _host(WorkspaceScreen(controller: controller, fileSource: source)),
+      _host(WorkspaceScreen(controller: controller, fileSource: source),
+          size: const Size(800, 900)),
     );
     // The notice and the table's degraded panel both quote the engine's explanation.
     expect(find.text(_notice), findsWidgets);
@@ -82,7 +83,8 @@ void main() {
 
     await _pump(
       tester,
-      _host(WorkspaceScreen(controller: controller, fileSource: source)),
+      _host(WorkspaceScreen(controller: controller, fileSource: source),
+          size: const Size(800, 900)),
     );
     await tester.tap(find.byKey(const Key('restore-source-button')));
     await tester.pump();
@@ -107,6 +109,8 @@ void main() {
       tester,
       _host(WorkspaceScreen(controller: controller, fileSource: source)),
     );
+    expect(find.byKey(const Key('restore-source-button')), findsNothing,
+        reason: 'compact chrome uses the notice action instead of a duplicate');
     await tester.tap(find.byKey(const Key('restore-source-notice-button')));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
