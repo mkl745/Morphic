@@ -18,6 +18,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../engine/chart_scene.dart';
+import 'chart_axis_layout.dart';
 import 'chart_format.dart';
 
 /// Plot height. Tall enough to read a trend on a phone, short enough that the legend and the
@@ -65,8 +66,12 @@ class LineGeometry {
     required this.series,
     required this.temporal,
     required this.bucketMs,
+    TextStyle? axisTextStyle,
+    TextScaler axisTextScaler = TextScaler.noScaling,
   })  : xExtent = _extent(series.expand((s) => s.points).map((p) => p.x)),
-        yExtent = _yExtent(series);
+        yExtent = _yExtent(series) {
+    _axisLeft = _measureAxisLeft(axisTextStyle, axisTextScaler);
+  }
 
   final List<LineSeriesDatum> series;
   final bool temporal;
@@ -110,13 +115,32 @@ class LineGeometry {
 
   bool get isEmpty => xExtent == null || yExtent == null;
 
+  /// Measured once per geometry (not during painting). The inset is shared by the base
+  /// painter, scrub overlay and hit testing, so all three agree when text scales change.
+  late final double _axisLeft;
+
+  double _measureAxisLeft(TextStyle? style, TextScaler scaler) {
+    final extent = yExtent;
+    if (style == null || extent == null) return kLineAxisLeft;
+    final (lo, hi) = extent;
+    return measureChartAxisInset(
+      labels: [for (var i = 0; i < 4; i++) formatChartValue(lo + (hi - lo) * i / 3)],
+      style: style,
+      scaler: scaler,
+      minimum: kLineAxisLeft,
+    );
+  }
+
   /// The plot rectangle inside a given canvas size.
-  Rect plotIn(Size size) => Rect.fromLTRB(
-        kLineAxisLeft,
-        _markerRadius + 2,
-        math.max(kLineAxisLeft + 1, size.width - _markerRadius - 2),
-        math.max(_markerRadius + 3, size.height - kLineAxisBottom),
-      );
+  Rect plotIn(Size size) {
+    final left = fitChartAxisInset(_axisLeft, kLineAxisLeft, size.width);
+    return Rect.fromLTRB(
+      left,
+      _markerRadius + 2,
+      math.max(left + 1, size.width - _markerRadius - 2),
+      math.max(_markerRadius + 3, size.height - kLineAxisBottom),
+    );
+  }
 
   double xToPixel(double x, Rect plot) {
     final (lo, hi) = xExtent!;
@@ -291,8 +315,8 @@ class LineChartPainter extends CustomPainter {
           ..style = PaintingStyle.stroke
           ..strokeWidth = 1,
       );
-      final tp = _yTicks[i]..layout(maxWidth: kLineAxisLeft - 6);
-      tp.paint(canvas, Offset(plot.left - 6 - tp.width, y - tp.height / 2));
+      final tp = _yTicks[i]..layout(maxWidth: plot.left - chartAxisLabelGap);
+      tp.paint(canvas, Offset(plot.left - chartAxisLabelGap - tp.width, y - tp.height / 2));
     }
 
     final indices = _xTickIndices;

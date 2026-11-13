@@ -14,6 +14,9 @@ import 'package:morphic_flutter/features/home/home_screen.dart';
 import 'package:morphic_flutter/features/import/import_screen.dart';
 import 'package:morphic_flutter/features/settings/settings_screen.dart';
 import 'package:morphic_flutter/features/workspace/workspace_screen.dart';
+import 'package:morphic_flutter/runtime/components/chart_axis_layout.dart';
+import 'package:morphic_flutter/runtime/components/chart_format.dart';
+import 'package:morphic_flutter/runtime/components/line_chart_painter.dart';
 
 import '../support/fake_import.dart';
 import '../support/golden_fonts.dart';
@@ -207,6 +210,25 @@ void main() {
         );
         expect(find.descendant(of: rail, matching: detail), findsOneWidget);
         expect(tester.renderObject<RenderParagraph>(detail).didExceedMaxLines, isFalse);
+        if (type == 'line') {
+          final paint = tester.widget<CustomPaint>(find.byKey(const Key('line-base-paint')));
+          final painter = paint.painter! as LineChartPainter;
+          final geometry = painter.geometry;
+          final plot = geometry.plotIn(tester.getSize(find.byKey(const Key('line-base-paint'))));
+          final (lo, hi) = geometry.yExtent!;
+          for (var i = 0; i < 4; i++) {
+            final tick = formatChartValue(lo + (hi - lo) * i / 3);
+            final text = TextPainter(
+              text: TextSpan(text: tick, style: painter.textStyle),
+              textDirection: TextDirection.ltr,
+              maxLines: 1,
+              ellipsis: '…',
+              textScaler: painter.textScaler,
+            )..layout(maxWidth: plot.left - chartAxisLabelGap);
+            expect(text.didExceedMaxLines, isFalse, reason: 'axis tick $tick must fit');
+            text.dispose();
+          }
+        }
         await _snapshot(tester, 'responsive_${type}_rail_130_${theme.key}');
       });
     }

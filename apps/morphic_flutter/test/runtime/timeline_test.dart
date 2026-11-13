@@ -16,6 +16,8 @@ import 'package:morphic_flutter/engine/chart_scene.dart';
 import 'package:morphic_flutter/engine/engine_controller.dart';
 import 'package:morphic_flutter/engine/interaction.dart';
 import 'package:morphic_flutter/runtime/component_registry.dart';
+import 'package:morphic_flutter/runtime/components/chart_axis_layout.dart';
+import 'package:morphic_flutter/runtime/components/chart_format.dart';
 import 'package:morphic_flutter/runtime/components/timeline_painter.dart';
 import 'package:morphic_flutter/runtime/components/timeline_view.dart';
 
@@ -186,6 +188,67 @@ void main() {
     expect(tall.countStep, 4);
     expect(tall.countTop, 12);
     expect(tall.countTop, greaterThanOrEqualTo(10));
+  });
+
+  testWidgets('large count ticks fit at 1.3x and taps follow the scaled plot', (tester) async {
+    final scale = ValueNotifier<double>(1);
+    addTearDown(scale.dispose);
+    final bridge = _bridge(rows: [
+      for (var i = 0; i < 12345; i++) [0, 'ERROR', 'item'],
+      [60000, 'INFO', 'last'],
+    ]);
+    final engine = EngineController(bridge: bridge, storageRoot: '/tmp/m');
+    await engine.open('w1');
+    await tester.pumpWidget(MaterialApp(
+      theme: MorphicTheme.dark(),
+      builder: (context, child) => ValueListenableBuilder<double>(
+        valueListenable: scale,
+        child: child,
+        builder: (context, value, child) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(value)),
+          child: child!,
+        ),
+      ),
+      home: Scaffold(
+        body: SingleChildScrollView(
+          child: AnimatedBuilder(
+            animation: engine,
+            builder: (context, _) => TimelineView(
+              ctx: ComponentContext(spec: engine.components.first, engine: engine),
+            ),
+          ),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    final before = _geo(tester);
+    final box = tester.getRect(find.byKey(const Key('timeline-plot')));
+    scale.value = 1.3;
+    await tester.pumpAndSettle();
+    final painter = _painter(tester);
+    final geometry = painter.geometry;
+    final plot = geometry.plotIn(box.size);
+    expect(identical(geometry, before), isFalse);
+    expect(plot.left, greaterThan(before.plotIn(box.size).left));
+    expect(plot.left, greaterThan(kTimelineAxisLeft));
+    for (var i = 0; i < 4; i++) {
+      final tick = formatChartValue((geometry.countStep * i).toDouble());
+      final text = TextPainter(
+        text: TextSpan(text: tick, style: painter.textStyle),
+        textDirection: TextDirection.ltr,
+        maxLines: 1,
+        ellipsis: '…',
+        textScaler: painter.textScaler,
+      )..layout(maxWidth: plot.left - chartAxisLabelGap);
+      expect(text.didExceedMaxLines, isFalse, reason: 'count tick $tick must fit');
+      text.dispose();
+    }
+
+    final last = geometry.slotFor(geometry.columns.last, plot);
+    await tester.tapAt(Offset(box.left + last.center.dx, box.top + last.center.dy));
+    await tester.pumpAndSettle();
+    final args = engine.globalFilters.single['args'] as List;
+    expect(args[0], {'op': 'gte', 'field': 'ts', 'value': 60000});
   });
 
   testWidgets('tapping a bucket filters to a half-open time range', (tester) async {

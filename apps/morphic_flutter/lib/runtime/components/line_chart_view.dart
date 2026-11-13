@@ -122,21 +122,27 @@ class _LineChartViewState extends State<LineChartView> {
 
   // --- geometry, memoised -----------------------------------------------------------------
   //
-  // Rebuilt only when the scene, the hidden set or the theme changes. Rebuilding it on every
-  // pointer move would hand the base painter a new object and defeat its identity check,
-  // repainting 2000 points per frame — the exact cost the two-layer split exists to avoid.
+  // Rebuilt only when the scene, hidden set, theme or axis text metrics change. Rebuilding it
+  // on every pointer move would hand the base painter a new object and defeat its identity
+  // check, repainting 2000 points per frame — the cost the two-layer split exists to avoid.
   ChartResult? _geoResult;
   String _geoKey = '';
   bool _geoDark = true;
+  TextStyle? _geoAxisStyle;
+  TextScaler? _geoScaler;
   LineGeometry? _geoCache;
 
-  LineGeometry _geometry(bool dark) {
+  LineGeometry _geometry(bool dark, TextStyle axisStyle, TextScaler scaler) {
     final scene = _scene;
     if (scene == null) {
       return LineGeometry(series: const [], temporal: false, bucketMs: 0);
     }
     final key = (_hidden.toList()..sort()).join('|');
-    if (identical(_geoResult, _result) && key == _geoKey && dark == _geoDark) {
+    if (identical(_geoResult, _result) &&
+        key == _geoKey &&
+        dark == _geoDark &&
+        axisStyle == _geoAxisStyle &&
+        scaler == _geoScaler) {
       return _geoCache!;
     }
     final palette = dark ? MorphicColors.seriesDark : MorphicColors.seriesLight;
@@ -154,10 +160,14 @@ class _LineChartViewState extends State<LineChartView> {
     _geoResult = _result;
     _geoKey = key;
     _geoDark = dark;
+    _geoAxisStyle = axisStyle;
+    _geoScaler = scaler;
     _geoCache = LineGeometry(
       series: visible,
       temporal: scene.temporal,
       bucketMs: scene.bucketing.bucketMs,
+      axisTextStyle: axisStyle,
+      axisTextScaler: scaler,
     );
     return _geoCache!;
   }
@@ -185,7 +195,9 @@ class _LineChartViewState extends State<LineChartView> {
     final theme = Theme.of(context);
     final dark = theme.brightness == Brightness.dark;
     final scene = _scene;
-    final geo = _geometry(dark);
+    final axisStyle = _axisStyle(theme, dark);
+    final scaler = MediaQuery.textScalerOf(context);
+    final geo = _geometry(dark, axisStyle, scaler);
     return Card(
       // Pinned to the token surface so the series palette's contrast is the pair the token
       // test measures, not Material's default container role.
@@ -243,7 +255,7 @@ class _LineChartViewState extends State<LineChartView> {
             key: const Key('line-view-as-table'),
             tooltip: 'View as table',
             icon: const Icon(Icons.table_rows_outlined),
-            onPressed: _scene == null ? null : () => _showTable(theme),
+            onPressed: _scene == null ? null : _showTable,
           ),
         ],
       );
@@ -300,6 +312,11 @@ class _LineChartViewState extends State<LineChartView> {
     );
   }
 
+  TextStyle _axisStyle(ThemeData theme, bool dark) =>
+      (MorphicTypography.dataStyle(theme.textTheme.labelSmall) ?? const TextStyle()).copyWith(
+        color: dark ? MorphicColors.textSecondaryDark : MorphicColors.textSecondaryLight,
+      );
+
   Widget _body(ThemeData theme, bool dark, SeriesScene? scene, LineGeometry geo) {
     if (_state == _Load.failed) {
       return MorphicStateMessage(
@@ -347,10 +364,7 @@ class _LineChartViewState extends State<LineChartView> {
       );
     }
 
-    final style = (MorphicTypography.dataStyle(theme.textTheme.labelSmall) ??
-            const TextStyle()).copyWith(
-      color: dark ? MorphicColors.textSecondaryDark : MorphicColors.textSecondaryLight,
-    );
+    final style = _axisStyle(theme, dark);
     final scaler = MediaQuery.textScalerOf(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -557,11 +571,12 @@ class _LineChartViewState extends State<LineChartView> {
   ///
   /// A line scene can hold 2000 buckets, so the rows are built lazily. Each bucket lists its
   /// series by name instead of squeezing up to eight columns into a narrow detail rail.
-  Future<void> _showTable(ThemeData theme) async {
+  Future<void> _showTable() async {
     final scene = _scene;
     if (scene == null) return;
-    final dark = theme.brightness == Brightness.dark;
-    final geo = _geometry(dark);
+    final hostTheme = Theme.of(context);
+    final dark = hostTheme.brightness == Brightness.dark;
+    final geo = _geometry(dark, _axisStyle(hostTheme, dark), MediaQuery.textScalerOf(context));
     final title = widget.ctx.title;
     final hiddenCount = _hidden.length;
     await showWorkspaceDetail(
@@ -574,20 +589,20 @@ class _LineChartViewState extends State<LineChartView> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, style: theme.textTheme.titleSmall),
+                Text(title, style: Theme.of(context).textTheme.titleSmall),
                 const SizedBox(height: MorphicSpace.xs),
                 Text(
                   '${geo.firstPoints.length} buckets of ${scene.bucketing.label}'
                   '${hiddenCount == 0 ? "" : " · $hiddenCount series hidden"}',
-                  style: theme.textTheme.bodySmall,
+                  style: Theme.of(context).textTheme.bodySmall,
                 ),
                 if (WorkspaceDetailScope.maybeOf(context) != null)
                   Text(
                     'Snapshot of the visible series. Open again after changing the legend.',
-                    style: theme.textTheme.bodySmall,
+                    style: Theme.of(context).textTheme.bodySmall,
                   ),
                 const SizedBox(height: MorphicSpace.md),
-                Text('Bucket · ${scene.xField}', style: theme.textTheme.labelMedium),
+                Text('Bucket · ${scene.xField}', style: Theme.of(context).textTheme.labelMedium),
                 const Divider(height: MorphicSpace.md),
                 Expanded(
                   child: ListView.separated(
@@ -604,7 +619,7 @@ class _LineChartViewState extends State<LineChartView> {
                             temporal: scene.temporal,
                             bucketMs: scene.bucketing.bucketMs,
                           ),
-                          style: theme.textTheme.labelMedium,
+                          style: Theme.of(context).textTheme.labelMedium,
                         ),
                         for (var j = 0; j < geo.series.length; j++)
                           Padding(
@@ -617,7 +632,7 @@ class _LineChartViewState extends State<LineChartView> {
                                   child: Text(
                                     geo.series[j].name,
                                     key: Key('line-table-series-$i-$j'),
-                                    style: theme.textTheme.bodySmall,
+                                    style: Theme.of(context).textTheme.bodySmall,
                                   ),
                                 ),
                                 const SizedBox(width: MorphicSpace.sm),
@@ -629,7 +644,7 @@ class _LineChartViewState extends State<LineChartView> {
                                         : '—',
                                     key: Key('line-table-value-$i-$j'),
                                     textAlign: TextAlign.right,
-                                    style: theme.textTheme.bodySmall,
+                                    style: Theme.of(context).textTheme.bodySmall,
                                   ),
                                 ),
                               ],

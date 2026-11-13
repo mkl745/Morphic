@@ -198,9 +198,11 @@ class _TimelineViewState extends State<TimelineView> {
   ChartResult? _geoResult;
   String _geoKey = '';
   bool _geoDark = true;
+  TextStyle? _geoAxisStyle;
+  TextScaler? _geoScaler;
   TimelineGeometry? _geoCache;
 
-  TimelineGeometry _geometry(bool dark) {
+  TimelineGeometry _geometry(bool dark, TextStyle axisStyle, TextScaler scaler) {
     final scene = _scene;
     if (scene == null) {
       return TimelineGeometry(
@@ -211,7 +213,11 @@ class _TimelineViewState extends State<TimelineView> {
       );
     }
     final key = (_hidden.toList()..sort()).join('|');
-    if (identical(_geoResult, _result) && key == _geoKey && dark == _geoDark) {
+    if (identical(_geoResult, _result) &&
+        key == _geoKey &&
+        dark == _geoDark &&
+        axisStyle == _geoAxisStyle &&
+        scaler == _geoScaler) {
       return _geoCache!;
     }
     final hasSplit = scene.lanes.isNotEmpty;
@@ -276,11 +282,15 @@ class _TimelineViewState extends State<TimelineView> {
     _geoResult = _result;
     _geoKey = key;
     _geoDark = dark;
+    _geoAxisStyle = axisStyle;
+    _geoScaler = scaler;
     _geoCache = TimelineGeometry(
       lanes: lanes,
       columns: columns,
       bucketMs: scene.bucketing.bucketMs,
       hasSeveritySplit: hasSplit,
+      axisTextStyle: axisStyle,
+      axisTextScaler: scaler,
     );
     return _geoCache!;
   }
@@ -313,7 +323,7 @@ class _TimelineViewState extends State<TimelineView> {
     final theme = Theme.of(context);
     final dark = theme.brightness == Brightness.dark;
     final scene = _scene;
-    final geo = _geometry(dark);
+    final geo = _geometry(dark, _axisStyle(theme, dark), MediaQuery.textScalerOf(context));
     final active = scene == null ? null : _activeIndex(geo, scene);
     return Card(
       // Pinned to the token surface so the severity palette's contrast is the pair the token test
@@ -372,7 +382,7 @@ class _TimelineViewState extends State<TimelineView> {
             key: const Key('timeline-view-as-table'),
             tooltip: 'View as table',
             icon: const Icon(Icons.table_rows_outlined),
-            onPressed: _scene == null ? null : () => _showTable(theme),
+            onPressed: _scene == null ? null : _showTable,
           ),
         ],
       );
@@ -386,6 +396,12 @@ class _TimelineViewState extends State<TimelineView> {
             color: MorphicColors.warningText(theme.brightness),
           ),
         ),
+      );
+
+  TextStyle _axisStyle(ThemeData theme, bool dark) =>
+      (MorphicTypography.dataStyle(theme.textTheme.labelSmall) ?? const TextStyle(fontSize: 11))
+          .copyWith(
+        color: dark ? MorphicColors.textSecondaryDark : MorphicColors.textSecondaryLight,
       );
 
   Widget _body(
@@ -459,8 +475,7 @@ class _TimelineViewState extends State<TimelineView> {
       );
     }
 
-    final style = MorphicTypography.dataStyle(theme.textTheme.labelSmall) ??
-        const TextStyle(fontSize: 11);
+    final style = _axisStyle(theme, dark);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -497,11 +512,7 @@ class _TimelineViewState extends State<TimelineView> {
                         gridColor: dark
                             ? MorphicColors.borderDark
                             : MorphicColors.borderLight,
-                        textStyle: style.copyWith(
-                          color: dark
-                              ? MorphicColors.textSecondaryDark
-                              : MorphicColors.textSecondaryLight,
-                        ),
+                        textStyle: style,
                         textScaler: MediaQuery.textScalerOf(context),
                         activeColumn: active,
                         activeColor: dark
@@ -647,10 +658,12 @@ class _TimelineViewState extends State<TimelineView> {
   ///
   /// A scene can hold 2000 buckets, so rows are built lazily. Bucket labels and lane breakdowns
   /// can wrap rather than squeezing or truncating up to eight lanes in a narrow detail rail.
-  Future<void> _showTable(ThemeData theme) async {
+  Future<void> _showTable() async {
     final scene = _scene;
     if (scene == null) return;
-    final geo = _geometry(theme.brightness == Brightness.dark);
+    final hostTheme = Theme.of(context);
+    final dark = hostTheme.brightness == Brightness.dark;
+    final geo = _geometry(dark, _axisStyle(hostTheme, dark), MediaQuery.textScalerOf(context));
     final title = widget.ctx.title;
     final hiddenCount = _hidden.length;
     await showWorkspaceDetail(
@@ -663,25 +676,25 @@ class _TimelineViewState extends State<TimelineView> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, style: theme.textTheme.titleSmall),
+                Text(title, style: Theme.of(context).textTheme.titleSmall),
                 const SizedBox(height: MorphicSpace.xs),
                 Text(
                   '${geo.columns.length} buckets of ${scene.bucketing.label}'
                   '${hiddenCount == 0 ? "" : " · $hiddenCount lanes hidden"}',
-                  style: theme.textTheme.bodySmall,
+                  style: Theme.of(context).textTheme.bodySmall,
                 ),
                 if (WorkspaceDetailScope.maybeOf(context) != null)
                   Text(
                     'Snapshot of the visible lanes. Open again after changing the legend.',
-                    style: theme.textTheme.bodySmall,
+                    style: Theme.of(context).textTheme.bodySmall,
                   ),
                 if (scene.partialNotice != null)
                   Padding(
                     padding: const EdgeInsets.only(top: MorphicSpace.xs),
                     child: Text(
                       scene.partialNotice!,
-                      style: theme.textTheme.labelSmall?.copyWith(
-                        color: MorphicColors.warningText(theme.brightness),
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: MorphicColors.warningText(Theme.of(context).brightness),
                       ),
                     ),
                   ),
@@ -713,14 +726,14 @@ class _TimelineViewState extends State<TimelineView> {
                                       temporal: true,
                                       bucketMs: scene.bucketing.bucketMs,
                                     ),
-                                    style: theme.textTheme.bodySmall,
+                                    style: Theme.of(context).textTheme.bodySmall,
                                   ),
                                 ),
                                 Expanded(
                                   child: Text(
                                     '${c.count}',
                                     textAlign: TextAlign.right,
-                                    style: theme.textTheme.labelMedium,
+                                    style: Theme.of(context).textTheme.labelMedium,
                                   ),
                                 ),
                               ],
@@ -729,7 +742,7 @@ class _TimelineViewState extends State<TimelineView> {
                               Text(
                                 parts.join(' · '),
                                 key: Key('timeline-table-lanes-$i'),
-                                style: theme.textTheme.labelSmall,
+                                style: Theme.of(context).textTheme.labelSmall,
                               ),
                           ],
                         ),

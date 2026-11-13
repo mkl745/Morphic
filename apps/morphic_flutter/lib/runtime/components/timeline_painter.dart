@@ -18,6 +18,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../design_system/tokens.dart';
+import 'chart_axis_layout.dart';
 import 'chart_format.dart';
 
 /// Plot height, matching the line chart so a workspace of mixed charts has one rhythm.
@@ -148,6 +149,8 @@ class TimelineGeometry {
     required List<TimelineColumn> columns,
     required int bucketMs,
     required bool hasSeveritySplit,
+    TextStyle? axisTextStyle,
+    TextScaler axisTextScaler = TextScaler.noScaling,
   }) {
     final maxCount =
         columns.fold<int>(0, (m, c) => math.max(m, c.visibleCount));
@@ -163,6 +166,12 @@ class TimelineGeometry {
       maxCount: maxCount,
       countStep: step,
       countTop: step * 3,
+      axisLeft: measureChartAxisInset(
+        labels: [for (var i = 0; i < 4; i++) formatChartValue((step * i).toDouble())],
+        style: axisTextStyle,
+        scaler: axisTextScaler,
+        minimum: kTimelineAxisLeft,
+      ),
     );
   }
 
@@ -174,7 +183,9 @@ class TimelineGeometry {
     required int maxCount,
     required this.countStep,
     required this.countTop,
+    required double axisLeft,
   })  : _maxCount = maxCount,
+        _axisLeft = axisLeft,
         xExtent = columns.isEmpty
             ? null
             : (
@@ -190,6 +201,9 @@ class TimelineGeometry {
   final (double, double)? xExtent;
   final int _maxCount;
 
+  /// Measured once when geometry is built, and shared by the painter and hit testing.
+  final double _axisLeft;
+
   final int countStep;
   final int countTop;
 
@@ -200,12 +214,15 @@ class TimelineGeometry {
 
   bool get isEmpty => columns.isEmpty || _maxCount == 0;
 
-  Rect plotIn(Size size) => Rect.fromLTRB(
-        kTimelineAxisLeft,
-        2,
-        math.max(kTimelineAxisLeft + 1, size.width - 2),
-        math.max(3, size.height - kTimelineAxisBottom),
-      );
+  Rect plotIn(Size size) {
+    final left = fitChartAxisInset(_axisLeft, kTimelineAxisLeft, size.width);
+    return Rect.fromLTRB(
+      left,
+      2,
+      math.max(left + 1, size.width - 2),
+      math.max(3, size.height - kTimelineAxisBottom),
+    );
+  }
 
   double xToPixel(double ms, Rect plot) {
     final (lo, hi) = xExtent!;
@@ -333,8 +350,8 @@ class TimelinePainter extends CustomPainter {
           ..style = PaintingStyle.stroke
           ..strokeWidth = 1,
       );
-      final tp = _yTicks[i]..layout(maxWidth: kTimelineAxisLeft - 6);
-      tp.paint(canvas, Offset(plot.left - 6 - tp.width, y - tp.height / 2));
+      final tp = _yTicks[i]..layout(maxWidth: plot.left - chartAxisLabelGap);
+      tp.paint(canvas, Offset(plot.left - chartAxisLabelGap - tp.width, y - tp.height / 2));
     }
 
     for (var i = 0; i < _xTicks.length && i < _xTickIndices.length; i++) {

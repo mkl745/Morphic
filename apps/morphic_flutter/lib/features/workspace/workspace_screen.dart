@@ -232,7 +232,16 @@ class _WorkspaceScreenState extends State<WorkspaceScreen>
                 builder: (context) => Column(
                   children: [
                     if (ws != null) _WorkspaceSaveStatus(pendingCheckpoint: ctl.dirty),
-                    if (notices.isNotEmpty) _WarningBanner(warnings: notices),
+                    if (notices.isNotEmpty)
+                      ConstrainedBox(
+                        constraints: BoxConstraints(
+                          maxHeight: MediaQuery.sizeOf(context).height * 0.25,
+                        ),
+                        child: SingleChildScrollView(
+                          key: const Key('workspace-import-notices'),
+                          child: _WarningBanner(warnings: notices),
+                        ),
+                      ),
                     Expanded(
                       child: Row(
                         children: [

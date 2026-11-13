@@ -275,7 +275,7 @@ class _BarChartViewState extends State<BarChartView> {
             key: const Key('bar-view-as-table'),
             tooltip: 'View as table',
             icon: const Icon(Icons.table_rows_outlined),
-            onPressed: _scene == null ? null : () => _showTable(theme),
+            onPressed: _scene == null ? null : _showTable,
           ),
         ],
       );
@@ -440,7 +440,7 @@ class _BarChartViewState extends State<BarChartView> {
   ///
   /// This renders the **scene**, not rows — it is the chart's own aggregates in another shape,
   /// so it cannot disagree with the bars and does not put row-level work in Dart.
-  Future<void> _showTable(ThemeData theme) async {
+  Future<void> _showTable() async {
     final scene = _scene;
     if (scene == null) return;
     final bars = _bars;
@@ -454,11 +454,11 @@ class _BarChartViewState extends State<BarChartView> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(title, style: theme.textTheme.titleSmall),
+              Text(title, style: Theme.of(context).textTheme.titleSmall),
               const SizedBox(height: MorphicSpace.xs),
               Text(
                 '${scene.measure} by ${scene.dimension}',
-                style: theme.textTheme.bodySmall,
+                style: Theme.of(context).textTheme.bodySmall,
               ),
               const SizedBox(height: MorphicSpace.md),
               Flexible(
@@ -472,17 +472,17 @@ class _BarChartViewState extends State<BarChartView> {
                     children: [
                       TableRow(
                         children: [
-                          _cell(theme, scene.dimension, bold: true),
-                          _cell(theme, scene.measure, bold: true),
-                          _cell(theme, 'Rows', bold: true),
+                          _cell(Theme.of(context), scene.dimension, bold: true),
+                          _cell(Theme.of(context), scene.measure, bold: true),
+                          _cell(Theme.of(context), 'Rows', bold: true),
                         ],
                       ),
                       for (final b in bars)
                         TableRow(
                           children: [
-                            _cell(theme, b.label),
-                            _cell(theme, formatBarValue(b.value)),
-                            _cell(theme, '${b.rowCount}'),
+                            _cell(Theme.of(context), b.label),
+                            _cell(Theme.of(context), formatBarValue(b.value)),
+                            _cell(Theme.of(context), '${b.rowCount}'),
                           ],
                         ),
                     ],

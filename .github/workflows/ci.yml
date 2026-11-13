@@ -229,9 +229,11 @@ jobs:
           cache: true
       - name: Pub get
         run: flutter pub get
-      - name: Device-evidence gate tests
+      - name: Device-evidence and smoke-helper tests
         working-directory: ${{ github.workspace }}
-        run: python3 tools/test_check_device_evidence.py
+        run: |
+          python3 tools/test_check_device_evidence.py
+          python3 tools/test_swipe_workspace.py
       - name: Analyze
         id: analyze
         continue-on-error: true
@@ -660,13 +662,16 @@ jobs:
               sleep 2
               adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1
               adb pull /sdcard/ui.xml /tmp/ui.xml >/dev/null 2>&1
-              # Require the RANGE, not just a data row. The range lives in the pager footer,
-              # so seeing it proves the footer is on screen and the page has settled. Breaking
-              # on the first data row let this stop with the footer below the fold, and the
-              # "Next page" tap then hit nothing — a fold-dependent race, not an engine bug.
-              if [ -n "$(python3 tools/read_row_range.py /tmp/ui.xml)" ]; then GEN=1; break; fi
+              # Require both the footer and a real row: the footer must be reachable, and a
+              # nonempty before-signature is needed to prove the next page changes the data.
+              if [ -n "$(python3 tools/read_row_range.py /tmp/ui.xml)" ] && \
+                 [ -n "$(python3 tools/read_row_range.py /tmp/ui.xml --signature)" ]; then
+                GEN=1; break
+              fi
               if [ $((i % 2)) = 0 ]; then
-                adb shell input swipe 540 1600 540 500 300 >/dev/null 2>&1
+                # Swiping through the nested table scrolls its rows, not the workspace. Start
+                # in the workspace's leading gutter, scaled to the emulator's actual bounds.
+                python3 tools/swipe_workspace.py /tmp/ui.xml
               fi
             done
             if [ "$GEN" != "1" ]; then
@@ -681,7 +686,7 @@ jobs:
             # Belt and braces: confirm the control is really in the dump before tapping it.
             for i in $(seq 1 6); do
               if grep -q "Next page" /tmp/ui.xml; then break; fi
-              adb shell input swipe 540 1600 540 700 300 >/dev/null 2>&1
+              python3 tools/swipe_workspace.py /tmp/ui.xml
               sleep 2
               adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1
               adb pull /sdcard/ui.xml /tmp/ui.xml >/dev/null 2>&1

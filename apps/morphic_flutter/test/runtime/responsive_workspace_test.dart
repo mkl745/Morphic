@@ -77,14 +77,20 @@ ScriptedBridge _tableBridge() => ScriptedBridge(
       ],
     );
 
-Widget _app(EngineController engine, {ComponentRegistry? registry, double scale = 1}) =>
+Widget _app(
+  EngineController engine, {
+  ComponentRegistry? registry,
+  double scale = 1,
+  List<String> warnings = const [],
+  Brightness brightness = Brightness.light,
+}) =>
     MaterialApp(
-      theme: MorphicTheme.light(),
+      theme: brightness == Brightness.light ? MorphicTheme.light() : MorphicTheme.dark(),
       builder: (context, child) => MediaQuery(
         data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(scale)),
         child: child!,
       ),
-      home: WorkspaceScreen(controller: engine, registry: registry),
+      home: WorkspaceScreen(controller: engine, registry: registry, warnings: warnings),
     );
 
 void _setSurface(WidgetTester tester, Size size) {
@@ -243,6 +249,85 @@ void main() {
     await tester.pumpAndSettle();
     expect(bridge.pageCalls.length, greaterThan(before));
     expect(bridge.pageCalls.length, lessThan(20));
+    expect(tester.takeException(), isNull);
+  });
+
+  for (final size in [const Size(390, 400), const Size(560, 360)]) {
+    testWidgets('import notes stay scrollable without consuming $size workspace', (tester) async {
+      _resetSurface(tester);
+      _setSurface(tester, size);
+      final engine = EngineController(bridge: _tableBridge(), storageRoot: '/tmp/m');
+      await engine.open('w1');
+      await tester.pumpWidget(_app(engine, scale: 1.3, warnings: [
+        for (var i = 0; i < 5; i++) 'Import warning $i: details about this file.',
+      ]));
+      await tester.pumpAndSettle();
+      final notice = find.byKey(const Key('workspace-import-notices'));
+      expect(tester.getSize(notice).height, lessThanOrEqualTo(size.height * 0.25));
+      expect(tester.getSize(find.byKey(const Key('workspace-component-flow'))).height,
+          greaterThan(80));
+      final last = find.textContaining('Import warning 4:');
+      await tester.ensureVisible(last);
+      await tester.pumpAndSettle();
+      expect(tester.getRect(last).bottom, lessThanOrEqualTo(tester.getRect(notice).bottom));
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets('workspace gutter scroll reaches the pager below a nested table', (tester) async {
+    _resetSurface(tester);
+    _setSurface(tester, const Size(390, 780));
+    final bridge = ScriptedBridge(
+      rows: [
+        ['eu', 10, null],
+        ['us', 20, 'note'],
+        ['eu', 30, null],
+        ['us', 40, 'note'],
+      ],
+      components: [
+        {
+          'id': 'bar',
+          'type': 'bar_chart',
+          'title': 'Regional totals',
+          'binding': {
+            'kind': 'bar_chart',
+            'dimension': 'region',
+            'measure': {'op': 'count', 'field': null},
+            'limit': 4,
+          },
+        },
+        {
+          'id': 'data_table',
+          'type': 'data_table',
+          'title': 'Orders',
+          'binding': {'kind': 'data_table', 'columns': <String>[], 'page_size': 2},
+        },
+      ],
+      order: ['bar', 'data_table'],
+    );
+    final engine = EngineController(bridge: bridge, storageRoot: '/tmp/m');
+    await engine.open('w1');
+    await tester.pumpWidget(_app(engine, scale: 1.3, warnings: [
+      'Read as CSV with five fields in the sampled lines.',
+      'A time column was normalized to UTC timestamps.',
+    ]));
+    await tester.pumpAndSettle();
+
+    final range = find.text('1–2 of 4').hitTestable();
+    final next = find.byTooltip('Next page').hitTestable();
+    for (var i = 0; i < 5 && (range.evaluate().isEmpty || next.evaluate().isEmpty); i++) {
+      final viewport = tester.getRect(find.byKey(const Key('workspace-component-flow')));
+      await tester.dragFrom(Offset(viewport.left + 4, viewport.bottom - 20), const Offset(0, -250));
+      await tester.pumpAndSettle();
+    }
+    expect(range, findsOneWidget);
+    expect(next, findsOneWidget);
+    expect(find.text('eu').hitTestable(), findsWidgets,
+        reason: 'a real row and the pager are visible together');
+    await tester.tap(next);
+    await tester.pumpAndSettle();
+    expect(bridge.pageCalls.last['offset'], 2);
+    expect(find.text('3–4 of 4'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -594,6 +679,14 @@ void main() {
         findsOneWidget,
       );
       if (type != 'bar') expect(find.textContaining('Snapshot of the visible'), findsOneWidget);
+      final rail = find.byKey(const Key('workspace-detail-rail'));
+      final railTitle = find.descendant(of: rail, matching: find.text('Chart'));
+      expect(tester.widget<Text>(railTitle).style?.color, MorphicColors.textPrimaryLight);
+      await tester.pumpWidget(_app(engine, scale: 1.3, brightness: Brightness.dark));
+      await tester.pumpAndSettle();
+      expect(close, findsOneWidget, reason: 'theme changes must not close the rail');
+      expect(tester.widget<Text>(railTitle).style?.color, MorphicColors.textPrimaryDark,
+          reason: 'open chart details must use the current theme');
       await tester.ensureVisible(close);
       await tester.tap(close);
       await tester.pumpAndSettle();

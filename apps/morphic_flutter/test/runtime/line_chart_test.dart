@@ -15,6 +15,8 @@ import 'package:morphic_flutter/engine/chart_scene.dart';
 import 'package:morphic_flutter/engine/engine_controller.dart';
 import 'package:morphic_flutter/engine/interaction.dart';
 import 'package:morphic_flutter/runtime/component_registry.dart';
+import 'package:morphic_flutter/runtime/components/chart_axis_layout.dart';
+import 'package:morphic_flutter/runtime/components/chart_format.dart';
 import 'package:morphic_flutter/runtime/components/line_chart_painter.dart';
 import 'package:morphic_flutter/runtime/components/line_chart_view.dart';
 
@@ -57,10 +59,20 @@ ScriptedBridge _bridge({
       order: const ['trend_over_time'],
     );
 
-Future<EngineController> _pump(WidgetTester tester, ScriptedBridge bridge) async {
+Future<EngineController> _pump(
+  WidgetTester tester,
+  ScriptedBridge bridge, {
+  double? textScale,
+}) async {
   final engine = EngineController(bridge: bridge, storageRoot: '/tmp/m');
   await engine.open('w1');
   await tester.pumpWidget(MaterialApp(
+    builder: textScale == null
+        ? null
+        : (context, child) => MediaQuery(
+              data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(textScale)),
+              child: child!,
+            ),
     home: Scaffold(
       body: SingleChildScrollView(
         child: AnimatedBuilder(
@@ -191,6 +203,75 @@ void main() {
     expect(find.text('30'), findsOneWidget);
     expect(find.text('15'), findsOneWidget);
     expect(find.textContaining('1970-01-01'), findsOneWidget);
+  });
+
+  testWidgets('scaled axis labels fit and scrubbing follows the widened plot', (tester) async {
+    await _pump(tester, _bridge(), textScale: 1.3);
+    final painter = _basePainter(tester);
+    final geometry = painter.geometry;
+    final box = tester.getRect(find.byKey(const Key('line-plot')));
+    final plot = geometry.plotIn(box.size);
+    expect(plot.left, greaterThan(kLineAxisLeft));
+    expect(identical(_overlayPainter(tester).geometry, geometry), isTrue);
+
+    final (lo, hi) = geometry.yExtent!;
+    for (var i = 0; i < 4; i++) {
+      final tick = formatChartValue(lo + (hi - lo) * i / 3);
+      final text = TextPainter(
+        text: TextSpan(text: tick, style: painter.textStyle),
+        textDirection: TextDirection.ltr,
+        maxLines: 1,
+        ellipsis: '…',
+        textScaler: painter.textScaler,
+      )..layout(maxWidth: plot.left - chartAxisLabelGap);
+      expect(text.didExceedMaxLines, isFalse, reason: 'axis tick $tick must fit');
+      text.dispose();
+    }
+
+    await tester.tapAt(Offset(box.left + plot.left + 1, box.center.dy));
+    await tester.pumpAndSettle();
+    expect(_overlayPainter(tester).bucketIndex, 0);
+    expect(identical(_basePainter(tester).geometry, geometry), isTrue,
+        reason: 'scrubbing must not rebuild or repaint the base geometry');
+    await tester.tapAt(Offset(box.left + plot.right - 1, box.center.dy));
+    await tester.pumpAndSettle();
+    expect(_overlayPainter(tester).bucketIndex, 2);
+  });
+
+  testWidgets('changing text scale recomputes the shared plot geometry', (tester) async {
+    final scale = ValueNotifier<double>(1);
+    addTearDown(scale.dispose);
+    final engine = EngineController(bridge: _bridge(), storageRoot: '/tmp/m');
+    await engine.open('w1');
+    await tester.pumpWidget(MaterialApp(
+      builder: (context, child) => ValueListenableBuilder<double>(
+        valueListenable: scale,
+        child: child,
+        builder: (context, value, child) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(value)),
+          child: child!,
+        ),
+      ),
+      home: Scaffold(
+        body: SingleChildScrollView(
+          child: AnimatedBuilder(
+            animation: engine,
+            builder: (context, _) => LineChartView(
+              ctx: ComponentContext(spec: engine.components.first, engine: engine),
+            ),
+          ),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    final before = _basePainter(tester).geometry;
+    final size = tester.getSize(find.byKey(const Key('line-plot')));
+    scale.value = 1.3;
+    await tester.pumpAndSettle();
+    final after = _basePainter(tester).geometry;
+    expect(identical(after, before), isFalse);
+    expect(after.plotIn(size).left, greaterThan(before.plotIn(size).left));
+    expect(identical(_overlayPainter(tester).geometry, after), isTrue);
   });
 
   testWidgets('the tooltip shows a gap as absent, not as zero', (tester) async {

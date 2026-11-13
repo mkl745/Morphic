@@ -107,8 +107,9 @@ void main() {
         reason: 'the harness must actually be at the engine ceiling to mean anything');
 
     final box = tester.getRect(find.byKey(const Key('line-plot')));
-    final startX = box.left + kLineAxisLeft + 2;
-    final endX = box.right - 8;
+    final plot = geo.plotIn(box.size);
+    final startX = box.left + plot.left + 2;
+    final endX = box.left + plot.right - 2;
     final stepDx = (endX - startX) / _scrubSteps;
 
     final samples = <double>[];

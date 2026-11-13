@@ -92,15 +92,16 @@ wait_for_text() { # text, attempts
 }
 row_range() { python3 tools/read_row_range.py /tmp/ui.xml 2>/dev/null; }
 row_sig() { python3 tools/read_row_range.py /tmp/ui.xml --signature 2>/dev/null; }
-scroll_down() { "${ADB[@]}" shell input swipe 540 1600 540 500 300 >/dev/null 2>&1; }
+scroll_down() { python3 tools/swipe_workspace.py /tmp/ui.xml; }
 wait_for_range() { # attempts
-  # The table is below the metric cards and chart placeholders, and uiautomator only dumps
-  # ON-SCREEN nodes, so scroll until the pager footer is actually visible.
+  # Both a row and its footer must be visible: the former supplies a before-signature for
+  # paging/reopen, while the latter makes the page controls reachable. Use the workspace
+  # gutter for swipes so the nested table does not consume them instead.
   local attempts="${1:-20}" i
   for ((i=0; i<attempts; i++)); do
     sleep 2
     ui_dump
-    if [ -n "$(row_sig)" ]; then return 0; fi
+    if [ -n "$(row_range)" ] && [ -n "$(row_sig)" ]; then return 0; fi
     if (( i % 2 == 1 )); then scroll_down; fi
   done
   return 1
