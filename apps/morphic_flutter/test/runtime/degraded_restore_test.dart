@@ -20,6 +20,17 @@ import '../support/scripted_bridge.dart';
 const _notice =
     'the imported source file is no longer available; re-import the same file to restore the data';
 
+class _MissingDocumentBridge extends ScriptedBridge {
+  _MissingDocumentBridge() : super(degraded: true, notice: _notice);
+
+  @override
+  Map<String, dynamic> snapshot({required String storageRoot, required String workspaceId}) {
+    final snapshot = super.snapshot(storageRoot: storageRoot, workspaceId: workspaceId);
+    if (degraded) snapshot['doc'] = null;
+    return snapshot;
+  }
+}
+
 Widget _host(Widget home, {Size size = const Size(420, 900)}) => MaterialApp(
       home: MediaQuery(
         data: MediaQueryData(size: size),
@@ -116,6 +127,67 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
     expect(bridge.libraryCalls, ['relink:w1']);
     expect(controller.degraded, isFalse);
+  });
+
+  testWidgets('compact recovery remains available when there are no components', (tester) async {
+    tester.view.physicalSize = const Size(360, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final bridge = ScriptedBridge(
+      degraded: true,
+      notice: _notice,
+      components: [],
+      order: [],
+    );
+    final controller = EngineController(bridge: bridge, storageRoot: '/tmp/morphic');
+    await controller.open('w1');
+    final bytes = Uint8List.fromList(utf8.encode('region,amount\neu,10\n'));
+    final source = FakeFileSource(file: PickedFile(name: 'sales.csv', bytes: bytes));
+
+    await _pump(
+      tester,
+      _host(WorkspaceScreen(controller: controller, fileSource: source),
+          size: const Size(360, 844)),
+    );
+    expect(find.text(_notice), findsOneWidget);
+    expect(find.text('The engine generated no components for this file.'), findsOneWidget);
+    expect(find.byKey(const Key('restore-source-button')), findsNothing);
+    await tester.tap(find.byKey(const Key('restore-source-notice-button')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(bridge.libraryCalls, ['relink:w1']);
+    expect(bridge.lastRelinkBytes, bytes);
+    expect(controller.degraded, isFalse);
+    expect(find.byKey(const Key('restore-source-notice-button')), findsNothing);
+    expect(find.text('The engine generated no components for this file.'), findsOneWidget);
+  });
+
+  testWidgets('compact chrome retains a restore fallback if the document is absent',
+      (tester) async {
+    tester.view.physicalSize = const Size(360, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final bridge = _MissingDocumentBridge();
+    final controller = EngineController(bridge: bridge, storageRoot: '/tmp/morphic');
+    await controller.open('w1');
+    final bytes = Uint8List.fromList(utf8.encode('region,amount\neu,10\n'));
+    final source = FakeFileSource(file: PickedFile(name: 'sales.csv', bytes: bytes));
+
+    await _pump(
+      tester,
+      _host(WorkspaceScreen(controller: controller, fileSource: source),
+          size: const Size(360, 844)),
+    );
+    expect(find.byKey(const Key('restore-source-notice-button')), findsNothing);
+    await tester.tap(find.byKey(const Key('restore-source-button')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(bridge.libraryCalls, ['relink:w1']);
+    expect(bridge.lastRelinkBytes, bytes);
+    expect(controller.degraded, isFalse);
+    expect(find.byKey(const Key('restore-source-button')), findsNothing);
   });
 
   testWidgets('no restore action on a healthy workspace', (tester) async {

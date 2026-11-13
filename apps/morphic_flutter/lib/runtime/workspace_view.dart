@@ -131,7 +131,7 @@ class WorkspaceView extends StatelessWidget {
 
     final components = controller.components;
     if (components.isEmpty) {
-      return Center(
+      final empty = Center(
         child: Padding(
           padding: const EdgeInsets.all(MorphicSpace.xl),
           child: Column(
@@ -150,6 +150,16 @@ class WorkspaceView extends StatelessWidget {
             ],
           ),
         ),
+      );
+      if (!controller.degraded) return empty;
+      // The compact app bar relies on this notice for recovery. An empty component list
+      // must not bypass the notice and leave the user without a way to restore the source.
+      return ListView(
+        padding: const EdgeInsets.all(MorphicSpace.lg),
+        children: [
+          DegradedNotice(message: controller.notice, onRestoreSource: onRestoreSource),
+          empty,
+        ],
       );
     }
 

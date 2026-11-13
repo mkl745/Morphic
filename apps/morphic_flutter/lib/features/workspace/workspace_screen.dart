@@ -123,9 +123,10 @@ class _WorkspaceScreenState extends State<WorkspaceScreen>
                 _historyButton(context, ctl, undo: false),
                 // AT-16: degraded mode must offer a recovery action, not just an explanation.
                 // The engine verifies the picked bytes against the document's dataset hash.
-                // Compact chrome already has a prominent restore action in the notice;
-                // omit this duplicate so the editable title is not squeezed out.
-                if (ctl.degraded && !phone)
+                // Compact chrome normally has a restore action in the notice; omit the
+                // duplicate so the title is not squeezed out. If the document is absent,
+                // the notice cannot be shown, so keep this fallback action available.
+                if (ctl.degraded && (!phone || ctl.doc == null))
                   IconButton(
                     key: const Key('restore-source-button'),
                     tooltip: 'Restore source file',
