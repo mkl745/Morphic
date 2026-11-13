@@ -159,6 +159,12 @@ void main() {
       expect(tester.getSize(page).width, closeTo(840, 0.1));
       await _resize(tester, const Size(390, 844));
       expect(tester.getSize(page).width, closeTo(390, 0.1));
+      if (name == 'import') {
+        final guidance = find.textContaining('Morphic reports how it read the file');
+        await tester.ensureVisible(guidance);
+        await tester.pumpAndSettle();
+        expect(tester.getRect(guidance).bottom, lessThanOrEqualTo(tester.getRect(page).bottom));
+      }
       await _resize(tester, const Size(1400, 800));
     });
   }
@@ -427,6 +433,54 @@ void main() {
       await tester.tap(find.byKey(const Key('row-detail-close')));
       await tester.pumpAndSettle();
       expect(find.text('Row 1'), findsNothing);
+      expect(find.byType(WorkspaceScreen), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  for (final entry in <String, Size>{
+    'short compact': const Size(390, 400),
+    'medium landscape': const Size(700, 500),
+    'expanded': const Size(1100, 700),
+  }.entries) {
+    testWidgets('filter and correction forms remain usable in ${entry.key} at 1.3x',
+        (tester) async {
+      _resetSurface(tester);
+      _setSurface(tester, entry.value);
+      final bridge = _tableBridge();
+      final engine = EngineController(bridge: bridge, storageRoot: '/tmp/m');
+      await engine.open('w1');
+      await tester.pumpWidget(_app(engine, scale: 1.3));
+      await tester.pumpAndSettle();
+
+      final add = find.byKey(const Key('global-filter-add'));
+      await tester.ensureVisible(add);
+      await tester.tap(add);
+      await tester.pumpAndSettle();
+      expect(find.text('Filter the whole workspace'), findsOneWidget);
+      expect(find.byType(BottomSheet), findsOneWidget,
+          reason: 'editing forms remain modal rather than replacing inspection detail');
+      await tester.enterText(find.byKey(const Key('filter-value')), 'eu');
+      final apply = find.byKey(const Key('filter-apply'));
+      await tester.ensureVisible(apply);
+      await tester.pumpAndSettle();
+      await tester.tap(apply);
+      await tester.pumpAndSettle();
+      expect(bridge.commandBatches.last.single['kind'], 'setGlobalFilter');
+
+      final header = find.byKey(const Key('sort-region'));
+      await tester.ensureVisible(header);
+      await tester.pumpAndSettle();
+      await tester.longPress(header);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('field-corrections-sheet')), findsOneWidget);
+      expect(find.byType(BottomSheet), findsOneWidget);
+      final cancel = find.text('Cancel');
+      await tester.ensureVisible(cancel);
+      await tester.pumpAndSettle();
+      await tester.tap(cancel);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('field-corrections-sheet')), findsNothing);
       expect(find.byType(WorkspaceScreen), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
