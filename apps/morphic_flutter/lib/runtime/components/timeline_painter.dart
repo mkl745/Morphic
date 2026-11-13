@@ -281,7 +281,8 @@ class TimelinePainter extends CustomPainter {
   final TextStyle textStyle;
   final TextScaler textScaler;
 
-  /// Index of the bucket the workspace is filtered to, or null.
+  /// Index of the filtered bucket or the current keyboard/screen-reader preview, or null.
+  /// The accompanying text distinguishes a preview from an applied filter.
   final int? activeColumn;
   final Color activeColor;
 

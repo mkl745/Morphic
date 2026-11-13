@@ -387,10 +387,7 @@ void main() {
     // screen reader or a switch. Asserting the declaration and then invoking it covers both
     // the exposure and the behaviour without depending on dart:ui's action enum.
     final plotSemantics = tester.widget<Semantics>(
-      find.ancestor(
-        of: find.byKey(const Key('line-plot')),
-        matching: find.byType(Semantics),
-      ).first,
+      find.byKey(const Key('line-plot-semantics')),
     );
     final increase = plotSemantics.properties.onIncrease;
     final decrease = plotSemantics.properties.onDecrease;

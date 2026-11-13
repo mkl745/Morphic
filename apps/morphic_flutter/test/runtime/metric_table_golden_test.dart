@@ -3,6 +3,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:morphic_flutter/design_system/tokens.dart';
 import 'package:morphic_flutter/engine/engine_controller.dart';
@@ -19,6 +20,7 @@ Future<void> _pumpComponent(
   required bool metric,
   bool error = false,
   bool empty = false,
+  double textScale = 1,
 }) async {
   tester.view.physicalSize = const Size(390, 844);
   tester.view.devicePixelRatio = 1;
@@ -45,6 +47,10 @@ Future<void> _pumpComponent(
   await tester.pumpWidget(MaterialApp(
     debugShowCheckedModeBanner: false,
     theme: brightness == Brightness.dark ? MorphicTheme.dark() : MorphicTheme.light(),
+    builder: (context, child) => MediaQuery(
+      data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(textScale)),
+      child: child!,
+    ),
     home: Scaffold(
       body: Center(
         child: SizedBox(
@@ -60,6 +66,16 @@ Future<void> _pumpComponent(
 void main() {
   setUpAll(loadMorphicGoldenFonts);
   for (final entry in {'dark': Brightness.dark, 'light': Brightness.light}.entries) {
+    testWidgets('table 1.3x targets and headings ${entry.key}', (tester) async {
+      await _pumpComponent(tester, brightness: entry.value, metric: false, textScale: 1.3);
+      for (final heading in ['region', 'amount', 'note']) {
+        expect(tester.renderObject<RenderParagraph>(find.text(heading)).didExceedMaxLines, isFalse);
+      }
+      await expectLater(
+        find.byType(DataTableView),
+        matchesGoldenFile('goldens/table_${entry.key}_targets_130.png'),
+      );
+    });
     for (final state in ['ready', 'empty', 'error']) {
       for (final kind in ['metric', 'table']) {
         testWidgets('$kind $state ${entry.key}', (tester) async {

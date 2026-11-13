@@ -15,6 +15,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../design_system/copy.dart';
 import '../../design_system/tokens.dart';
@@ -32,6 +33,12 @@ import 'table_filter_menu.dart';
 /// Hard ceiling mirrored from `MAX_PAGE_SIZE` in morphic-schema / morphic-query.
 const int maxPageSize = 1024;
 const int defaultPageSize = 256;
+
+// The header, its separate filter control, and each tappable row all need real 48 dp hit
+// areas. The column width calculation reserves both header actions, not just their icons.
+const double _tableHeaderHeight = 48;
+const double _tableRowHeight = 48;
+const double _tableFilterWidth = 48;
 
 class DataTableView extends StatefulWidget {
   const DataTableView({
@@ -338,7 +345,7 @@ class _DataTableViewState extends State<DataTableView> {
       )..layout();
       final headingWidth = painter.width +
           MorphicSpace.sm * 2 +
-          (widget.ctx.canFilter ? 28 : 0) +
+          (widget.ctx.canFilter ? _tableFilterWidth : 0) +
           (interaction.sortFor(name) == null ? 0 : 14) +
           (corrected.contains(name) ? 12 : 0);
       painter.dispose();
@@ -460,8 +467,9 @@ class _DataTableViewState extends State<DataTableView> {
     }
     return LayoutBuilder(
       builder: (context, constraints) {
-        // Leave room for the grid's 36 dp header, divider, and the gap below the chrome.
-        final chromeHeight = constraints.maxHeight > 48 ? constraints.maxHeight - 48 : 0.0;
+        // Do not let a long filter/error strip steal the header's full target height.
+        final reserved = _tableHeaderHeight + 1 + MorphicSpace.sm;
+        final chromeHeight = math.max(0.0, constraints.maxHeight - reserved);
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -673,7 +681,7 @@ class _DataTableViewState extends State<DataTableView> {
             Expanded(
               child: ListView.builder(
                 itemCount: page.rows.length,
-                itemExtent: 40,
+                itemExtent: _tableRowHeight,
                 itemBuilder: (context, i) {
                   final row = page.rows[i];
                   return _DataRow(
@@ -711,17 +719,19 @@ class _DataTableViewState extends State<DataTableView> {
         Expanded(
           child: Semantics(
             container: true,
-            explicitChildNodes: true,
+            liveRegion: true,
             label: label,
-            child: Text(label, style: theme.textTheme.labelSmall),
+            child: ExcludeSemantics(child: Text(label, style: theme.textTheme.labelSmall)),
           ),
         ),
         IconButton(
+          key: const Key('table-previous-page'),
           onPressed: _offset > 0 && _state != _Load.pending ? _prev : null,
           icon: const Icon(Icons.chevron_left),
           tooltip: 'Previous page',
         ),
         IconButton(
+          key: const Key('table-next-page'),
           onPressed: (p?.hasMore ?? false) && _state != _Load.pending ? _next : null,
           icon: const Icon(Icons.chevron_right),
           tooltip: 'Next page',
@@ -729,6 +739,11 @@ class _DataTableViewState extends State<DataTableView> {
       ],
     );
   }
+}
+
+/// A keyboard equivalent for the header's long-press field correction.
+class _CorrectFieldIntent extends Intent {
+  const _CorrectFieldIntent();
 }
 
 class _HeaderRow extends StatelessWidget {
@@ -760,71 +775,90 @@ class _HeaderRow extends StatelessWidget {
       rule.dir == SortDir.asc ? 'Sorted ascending' : 'Sorted descending';
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => SizedBox(
+        height: _tableHeaderHeight,
+        child: Row(children: [for (final column in columns) _column(context, column)]),
+      );
+
+  Widget _column(BuildContext context, String column) {
     final theme = Theme.of(context);
+    final sort = interaction.sortFor(column);
+    final hasFilter = interaction.filterFor(column) != null;
+    final label = [
+      'Column $column',
+      if (sort != null) _sortLabel(sort) else if (canSort) 'Not sorted',
+      if (corrected.contains(column)) 'Corrected field',
+    ].join(', ');
+    final nextSort = sort == null
+        ? 'sort ascending'
+        : (sort.dir == SortDir.asc ? 'sort descending' : 'clear sorting');
     return SizedBox(
-      height: 36,
+      width: widthOf(column),
       child: Row(
         children: [
-          for (final c in columns)
-            SizedBox(
-              width: widthOf(c),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: InkWell(
-                      key: Key('sort-$c'),
-                      onTap: canSort && !busy ? () => onSort(c) : null,
-                      onLongPress: busy ? null : () => onCorrect(c),
+          Expanded(
+            child: Shortcuts(
+              shortcuts: const {
+                SingleActivator(LogicalKeyboardKey.f10, shift: true): _CorrectFieldIntent(),
+                SingleActivator(LogicalKeyboardKey.contextMenu): _CorrectFieldIntent(),
+              },
+              child: Actions(
+                actions: {
+                  _CorrectFieldIntent: CallbackAction<_CorrectFieldIntent>(onInvoke: (_) {
+                    if (!busy) unawaited(onCorrect(column));
+                    return null;
+                  }),
+                },
+                child: Semantics(
+                  container: true,
+                  button: true,
+                  enabled: !busy,
+                  label: label,
+                  hint: 'Long press or use Shift F10 to correct the field.',
+                  onTapHint: canSort && !busy ? nextSort : null,
+                  onLongPressHint: !busy ? 'correct the field type or role' : null,
+                  child: InkWell(
+                    key: Key('sort-$column'),
+                    onTap: canSort && !busy ? () => onSort(column) : null,
+                    onLongPress: busy ? null : () => onCorrect(column),
+                    child: ExcludeSemantics(
                       child: Padding(
-                        padding:
-                            const EdgeInsets.symmetric(horizontal: MorphicSpace.sm),
+                        padding: const EdgeInsets.symmetric(horizontal: MorphicSpace.sm),
                         child: Row(
                           children: [
                             Flexible(
                               child: Text(
-                                c,
+                                column,
                                 overflow: TextOverflow.ellipsis,
                                 style: theme.textTheme.labelMedium,
                               ),
                             ),
-                            if (corrected.contains(c))
+                            if (corrected.contains(column))
+                              Icon(Icons.tune, key: Key('corrected-$column'), size: 12),
+                            if (sort != null)
                               Icon(
-                                Icons.tune,
-                                key: Key('corrected-$c'),
-                                size: 12,
-                                semanticLabel: 'Corrected field: $c',
-                              ),
-                            if (interaction.sortFor(c) != null)
-                              Icon(
-                                interaction.sortFor(c)!.dir == SortDir.asc
-                                    ? Icons.arrow_upward
-                                    : Icons.arrow_downward,
+                                sort.dir == SortDir.asc ? Icons.arrow_upward : Icons.arrow_downward,
                                 size: 14,
-                                semanticLabel: _sortLabel(interaction.sortFor(c)!),
                               ),
                           ],
                         ),
                       ),
                     ),
                   ),
-                  if (canFilter)
-                    SizedBox(
-                      width: 28,
-                      child: IconButton(
-                        key: Key('filter-$c'),
-                        padding: EdgeInsets.zero,
-                        iconSize: 16,
-                        tooltip: 'Filter $c',
-                        icon: Icon(
-                          interaction.filterFor(c) != null
-                              ? Icons.filter_alt
-                              : Icons.filter_alt_outlined,
-                        ),
-                        onPressed: busy ? null : () => onFilter(c),
-                      ),
-                    ),
-                ],
+                ),
+              ),
+            ),
+          ),
+          if (canFilter)
+            SizedBox(
+              width: _tableFilterWidth,
+              child: IconButton(
+                key: Key('filter-$column'),
+                padding: EdgeInsets.zero,
+                iconSize: 16,
+                tooltip: 'Filter $column${hasFilter ? ", active" : ""}',
+                icon: Icon(hasFilter ? Icons.filter_alt : Icons.filter_alt_outlined),
+                onPressed: busy ? null : () => onFilter(column),
               ),
             ),
         ],
@@ -859,42 +893,54 @@ class _DataRow extends StatelessWidget {
     final dataStyle = MorphicTypography.dataStyle(theme.textTheme.bodySmall);
     final isNullStyle = dataStyle?.copyWith(color: theme.colorScheme.onSurfaceVariant);
     final values = [
-      for (var i = 0; i < columns.length; i++)
-        i < row.length ? row[i] : null,
+      for (var i = 0; i < columns.length; i++) i < row.length ? row[i] : null,
     ];
 
-    // A row is one semantic unit with a stable identity: assistive tech reads
-    // "Row 12: eu, 10, —" rather than five disconnected cells, and UI automation can tell a
-    // data row apart from a header or a metric card.
+    String spokenValue(Object? value) {
+      if (value == null) return 'No value';
+      if (value is String && value.isEmpty) return 'Empty string';
+      return formatCell(value);
+    }
+
+    // One full-height control per row: every cell still opens the same detail, but a screen
+    // reader or keyboard user no longer has to traverse a separate, duplicated action per cell.
+    final summary = [
+      for (var i = 0; i < columns.length; i++) '${columns[i]}: ${spokenValue(values[i])}',
+    ].join(', ');
     return Semantics(
       container: true,
-      label: 'Row $rowNumber: ${values.map(formatCell).join(', ')}',
+      button: true,
+      label: 'Row $rowNumber: $summary',
+      onTapHint: 'open row details',
       child: ColoredBox(
         color: striped
             ? theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.35)
             : const Color(0x00000000),
-        child: Row(
-          children: [
-            for (var i = 0; i < columns.length; i++)
-              SizedBox(
-                width: widthOf(columns[i]),
-                child: InkWell(
-                  onTap: onTap,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: MorphicSpace.sm),
-                    child: Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        formatCell(values[i]),
-                        overflow: TextOverflow.ellipsis,
-                        maxLines: 1,
-                        style: values[i] == null ? isNullStyle : dataStyle,
+        child: InkWell(
+          key: Key('table-row-$rowNumber'),
+          onTap: onTap,
+          child: ExcludeSemantics(
+            child: Row(
+              children: [
+                for (var i = 0; i < columns.length; i++)
+                  SizedBox(
+                    width: widthOf(columns[i]),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: MorphicSpace.sm),
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          formatCell(values[i]),
+                          overflow: TextOverflow.ellipsis,
+                          maxLines: 1,
+                          style: values[i] == null ? isNullStyle : dataStyle,
+                        ),
                       ),
                     ),
                   ),
-                ),
-              ),
-          ],
+              ],
+            ),
+          ),
         ),
       ),
     );

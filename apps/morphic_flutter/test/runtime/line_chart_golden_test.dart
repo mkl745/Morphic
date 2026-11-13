@@ -149,6 +149,14 @@ void main() {
         );
       });
 
+      testWidgets('a series hidden at 1.3x', (tester) async {
+        await _pumpChart(tester, brightness: theme.value, textScale: 1.3, hideSeries: 'batch');
+        await expectLater(
+          find.byType(LineChartView),
+          matchesGoldenFile('goldens/line_chart_${theme.key}_hidden_130.png'),
+        );
+      });
+
       testWidgets('dropped series warning', (tester) async {
         await _pumpChart(tester, brightness: theme.value, extraSeries: 4);
         await expectLater(

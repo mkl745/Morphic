@@ -440,34 +440,29 @@ void main() {
       (tester) async {
     await _pump(tester, _bridge());
     final semantics = tester.widget<Semantics>(
-      find
-          .ancestor(
-            of: find.byKey(const Key('timeline-plot')),
-            matching: find.byType(Semantics),
-          )
-          .first,
+      find.byKey(const Key('timeline-plot-semantics')),
     );
     expect(semantics.properties.label, contains('Timeline of ts'));
     expect(semantics.properties.label, contains('3 buckets of 1m'));
     expect(semantics.properties.label, contains('3 lanes shown'));
   });
 
-  testWidgets('the selection is reachable without a pointer', (tester) async {
+  testWidgets('the semantic selection previews before filtering', (tester) async {
     final engine = await _pump(tester, _bridge());
     Semantics semantics() => tester.widget<Semantics>(
-          find
-              .ancestor(
-                of: find.byKey(const Key('timeline-plot')),
-                matching: find.byType(Semantics),
-              )
-              .first,
+          find.byKey(const Key('timeline-plot-semantics')),
         );
-    // SemanticsAction is not exported through material.dart, so invoke the callbacks the widget
-    // actually installed rather than synthesising an action the test cannot name.
+    // A first step must not re-query down to one bucket: the user needs to be able to
+    // navigate to a later bucket before choosing it.
     semantics().properties.onIncrease!();
     await tester.pumpAndSettle();
-    expect(engine.globalFilters, isNotEmpty);
-    expect((engine.globalFilters.single['args'] as List)[0]['value'], 0);
+    semantics().properties.onIncrease!();
+    await tester.pumpAndSettle();
+    expect(engine.globalFilters, isEmpty);
+    expect(find.text('Preview — not filtering the workspace'), findsOneWidget);
+    semantics().properties.onTap!();
+    await tester.pumpAndSettle();
+    expect((engine.globalFilters.single['args'] as List)[0]['value'], 60000);
   });
 
   testWidgets('a response from a superseded revision is discarded and re-read',

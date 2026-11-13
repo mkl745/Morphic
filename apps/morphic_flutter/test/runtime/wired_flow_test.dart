@@ -4,6 +4,7 @@
 /// drives the real screens: Home → PoC → Generate → workspace, and Home → reopen.
 library;
 
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:morphic_flutter/app.dart';
 import 'package:morphic_flutter/engine/import_runner.dart';
@@ -28,6 +29,47 @@ Future<void> _pumpApp(WidgetTester tester, ScriptedBridge bridge) async {
 }
 
 void main() {
+  testWidgets('semantics can drive the host vertical slice through row detail and paging',
+      (tester) async {
+    final handle = tester.ensureSemantics();
+    addTearDown(handle.dispose);
+    tester.view.physicalSize = const Size(800, 1200);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final bridge = ScriptedBridge(metrics: {'total_records': 12}, rows: [
+      ['eu', 10, null],
+      ['us', 20, null],
+      ['apac', 30, null],
+      ['latam', 40, null],
+    ]);
+    await _pumpApp(tester, bridge);
+    tester.semantics.tap(find.semantics.byLabel('Run proof of concept'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+    tester.semantics.tap(find.semantics.byLabel('Generate workspace'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.semantics.byLabel(RegExp('Records, count · rows, 12')), findsOne);
+    await tester.ensureVisible(find.byKey(const Key('table-row-1')));
+    await tester.pumpAndSettle();
+    tester.semantics.tap(
+      find.semantics.byLabel('Row 1: region: eu, amount: 10, note: No value'),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('No value (null)'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('row-detail-close')));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const Key('table-next-page')));
+    await tester.pumpAndSettle();
+    tester.semantics.tap(find.semantics.byLabel('Next page'));
+    await tester.pumpAndSettle();
+    expect(find.semantics.byLabel('3–4 of 4'), findsOne);
+    expect(bridge.pageCalls.last['offset'], 2);
+  });
+
   testWidgets('PoC generate opens the live runtime and pages through Rust',
       (tester) async {
     final bridge = ScriptedBridge(metrics: {'total_records': 12});

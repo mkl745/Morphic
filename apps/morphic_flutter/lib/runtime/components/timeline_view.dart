@@ -30,7 +30,10 @@
 /// by colour alone: the legend and the table name every lane.
 library;
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../design_system/copy.dart';
 import '../../design_system/tokens.dart';
@@ -69,6 +72,11 @@ class _TimelineViewState extends State<TimelineView> {
   /// Lanes the user has hidden, by display label. View state, not a command.
   Set<String> _hidden = <String>{};
 
+  /// Keyboard/screen-reader preview, identified by bucket start rather than list position.
+  /// Previewing is not a filter: the user must explicitly activate the chosen bucket.
+  int? _previewStartMs;
+  bool _plotFocused = false;
+
   @override
   void initState() {
     super.initState();
@@ -81,6 +89,7 @@ class _TimelineViewState extends State<TimelineView> {
     super.didUpdateWidget(old);
     if (_seenRevision != widget.ctx.engine.revision) {
       _seenRevision = widget.ctx.engine.revision;
+      _previewStartMs = null;
       _fetch();
     }
   }
@@ -170,6 +179,7 @@ class _TimelineViewState extends State<TimelineView> {
   Future<void> _tapBucket(TimelineColumn c) async {
     final scene = _scene;
     if (scene == null || !widget.ctx.canFilter || _busy) return;
+    if (_previewStartMs != null) setState(() => _previewStartMs = null);
     final range = _rangeFor(c, scene);
     final current = widget.ctx.engine.globalFilters;
     if (indexOfFilter(current, range) >= 0) {
@@ -303,19 +313,50 @@ class _TimelineViewState extends State<TimelineView> {
     });
   }
 
-  /// Moves the selected bucket without a pointer, then applies it as a filter so the keyboard and
-  /// screen-reader path does the same thing a tap does.
-  Future<void> _moveSelection(int delta, TimelineGeometry geo) async {
+  int? _previewIndex(TimelineGeometry geo) {
+    final start = _previewStartMs;
+    if (start == null) return null;
+    final index = geo.columns.indexWhere((column) => column.startMs == start);
+    return index < 0 ? null : index;
+  }
+
+  int? _nextPreview(int delta, TimelineGeometry geo, TimelineScene scene) {
     final n = geo.columns.length;
-    if (n == 0) return;
-    final scene = _scene;
-    if (scene == null) return;
-    final current = _activeIndex(geo, scene) ?? (delta > 0 ? -1 : n);
-    final next = (current + delta).clamp(0, n - 1);
-    // At the end of the range a further step lands on the same bucket; tapping it would toggle
-    // the filter off, which is not what "move right" means.
-    if (next == current) return;
-    await _tapBucket(geo.columns[next]);
+    if (n == 0) return null;
+    final current = _previewIndex(geo) ?? _activeIndex(geo, scene) ?? (delta > 0 ? -1 : n);
+    return (current + delta).clamp(0, n - 1);
+  }
+
+  /// Stepping previews without filtering. Filtering on the first step would re-query the chart
+  /// with only that bucket left, making middle buckets impossible to reach without a pointer.
+  void _movePreview(int delta, TimelineGeometry geo, TimelineScene scene) {
+    final next = _nextPreview(delta, geo, scene);
+    if (next == null || _busy) return;
+    setState(() => _previewStartMs = geo.columns[next].startMs);
+  }
+
+  KeyEventResult _plotKey(FocusNode _, KeyEvent event, TimelineGeometry geo, TimelineScene scene) {
+    if (_busy || !widget.ctx.canFilter || (event is! KeyDownEvent && event is! KeyRepeatEvent)) {
+      return KeyEventResult.ignored;
+    }
+    final key = event.logicalKey;
+    if (key == LogicalKeyboardKey.arrowRight || key == LogicalKeyboardKey.arrowUp) {
+      _movePreview(1, geo, scene);
+      return KeyEventResult.handled;
+    }
+    if (key == LogicalKeyboardKey.arrowLeft || key == LogicalKeyboardKey.arrowDown) {
+      _movePreview(-1, geo, scene);
+      return KeyEventResult.handled;
+    }
+    if (event is KeyDownEvent &&
+        (key == LogicalKeyboardKey.enter || key == LogicalKeyboardKey.space)) {
+      final index = _previewIndex(geo) ?? _activeIndex(geo, scene);
+      if (index != null) {
+        unawaited(_tapBucket(geo.columns[index]));
+        return KeyEventResult.handled;
+      }
+    }
+    return KeyEventResult.ignored;
   }
 
   @override
@@ -476,57 +517,91 @@ class _TimelineViewState extends State<TimelineView> {
     }
 
     final style = _axisStyle(theme, dark);
+    final preview = _previewIndex(geo);
+    final selected = preview ?? active;
+    final adjustable = widget.ctx.canFilter && !_busy;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Semantics(
+          key: const Key('timeline-plot-semantics'),
           container: true,
-          label: _summary(scene, geo, active),
-          button: widget.ctx.canFilter,
-          onIncrease: widget.ctx.canFilter ? () => _moveSelection(1, geo) : null,
-          onDecrease: widget.ctx.canFilter ? () => _moveSelection(-1, geo) : null,
-          child: SizedBox(
-            key: const Key('timeline-plot'),
-            height: kTimelinePlotHeight,
-            width: double.infinity,
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final size = Size(constraints.maxWidth, constraints.maxHeight);
-                return GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTapUp: widget.ctx.canFilter
-                      ? (d) {
-                          final i = geo.columnAt(
-                            d.localPosition.dx,
-                            geo.plotIn(size),
-                          );
-                          if (i != null) _tapBucket(geo.columns[i]);
-                        }
-                      : null,
-                  child: RepaintBoundary(
-                    child: CustomPaint(
-                      key: const Key('timeline-paint'),
-                      size: size,
-                      painter: TimelinePainter(
-                        geometry: geo,
-                        gridColor: dark
-                            ? MorphicColors.borderDark
-                            : MorphicColors.borderLight,
-                        textStyle: style,
-                        textScaler: MediaQuery.textScalerOf(context),
-                        activeColumn: active,
-                        activeColor: dark
-                            ? MorphicColors.textPrimaryDark
-                            : MorphicColors.textPrimaryLight,
+          slider: widget.ctx.canFilter,
+          label: _summary(scene, geo),
+          value: _bucketValue(scene, geo, selected, active),
+          increasedValue:
+              adjustable ? _bucketValue(scene, geo, _nextPreview(1, geo, scene), active) : null,
+          decreasedValue:
+              adjustable ? _bucketValue(scene, geo, _nextPreview(-1, geo, scene), active) : null,
+          hint: widget.ctx.canFilter
+              ? 'Adjust or use arrow keys to preview. Activate to filter or clear the selected bucket.'
+              : 'View as table lists the values.',
+          onIncrease: adjustable ? () => _movePreview(1, geo, scene) : null,
+          onDecrease: adjustable ? () => _movePreview(-1, geo, scene) : null,
+          onTap: adjustable && selected != null ? () => _tapBucket(geo.columns[selected]) : null,
+          onTapHint: adjustable && selected != null
+              ? (selected == active ? 'clear bucket filter' : 'filter to this bucket')
+              : null,
+          child: Focus(
+            key: const Key('timeline-plot-focus'),
+            canRequestFocus: widget.ctx.canFilter,
+            onKeyEvent: (node, event) => _plotKey(node, event, geo, scene),
+            onFocusChange: (focused) {
+              if (mounted && _plotFocused != focused) setState(() => _plotFocused = focused);
+            },
+            child: DecoratedBox(
+              position: DecorationPosition.foreground,
+              decoration: BoxDecoration(
+                border: Border.all(
+                  color: _plotFocused ? theme.colorScheme.primary : Colors.transparent,
+                  width: 2,
+                ),
+              ),
+              child: SizedBox(
+                key: const Key('timeline-plot'),
+                height: kTimelinePlotHeight,
+                width: double.infinity,
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final size = Size(constraints.maxWidth, constraints.maxHeight);
+                    return GestureDetector(
+                      // Semantic activation targets the preview above, not an invented center tap.
+                      excludeFromSemantics: true,
+                      behavior: HitTestBehavior.opaque,
+                      onTapUp: widget.ctx.canFilter
+                          ? (d) {
+                              final i = geo.columnAt(
+                                d.localPosition.dx,
+                                geo.plotIn(size),
+                              );
+                              if (i != null) _tapBucket(geo.columns[i]);
+                            }
+                          : null,
+                      child: RepaintBoundary(
+                        child: CustomPaint(
+                          key: const Key('timeline-paint'),
+                          size: size,
+                          painter: TimelinePainter(
+                            geometry: geo,
+                            gridColor: dark ? MorphicColors.borderDark : MorphicColors.borderLight,
+                            textStyle: style,
+                            textScaler: MediaQuery.textScalerOf(context),
+                            activeColumn: selected,
+                            activeColor: dark
+                                ? MorphicColors.textPrimaryDark
+                                : MorphicColors.textPrimaryLight,
+                          ),
+                        ),
                       ),
-                    ),
-                  ),
-                );
-              },
+                    );
+                  },
+                ),
+              ),
             ),
           ),
         ),
-        if (active != null) _selectedBucket(theme, scene, geo, active),
+        if (selected != null)
+          _selectedBucket(theme, scene, geo, selected, previewing: selected != active),
       ],
     );
   }
@@ -537,8 +612,9 @@ class _TimelineViewState extends State<TimelineView> {
     ThemeData theme,
     TimelineScene scene,
     TimelineGeometry geo,
-    int index,
-  ) {
+    int index, {
+    required bool previewing,
+  }) {
     final c = geo.columns[index];
     final at = formatBucketLabel(
       c.startMs.toDouble(),
@@ -562,6 +638,11 @@ class _TimelineViewState extends State<TimelineView> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (previewing)
+            Text(
+              'Preview — not filtering the workspace',
+              style: theme.textTheme.labelMedium,
+            ),
           Text(
             '$at · ${c.count} events',
             style: theme.textTheme.labelMedium,
@@ -609,49 +690,65 @@ class _TimelineViewState extends State<TimelineView> {
         key: Key('timeline-legend-$label'),
         onPressed: widget.ctx.canSelect ? () => _toggleLane(label) : null,
         style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8)),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 10,
-              height: 10,
-              decoration: BoxDecoration(
-                color: hidden ? Colors.transparent : color,
-                shape: BoxShape.circle,
-                border: Border.all(color: color, width: 2),
+        child: Semantics(
+          label: '$label lane',
+          value: hidden ? 'Hidden' : 'Visible',
+          toggled: widget.ctx.canSelect ? !hidden : null,
+          onTapHint: widget.ctx.canSelect ? (hidden ? 'show lane' : 'hide lane') : null,
+          excludeSemantics: true,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 10,
+                height: 10,
+                decoration: BoxDecoration(
+                  color: hidden ? Colors.transparent : color,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: color, width: 2),
+                ),
               ),
-            ),
-            const SizedBox(width: MorphicSpace.xs + 2),
-            Text(
-              label,
-              style: theme.textTheme.bodySmall?.copyWith(
-                decoration: hidden ? TextDecoration.lineThrough : null,
-                color: hidden
-                    ? theme.textTheme.bodySmall?.color?.withValues(alpha: 0.6)
-                    : null,
+              const SizedBox(width: MorphicSpace.xs + 2),
+              Text(
+                label,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  decoration: hidden ? TextDecoration.lineThrough : null,
+                  color: hidden ? theme.colorScheme.onSurfaceVariant : null,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
   }
 
-  String _summary(TimelineScene scene, TimelineGeometry geo, int? active) {
+  String _summary(TimelineScene scene, TimelineGeometry geo) {
     final base = 'Timeline of ${scene.timeField}, '
         '${geo.columns.length} buckets of ${scene.bucketing.label}'
         '${geo.hasSeveritySplit ? ", ${geo.lanes.length} lanes shown" : ""}'
         '${_hidden.isEmpty ? "" : ", ${_hidden.length} hidden"}.';
     final partial = scene.partialNotice;
-    final withPartial = partial == null ? base : '$base $partial';
-    if (active == null) return withPartial;
-    final c = geo.columns[active];
+    return partial == null ? base : '$base $partial';
+  }
+
+  String _bucketValue(TimelineScene scene, TimelineGeometry geo, int? index, int? active) {
+    if (index == null || index < 0 || index >= geo.columns.length) {
+      return 'No bucket selected';
+    }
+    final column = geo.columns[index];
     final at = formatBucketLabel(
-      c.startMs.toDouble(),
+      column.startMs.toDouble(),
       temporal: true,
       bucketMs: scene.bucketing.bucketMs,
     );
-    return '$withPartial Selected $at, ${c.count} events, filtering the workspace.';
+    final parts = [
+      for (final segment in column.segments)
+        '${geo.lanes[segment.laneIndex].displayLabel} ${segment.count}',
+    ];
+    final state = index == active ? 'Filtering to' : 'Preview, not filtering:';
+    final lanes = parts.isEmpty ? '' : ', visible lanes ${parts.join(", ")}';
+    return '$state $at, ${column.count} events total$lanes';
   }
 
   /// The accessibility escape hatch: the scene's own numbers as text.

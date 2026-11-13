@@ -150,6 +150,22 @@ void main() {
         );
       });
 
+      testWidgets('keyboard or semantic preview at 1.3x', (tester) async {
+        final handle = tester.ensureSemantics();
+        addTearDown(handle.dispose);
+        await _pumpChart(tester, brightness: theme.value, textScale: 1.3);
+        final plot = find.semantics.byLabel(RegExp('^Timeline of'));
+        tester.semantics.increase(plot);
+        await tester.pumpAndSettle();
+        tester.semantics.increase(plot);
+        await tester.pumpAndSettle();
+        expect(find.text('Preview — not filtering the workspace'), findsOneWidget);
+        await expectLater(
+          find.byType(TimelineView),
+          matchesGoldenFile('goldens/timeline_${theme.key}_preview_130.png'),
+        );
+      });
+
       testWidgets('a lane hidden', (tester) async {
         await _pumpChart(tester, brightness: theme.value, hideLane: 'INFO');
         await expectLater(

@@ -26,6 +26,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../design_system/copy.dart';
 import '../../design_system/tokens.dart';
@@ -70,6 +71,7 @@ class _LineChartViewState extends State<LineChartView> {
 
   /// The bucket under the finger, or null when not scrubbing.
   int? _scrub;
+  bool _plotFocused = false;
 
   @override
   void initState() {
@@ -181,13 +183,30 @@ class _LineChartViewState extends State<LineChartView> {
     });
   }
 
-  void _moveScrub(int delta, LineGeometry geo) {
+  int? _nextScrub(int delta, LineGeometry geo) {
     final n = geo.firstPoints.length;
-    if (n == 0) return;
-    setState(() {
-      final current = _scrub ?? (delta > 0 ? -1 : n);
-      _scrub = (current + delta).clamp(0, n - 1);
-    });
+    if (n == 0) return null;
+    final current = _scrub ?? (delta > 0 ? -1 : n);
+    return (current + delta).clamp(0, n - 1);
+  }
+
+  void _moveScrub(int delta, LineGeometry geo) {
+    if (geo.firstPoints.isEmpty) return;
+    setState(() => _scrub = _nextScrub(delta, geo));
+  }
+
+  KeyEventResult _plotKey(FocusNode _, KeyEvent event, LineGeometry geo) {
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) return KeyEventResult.ignored;
+    final key = event.logicalKey;
+    if (key == LogicalKeyboardKey.arrowRight || key == LogicalKeyboardKey.arrowUp) {
+      _moveScrub(1, geo);
+      return KeyEventResult.handled;
+    }
+    if (key == LogicalKeyboardKey.arrowLeft || key == LogicalKeyboardKey.arrowDown) {
+      _moveScrub(-1, geo);
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
   }
 
   @override
@@ -370,59 +389,82 @@ class _LineChartViewState extends State<LineChartView> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Semantics(
+          key: const Key('line-plot-semantics'),
           container: true,
+          slider: true,
           label: _summary(scene, geo),
+          value: _bucketValue(scene, geo, _scrub),
+          increasedValue: _bucketValue(scene, geo, _nextScrub(1, geo)),
+          decreasedValue: _bucketValue(scene, geo, _nextScrub(-1, geo)),
+          hint: 'Adjust or use arrow keys to read buckets. View as table lists the values.',
           onIncrease: () => _moveScrub(1, geo),
           onDecrease: () => _moveScrub(-1, geo),
-          child: SizedBox(
-            key: const Key('line-plot'),
-            height: kLinePlotHeight,
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final size = Size(constraints.maxWidth, constraints.maxHeight);
-                return GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTapDown: (d) => _scrubTo(d.localPosition.dx, geo, size),
-                  onPanStart: (d) => _scrubTo(d.localPosition.dx, geo, size),
-                  onPanUpdate: (d) => _scrubTo(d.localPosition.dx, geo, size),
-                  child: Stack(
-                    children: [
-                      // Layer 1: axes and lines. Cached; untouched by scrubbing.
-                      Positioned.fill(
-                        child: RepaintBoundary(
-                          child: CustomPaint(
-                            key: const Key('line-base-paint'),
-                            painter: LineChartPainter(
-                              geometry: geo,
-                              gridColor: dark
-                                  ? MorphicColors.borderDark
-                                  : MorphicColors.borderLight,
-                              textStyle: style,
-                              textScaler: scaler,
+          child: Focus(
+            key: const Key('line-plot-focus'),
+            onKeyEvent: (node, event) => _plotKey(node, event, geo),
+            onFocusChange: (focused) {
+              if (mounted && _plotFocused != focused) setState(() => _plotFocused = focused);
+            },
+            child: DecoratedBox(
+              position: DecorationPosition.foreground,
+              decoration: BoxDecoration(
+                border: Border.all(
+                  color: _plotFocused ? theme.colorScheme.primary : Colors.transparent,
+                  width: 2,
+                ),
+              ),
+              child: SizedBox(
+                key: const Key('line-plot'),
+                height: kLinePlotHeight,
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final size = Size(constraints.maxWidth, constraints.maxHeight);
+                    return GestureDetector(
+                      // Pointer coordinates are not meaningful for a semantic tap; the named
+                      // increase/decrease actions above are the accessible scrub path instead.
+                      excludeFromSemantics: true,
+                      behavior: HitTestBehavior.opaque,
+                      onTapDown: (d) => _scrubTo(d.localPosition.dx, geo, size),
+                      onPanStart: (d) => _scrubTo(d.localPosition.dx, geo, size),
+                      onPanUpdate: (d) => _scrubTo(d.localPosition.dx, geo, size),
+                      child: Stack(
+                        children: [
+                          // Layer 1: axes and lines. Cached; untouched by scrubbing.
+                          Positioned.fill(
+                            child: RepaintBoundary(
+                              child: CustomPaint(
+                                key: const Key('line-base-paint'),
+                                painter: LineChartPainter(
+                                  geometry: geo,
+                                  gridColor:
+                                      dark ? MorphicColors.borderDark : MorphicColors.borderLight,
+                                  textStyle: style,
+                                  textScaler: scaler,
+                                ),
+                              ),
                             ),
                           ),
-                        ),
-                      ),
-                      // Layer 2: crosshair and markers. The only thing a pointer move repaints.
-                      Positioned.fill(
-                        child: RepaintBoundary(
-                          child: CustomPaint(
-                            key: const Key('line-overlay-paint'),
-                            painter: ScrubOverlayPainter(
-                              geometry: geo,
-                              bucketIndex: _scrub,
-                              crosshairColor: style.color ?? Colors.grey,
-                              markerFill: dark
-                                  ? MorphicColors.surfaceDark
-                                  : MorphicColors.surfaceLight,
+                          // Layer 2: crosshair and markers. The only thing a pointer move repaints.
+                          Positioned.fill(
+                            child: RepaintBoundary(
+                              child: CustomPaint(
+                                key: const Key('line-overlay-paint'),
+                                painter: ScrubOverlayPainter(
+                                  geometry: geo,
+                                  bucketIndex: _scrub,
+                                  crosshairColor: style.color ?? Colors.grey,
+                                  markerFill:
+                                      dark ? MorphicColors.surfaceDark : MorphicColors.surfaceLight,
+                                ),
+                              ),
                             ),
                           ),
-                        ),
+                        ],
                       ),
-                    ],
-                  ),
-                );
-              },
+                    );
+                  },
+                ),
+              ),
             ),
           ),
         ),
@@ -518,53 +560,60 @@ class _LineChartViewState extends State<LineChartView> {
         key: Key('line-legend-$name'),
         onPressed: () => _toggleSeries(name),
         style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8)),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 10,
-              height: 10,
-              decoration: BoxDecoration(
-                color: hidden ? Colors.transparent : color,
-                shape: BoxShape.circle,
-                border: Border.all(color: color, width: 2),
+        child: Semantics(
+          label: '$name series',
+          value: hidden ? 'Hidden' : 'Visible',
+          toggled: !hidden,
+          onTapHint: hidden ? 'show series' : 'hide series',
+          excludeSemantics: true,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 10,
+                height: 10,
+                decoration: BoxDecoration(
+                  color: hidden ? Colors.transparent : color,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: color, width: 2),
+                ),
               ),
-            ),
-            const SizedBox(width: MorphicSpace.xs + 2),
-            Text(
-              name,
-              style: theme.textTheme.bodySmall?.copyWith(
-                decoration: hidden ? TextDecoration.lineThrough : null,
-                color: hidden
-                    ? theme.textTheme.bodySmall?.color?.withValues(alpha: 0.6)
-                    : null,
+              const SizedBox(width: MorphicSpace.xs + 2),
+              Text(
+                name,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  decoration: hidden ? TextDecoration.lineThrough : null,
+                  color: hidden ? theme.colorScheme.onSurfaceVariant : null,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
   }
 
-  String _summary(SeriesScene scene, LineGeometry geo) {
-    final shown = geo.series.length;
-    final base = 'Line chart of ${scene.xField}'
-        '${scene.temporal ? " over time" : ""}, '
-        '$shown series shown'
-        '${_hidden.isEmpty ? "" : ", ${_hidden.length} hidden"}, '
-        '${geo.firstPoints.length} buckets of ${scene.bucketing.label}.';
-    final index = _scrub;
-    if (index == null || index >= geo.firstPoints.length) return base;
-    final values = geo.series
-        .map((s) => '${s.name} '
-            '${index < s.points.length ? formatChartValue(s.points[index].y) : "no value"}')
-        .join(', ');
+  String _summary(SeriesScene scene, LineGeometry geo) =>
+      'Line chart of ${scene.xField}'
+      '${scene.temporal ? " over time" : ""}, '
+      '${geo.series.length} series shown'
+      '${_hidden.isEmpty ? "" : ", ${_hidden.length} hidden"}, '
+      '${geo.firstPoints.length} buckets of ${scene.bucketing.label}.';
+
+  String _bucketValue(SeriesScene scene, LineGeometry geo, int? index) {
+    if (index == null || index < 0 || index >= geo.firstPoints.length) {
+      return 'No bucket selected';
+    }
     final at = formatBucketLabel(
       geo.firstPoints[index].x,
       temporal: scene.temporal,
       bucketMs: scene.bucketing.bucketMs,
     );
-    return '$base At $at: $values.';
+    final values = geo.series.map((s) {
+      final value = index < s.points.length ? s.points[index].y : null;
+      return '${s.name} ${value == null ? "no value" : formatChartValue(value)}';
+    }).join(', ');
+    return 'Bucket ${index + 1} of ${geo.firstPoints.length}, $at: $values';
   }
 
   /// The accessibility escape hatch: the scene's own numbers as text.

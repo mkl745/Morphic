@@ -177,7 +177,7 @@ class _MetricCardViewState extends State<MetricCardView> {
             ],
           ),
           const SizedBox(height: MorphicSpace.sm),
-          _body(theme),
+          _body(theme, label),
           if (label.isNotEmpty) ...[
             const SizedBox(height: MorphicSpace.xs),
             Text(label, style: theme.textTheme.labelSmall),
@@ -244,7 +244,7 @@ class _MetricCardViewState extends State<MetricCardView> {
     );
   }
 
-  Widget _body(ThemeData theme) {
+  Widget _body(ThemeData theme, String aggregation) {
     switch (_state) {
       case _Load.pending:
         return const SizedBox(
@@ -285,8 +285,13 @@ class _MetricCardViewState extends State<MetricCardView> {
               formatCell(_value),
               style: MorphicTypography.dataStyle(theme.textTheme.headlineMedium)
                   ?.copyWith(fontSize: 32, fontWeight: FontWeight.w600),
-              // A null aggregate means "no data", which is not the number zero.
-              semanticsLabel: isNull ? 'No data' : formatCell(_value),
+              // Keep the number meaningful even when a screen reader reaches it apart from
+              // the title and aggregation. A null aggregate is not the number zero.
+              semanticsLabel: [
+                widget.ctx.title,
+                if (aggregation.isNotEmpty) aggregation,
+                isNull ? 'No data' : formatCell(_value),
+              ].join(', '),
             ),
             if (isNull) ...[
               Text(
