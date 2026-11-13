@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
 import '../../design_system/copy.dart';
+import '../../design_system/responsive.dart';
 import '../../design_system/tokens.dart';
 import '../../engine/autosave.dart';
 import '../../engine/engine_controller.dart';
@@ -11,6 +13,7 @@ import '../../engine/file_source.dart';
 import '../../engine/interaction.dart';
 import '../../runtime/component_registry.dart';
 import '../../runtime/explanation_sheet.dart';
+import '../../runtime/responsive_detail.dart';
 import '../../runtime/workspace_view.dart';
 import 'perf_probe_screen.dart';
 import 'workspace_args.dart';
@@ -57,6 +60,12 @@ class _WorkspaceScreenState extends State<WorkspaceScreen>
   bool _editingLayout = false;
   bool _focusMode = false;
   int _focusIndex = 0;
+  final GlobalKey _detailAnchor = GlobalKey();
+  WorkspaceDetailBuilder? _detail;
+  WorkspaceDetailBuilder? _detailBottom;
+  int? _detailRevision;
+  String? _detailWorkspaceId;
+  MorphicWindowClass? _lastWindowClass;
   late final AnimationController _entrance;
   bool _entranceStarted = false;
 
@@ -74,9 +83,32 @@ class _WorkspaceScreenState extends State<WorkspaceScreen>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    final args = ModalRoute.of(context)?.settings.arguments;
+    final nextClass = MorphicResponsive.classify(MediaQuery.sizeOf(context).width);
+    final selected = _detail;
+    if (_lastWindowClass == MorphicWindowClass.expanded &&
+        nextClass != MorphicWindowClass.expanded &&
+        selected != null) {
+      final bottom = _detailBottom;
+      final revision = _detailRevision;
+      final workspaceId = _detailWorkspaceId;
+      final ctl = widget.controller ?? (args is WorkspaceArgs ? args.controller : null);
+      _detail = null;
+      _detailBottom = null;
+      _detailRevision = null;
+      _detailWorkspaceId = null;
+      // The anchor receives its new scope during this frame. Reopen afterwards, but only
+      // if the selected data still belongs to the current engine revision/workspace.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || ctl == null || ctl.revision != revision || ctl.workspaceId != workspaceId) {
+          return;
+        }
+        _reopenDetail(selected, bottom);
+      });
+    }
+    _lastWindowClass = nextClass;
     if (_entranceStarted) return;
     _entranceStarted = true;
-    final args = ModalRoute.of(context)?.settings.arguments;
     if (widget.animateEntrance || (args is WorkspaceArgs && args.animateEntrance)) {
       _entrance.forward();
     } else {
@@ -109,7 +141,46 @@ class _WorkspaceScreenState extends State<WorkspaceScreen>
         animation: ctl,
         builder: (context, _) {
           final ws = ctl.doc?['workspace'] as Map<String, dynamic>?;
-          final phone = MediaQuery.sizeOf(context).width < 640;
+          final windowWidth = MediaQuery.sizeOf(context).width;
+          final windowClass = MorphicResponsive.classify(windowWidth);
+          final compact = windowClass == MorphicWindowClass.compact;
+          final controls = <Widget>[
+            _historyButton(context, ctl, undo: true),
+            _historyButton(context, ctl, undo: false),
+            // Compact chrome normally has the restore action in the notice. If the
+            // document is absent, retain the app-bar action as a recovery fallback.
+            if (ctl.degraded && (!compact || ctl.doc == null))
+              IconButton(
+                key: const Key('restore-source-button'),
+                tooltip: 'Restore source file',
+                icon: const Icon(Icons.link),
+                onPressed: () => _restoreSource(context, ctl),
+              ),
+            IconButton(
+              key: const Key('layout-edit-button'),
+              tooltip: _editingLayout ? 'Finish layout editing' : 'Edit layout',
+              icon: Icon(_editingLayout ? Icons.check : Icons.tune),
+              onPressed: () => setState(() {
+                _editingLayout = !_editingLayout;
+                if (_editingLayout) _focusMode = false;
+              }),
+            ),
+            if (compact)
+              IconButton(
+                key: const Key('focus-mode-button'),
+                tooltip: _focusMode ? 'Show all components' : 'Focus one component',
+                icon: Icon(_focusMode ? Icons.view_list : Icons.filter_center_focus),
+                onPressed: () => setState(() {
+                  _focusMode = !_focusMode;
+                  _editingLayout = false;
+                  _focusIndex = 0;
+                }),
+              ),
+          ];
+          final detail = _detailRevision == ctl.revision &&
+                  _detailWorkspaceId == ctl.workspaceId
+              ? _detail
+              : null;
           return Scaffold(
             appBar: AppBar(
               title: ws == null || ctl.workspaceId == null
@@ -119,45 +190,9 @@ class _WorkspaceScreenState extends State<WorkspaceScreen>
                       onRename: () => _renameWorkspace(context, ctl),
                     ),
               actions: [
-                _historyButton(context, ctl, undo: true),
-                _historyButton(context, ctl, undo: false),
-                // AT-16: degraded mode must offer a recovery action, not just an explanation.
-                // The engine verifies the picked bytes against the document's dataset hash.
-                // Compact chrome normally has a restore action in the notice; omit the
-                // duplicate so the title is not squeezed out. If the document is absent,
-                // the notice cannot be shown, so keep this fallback action available.
-                if (ctl.degraded && (!phone || ctl.doc == null))
-                  IconButton(
-                    key: const Key('restore-source-button'),
-                    tooltip: 'Restore source file',
-                    icon: const Icon(Icons.link),
-                    onPressed: () => _restoreSource(context, ctl),
-                  ),
-                IconButton(
-                  key: const Key('layout-edit-button'),
-                  tooltip:
-                      _editingLayout ? 'Finish layout editing' : 'Edit layout',
-                  icon: Icon(_editingLayout ? Icons.check : Icons.tune),
-                  onPressed: () => setState(() {
-                    _editingLayout = !_editingLayout;
-                    if (_editingLayout) _focusMode = false;
-                  }),
-                ),
-                if (phone)
-                  IconButton(
-                    key: const Key('focus-mode-button'),
-                    tooltip:
-                        _focusMode ? 'Show all components' : 'Focus one component',
-                    icon: Icon(_focusMode ? Icons.view_list : Icons.filter_center_focus),
-                    onPressed: () => setState(() {
-                      _focusMode = !_focusMode;
-                      _editingLayout = false;
-                      _focusIndex = 0;
-                    }),
-                  ),
-                // AT-07's measurement has to be runnable on the phone that is being judged, in
-                // the build the harness installs. Tucking it here keeps it one tap from the data
-                // it measures without putting a benchmark in the user's face.
+                if (!compact) ...controls,
+                // The device harness finds this action by its tooltip; keep it directly
+                // reachable in the app bar even when compact controls get a second row.
                 IconButton(
                   tooltip: 'Performance probe',
                   icon: const Icon(Icons.speed),
@@ -168,30 +203,60 @@ class _WorkspaceScreenState extends State<WorkspaceScreen>
                   ),
                 ),
               ],
+              bottom: compact
+                  ? PreferredSize(
+                      preferredSize: const Size.fromHeight(kMinInteractiveDimension),
+                      child: Row(
+                        key: const Key('compact-workspace-controls'),
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        children: controls,
+                      ),
+                    )
+                  : null,
             ),
-            body: Column(
-              children: [
-                if (ws != null) _WorkspaceSaveStatus(pendingCheckpoint: ctl.dirty),
-                if (notices.isNotEmpty) _WarningBanner(warnings: notices),
-                Expanded(
-                  child: WorkspaceView(
-                    controller: ctl,
-                    registry: widget.registry ?? ComponentRegistry(),
-                    entrance: _entrance,
-                    onRetry: ctl.workspaceId == null
-                        ? null
-                        : () => ctl.open(ctl.workspaceId!),
-                    onRestoreSource: ctl.degraded
-                        ? () => _restoreSource(context, ctl)
-                        : null,
-                    layoutEditing: _editingLayout,
-                    focusMode: _focusMode,
-                    focusIndex: _focusIndex,
-                    onFocusIndexChanged: (index) =>
-                        setState(() => _focusIndex = index),
-                  ),
+            body: WorkspaceDetailScope(
+              windowClass: windowClass,
+              openInRail: (builder, bottom) => _showDetail(ctl, builder, bottom),
+              reopen: _reopenDetail,
+              child: Builder(
+                key: _detailAnchor,
+                builder: (context) => Column(
+                  children: [
+                    if (ws != null) _WorkspaceSaveStatus(pendingCheckpoint: ctl.dirty),
+                    if (notices.isNotEmpty) _WarningBanner(warnings: notices),
+                    Expanded(
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: WorkspaceView(
+                              controller: ctl,
+                              registry: widget.registry ?? ComponentRegistry(),
+                              entrance: _entrance,
+                              onRetry: ctl.workspaceId == null
+                                  ? null
+                                  : () => ctl.open(ctl.workspaceId!),
+                              onRestoreSource: ctl.degraded
+                                  ? () => _restoreSource(context, ctl)
+                                  : null,
+                              layoutEditing: _editingLayout,
+                              focusMode: _focusMode,
+                              focusIndex: _focusIndex,
+                              onFocusIndexChanged: (index) =>
+                                  setState(() => _focusIndex = index),
+                            ),
+                          ),
+                          if (windowClass == MorphicWindowClass.expanded)
+                            _WorkspaceDetailRail(
+                              width: MorphicResponsive.railWidth(windowWidth),
+                              detail: detail,
+                              onClose: _closeDetail,
+                            ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
           );
         },
@@ -247,6 +312,34 @@ class _WorkspaceScreenState extends State<WorkspaceScreen>
               ],
             ),
     );
+  }
+
+  void _showDetail(
+    EngineController ctl,
+    WorkspaceDetailBuilder builder,
+    WorkspaceDetailBuilder? bottomBuilder,
+  ) {
+    setState(() {
+      _detail = builder;
+      _detailBottom = bottomBuilder;
+      _detailRevision = ctl.revision;
+      _detailWorkspaceId = ctl.workspaceId;
+    });
+  }
+
+  void _reopenDetail(WorkspaceDetailBuilder builder, WorkspaceDetailBuilder? bottomBuilder) {
+    final anchor = _detailAnchor.currentContext;
+    if (!mounted || anchor == null) return;
+    unawaited(showWorkspaceDetail(anchor, builder: builder, bottomBuilder: bottomBuilder));
+  }
+
+  void _closeDetail() {
+    setState(() {
+      _detail = null;
+      _detailBottom = null;
+      _detailRevision = null;
+      _detailWorkspaceId = null;
+    });
   }
 
   /// Rename as an ordinary engine command. The library rename API closes the live session
@@ -325,6 +418,51 @@ class _WorkspaceScreenState extends State<WorkspaceScreen>
                 ),
               );
             },
+    );
+  }
+}
+
+/// A persistent, independently scrollable inspection surface on expanded windows. Detail
+/// content is bound to the engine revision that produced it, so a filter, undo or type change
+/// cannot leave old row values or explanations presented as current.
+class _WorkspaceDetailRail extends StatelessWidget {
+  const _WorkspaceDetailRail({
+    required this.width,
+    required this.detail,
+    required this.onClose,
+  });
+
+  final double width;
+  final WorkspaceDetailBuilder? detail;
+  final VoidCallback onClose;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      key: const Key('workspace-detail-rail'),
+      width: width,
+      height: double.infinity,
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        border: BorderDirectional(start: BorderSide(color: theme.colorScheme.outline)),
+      ),
+      child: detail == null
+          ? SingleChildScrollView(
+              padding: const EdgeInsets.all(MorphicSpace.lg),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Details', style: theme.textTheme.titleSmall),
+                  const SizedBox(height: MorphicSpace.sm),
+                  Text(
+                    'Choose a view’s information button or a table row to inspect it here.',
+                    style: theme.textTheme.bodySmall,
+                  ),
+                ],
+              ),
+            )
+          : Builder(builder: (context) => detail!(context, onClose)),
     );
   }
 }

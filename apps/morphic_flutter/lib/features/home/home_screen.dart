@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 
 import '../../design_system/copy.dart';
+import '../../design_system/responsive.dart';
 import '../../design_system/tokens.dart';
 import '../../engine/bridge.dart';
 import '../../engine/bridge_scope.dart';
@@ -148,70 +149,72 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ],
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(MorphicSpace.lg),
-        children: [
-          Text(
-            'Your Data. Your Interface.',
-            style: Theme.of(context)
-                .textTheme
-                .titleMedium
-                ?.copyWith(color: scheme.onSurfaceVariant),
-          ),
-          const SizedBox(height: MorphicSpace.lg),
-          _EngineStatusCard(future: _engineInfo, onRetry: _reloadEngine),
-          const SizedBox(height: MorphicSpace.lg),
-          FilledButton.icon(
-            onPressed: () async {
-              await Navigator.of(context).pushNamed('/import');
-              if (mounted) _reloadWorkspaces();
-            },
-            icon: const Icon(Icons.file_open_outlined),
-            label: const Text('Import a file'),
-          ),
-          const SizedBox(height: MorphicSpace.sm),
-          OutlinedButton.icon(
-            onPressed: () async {
-              await Navigator.of(context).pushNamed('/poc');
-              if (mounted) _reloadWorkspaces();
-            },
-            icon: const Icon(Icons.auto_awesome),
-            label: const Text('Run proof of concept'),
-          ),
-          const SizedBox(height: MorphicSpace.sm),
-          OutlinedButton.icon(
-            key: const Key('import-bundle-button'),
-            onPressed: () => _importBundle(context),
-            icon: const Icon(Icons.inventory_2_outlined),
-            label: const Text('Import .morphic bundle'),
-          ),
-          const SizedBox(height: MorphicSpace.xl),
-          Text('Recent workspaces', style: Theme.of(context).textTheme.titleSmall),
-          const SizedBox(height: MorphicSpace.sm),
-          _WorkspaceList(
-            future: _workspaces,
-            fileSource: widget.fileSource ?? const FilePickerSource(),
-            bundlePathResolver:
-                widget.bundlePathResolver ?? const DocumentsBundlePathResolver(),
-            bundleWriter: widget.bundleWriter ?? const FileBundleWriter(),
-            sampleLauncher: widget.sampleLauncher,
-            onChanged: _reloadWorkspaces,
-            onRetry: _reloadWorkspaces,
-          ),
-          const SizedBox(height: MorphicSpace.xl),
-          Row(
-            children: [
-              Icon(Icons.lock_outline, size: 16, color: scheme.primary),
-              const SizedBox(width: MorphicSpace.sm),
-              Expanded(
-                child: Text(
-                  'All processing happens on this device.',
-                  style: Theme.of(context).textTheme.bodySmall,
+      body: MorphicPageWidth(
+        child: ListView(
+          padding: const EdgeInsets.all(MorphicSpace.lg),
+          children: [
+            Text(
+              'Your Data. Your Interface.',
+              style: Theme.of(context)
+                  .textTheme
+                  .titleMedium
+                  ?.copyWith(color: scheme.onSurfaceVariant),
+            ),
+            const SizedBox(height: MorphicSpace.lg),
+            _EngineStatusCard(future: _engineInfo, onRetry: _reloadEngine),
+            const SizedBox(height: MorphicSpace.lg),
+            FilledButton.icon(
+              onPressed: () async {
+                await Navigator.of(context).pushNamed('/import');
+                if (mounted) _reloadWorkspaces();
+              },
+              icon: const Icon(Icons.file_open_outlined),
+              label: const Text('Import a file'),
+            ),
+            const SizedBox(height: MorphicSpace.sm),
+            OutlinedButton.icon(
+              onPressed: () async {
+                await Navigator.of(context).pushNamed('/poc');
+                if (mounted) _reloadWorkspaces();
+              },
+              icon: const Icon(Icons.auto_awesome),
+              label: const Text('Run proof of concept'),
+            ),
+            const SizedBox(height: MorphicSpace.sm),
+            OutlinedButton.icon(
+              key: const Key('import-bundle-button'),
+              onPressed: () => _importBundle(context),
+              icon: const Icon(Icons.inventory_2_outlined),
+              label: const Text('Import .morphic bundle'),
+            ),
+            const SizedBox(height: MorphicSpace.xl),
+            Text('Recent workspaces', style: Theme.of(context).textTheme.titleSmall),
+            const SizedBox(height: MorphicSpace.sm),
+            _WorkspaceList(
+              future: _workspaces,
+              fileSource: widget.fileSource ?? const FilePickerSource(),
+              bundlePathResolver:
+                  widget.bundlePathResolver ?? const DocumentsBundlePathResolver(),
+              bundleWriter: widget.bundleWriter ?? const FileBundleWriter(),
+              sampleLauncher: widget.sampleLauncher,
+              onChanged: _reloadWorkspaces,
+              onRetry: _reloadWorkspaces,
+            ),
+            const SizedBox(height: MorphicSpace.xl),
+            Row(
+              children: [
+                Icon(Icons.lock_outline, size: 16, color: scheme.primary),
+                const SizedBox(width: MorphicSpace.sm),
+                Expanded(
+                  child: Text(
+                    'All processing happens on this device.',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
                 ),
-              ),
-            ],
-          ),
-        ],
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }

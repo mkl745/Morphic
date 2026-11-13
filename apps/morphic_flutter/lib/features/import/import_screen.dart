@@ -11,6 +11,7 @@ library;
 import 'package:flutter/material.dart';
 
 import '../../design_system/motion.dart';
+import '../../design_system/responsive.dart';
 import '../../design_system/tokens.dart';
 import '../../engine/bridge_scope.dart';
 import '../../engine/clipboard_source.dart';
@@ -297,114 +298,116 @@ class _ImportScreenState extends State<ImportScreen> {
 
     return Scaffold(
       appBar: AppBar(title: const Text('Import a file')),
-      body: ListView(
-        padding: const EdgeInsets.all(MorphicSpace.lg),
-        children: [
-          Text(
-            'Choose a CSV, JSON, JSON Lines, log or text file. MORPHIC detects the '
-            'format and builds the workspace for you — nothing leaves this device.',
-            style: theme.textTheme.bodyMedium,
-          ),
-          const SizedBox(height: MorphicSpace.lg),
-          FilledButton.icon(
-            onPressed: (busy || _picking) ? null : _pick,
-            icon: const Icon(Icons.file_open_outlined),
-            label: Text(_picking ? 'Opening picker…' : 'Choose a file'),
-          ),
-          const SizedBox(height: MorphicSpace.sm),
-          OutlinedButton.icon(
-            onPressed: (busy || _picking || _readingClipboard) ? null : _paste,
-            icon: const Icon(Icons.content_paste_outlined),
-            label: Text(
-              _readingClipboard ? 'Reading clipboard…' : 'Paste from clipboard',
+      body: MorphicPageWidth(
+        child: ListView(
+          padding: const EdgeInsets.all(MorphicSpace.lg),
+          children: [
+            Text(
+              'Choose a CSV, JSON, JSON Lines, log or text file. MORPHIC detects the '
+              'format and builds the workspace for you — nothing leaves this device.',
+              style: theme.textTheme.bodyMedium,
             ),
-          ),
-          const SizedBox(height: MorphicSpace.sm),
-          Text(
-            'Android may show its own notice when an app reads the clipboard. '
-            'The text stays on this device.',
-            style: theme.textTheme.bodySmall
-                ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-          ),
-          if (widget.sampleLauncher != null) ...[
             const SizedBox(height: MorphicSpace.lg),
-            Text('Try a bundled sample', style: theme.textTheme.titleSmall),
+            FilledButton.icon(
+              onPressed: (busy || _picking) ? null : _pick,
+              icon: const Icon(Icons.file_open_outlined),
+              label: Text(_picking ? 'Opening picker…' : 'Choose a file'),
+            ),
             const SizedBox(height: MorphicSpace.sm),
-            Wrap(
-              spacing: MorphicSpace.sm,
-              runSpacing: MorphicSpace.sm,
-              children: [
-                for (final sample in sampleDatasets)
-                  OutlinedButton.icon(
-                    key: Key('sample-${sample.id}'),
-                    onPressed: busy ? null : () => _launchSample(context, sample),
-                    icon: const Icon(Icons.insert_drive_file_outlined),
-                    label: Text(sample.title),
+            OutlinedButton.icon(
+              onPressed: (busy || _picking || _readingClipboard) ? null : _paste,
+              icon: const Icon(Icons.content_paste_outlined),
+              label: Text(
+                _readingClipboard ? 'Reading clipboard…' : 'Paste from clipboard',
+              ),
+            ),
+            const SizedBox(height: MorphicSpace.sm),
+            Text(
+              'Android may show its own notice when an app reads the clipboard. '
+              'The text stays on this device.',
+              style: theme.textTheme.bodySmall
+                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+            ),
+            if (widget.sampleLauncher != null) ...[
+              const SizedBox(height: MorphicSpace.lg),
+              Text('Try a bundled sample', style: theme.textTheme.titleSmall),
+              const SizedBox(height: MorphicSpace.sm),
+              Wrap(
+                spacing: MorphicSpace.sm,
+                runSpacing: MorphicSpace.sm,
+                children: [
+                  for (final sample in sampleDatasets)
+                    OutlinedButton.icon(
+                      key: Key('sample-${sample.id}'),
+                      onPressed: busy ? null : () => _launchSample(context, sample),
+                      icon: const Icon(Icons.insert_drive_file_outlined),
+                      label: Text(sample.title),
+                    ),
+                ],
+              ),
+            ],
+            const SizedBox(height: MorphicSpace.lg),
+            DropdownButtonFormField<String>(
+              initialValue: _formatChoice,
+              decoration: const InputDecoration(
+                labelText: 'Format',
+                helperText: 'Detect automatically unless the result looks wrong.',
+              ),
+              items: [
+                const DropdownMenuItem<String>(
+                  value: _autoDetect,
+                  child: Text('Detect automatically'),
+                ),
+                for (final entry in _formats.entries)
+                  DropdownMenuItem<String>(
+                    value: entry.key,
+                    child: Text(entry.value),
                   ),
               ],
+              onChanged: (busy || _picking)
+                  ? null
+                  : (value) => setState(
+                      () => _formatChoice = value ?? _autoDetect,
+                    ),
             ),
-          ],
-          const SizedBox(height: MorphicSpace.lg),
-          DropdownButtonFormField<String>(
-            initialValue: _formatChoice,
-            decoration: const InputDecoration(
-              labelText: 'Format',
-              helperText: 'Detect automatically unless the result looks wrong.',
-            ),
-            items: [
-              const DropdownMenuItem<String>(
-                value: _autoDetect,
-                child: Text('Detect automatically'),
-              ),
-              for (final entry in _formats.entries)
-                DropdownMenuItem<String>(
-                  value: entry.key,
-                  child: Text(entry.value),
-                ),
+            const SizedBox(height: MorphicSpace.lg),
+            if (_picked != null) _PickedFileCard(file: _picked!),
+            if (controller != null && (busy || controller.stage == ImportStage.done))
+              _ImportProgressCard(controller: controller),
+            if (controller != null &&
+                controller.stage == ImportStage.cancelled) ...[
+              const SizedBox(height: MorphicSpace.md),
+              _CancelledCard(onRetry: _pick),
             ],
-            onChanged: (busy || _picking)
-                ? null
-                : (value) => setState(
-                    () => _formatChoice = value ?? _autoDetect,
-                  ),
-          ),
-          const SizedBox(height: MorphicSpace.lg),
-          if (_picked != null) _PickedFileCard(file: _picked!),
-          if (controller != null && (busy || controller.stage == ImportStage.done))
-            _ImportProgressCard(controller: controller),
-          if (controller != null &&
-              controller.stage == ImportStage.cancelled) ...[
-            const SizedBox(height: MorphicSpace.md),
-            _CancelledCard(onRetry: _pick),
-          ],
-          if (_readyId != null) ...[
-            const SizedBox(height: MorphicSpace.md),
-            _ReviewCard(
-              onOpen: () => _openWorkspace(_readyId!),
-              onReport: _showReport,
+            if (_readyId != null) ...[
+              const SizedBox(height: MorphicSpace.md),
+              _ReviewCard(
+                onOpen: () => _openWorkspace(_readyId!),
+                onReport: _showReport,
+              ),
+            ],
+            if (facts != null) ...[
+              const SizedBox(height: MorphicSpace.md),
+              _ImportFactsCard(facts: facts, onReport: _showReport),
+            ],
+            if (error != null) ...[
+              const SizedBox(height: MorphicSpace.md),
+              _ErrorCard(
+                message: error,
+                failure: _pickError == null ? failure : null,
+                onRetry: busy ? null : _pick,
+                onReport: failure == null ? null : _showReport,
+              ),
+            ],
+            const SizedBox(height: MorphicSpace.xl),
+            Text(
+              'Morphic reports how it read the file, plus any rows it was unable to '
+              'parse. If it guessed wrong, choose the format above and import again.',
+              style: theme.textTheme.bodySmall
+                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
             ),
           ],
-          if (facts != null) ...[
-            const SizedBox(height: MorphicSpace.md),
-            _ImportFactsCard(facts: facts, onReport: _showReport),
-          ],
-          if (error != null) ...[
-            const SizedBox(height: MorphicSpace.md),
-            _ErrorCard(
-              message: error,
-              failure: _pickError == null ? failure : null,
-              onRetry: busy ? null : _pick,
-              onReport: failure == null ? null : _showReport,
-            ),
-          ],
-          const SizedBox(height: MorphicSpace.xl),
-          Text(
-            'Morphic reports how it read the file, plus any rows it was unable to '
-            'parse. If it guessed wrong, choose the format above and import again.',
-            style: theme.textTheme.bodySmall
-                ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-          ),
-        ],
+        ),
       ),
     );
   }

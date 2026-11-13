@@ -31,6 +31,7 @@ import '../change_type_button.dart';
 import '../component_registry.dart';
 import '../explanation_sheet.dart';
 import '../filter_recovery.dart';
+import '../responsive_detail.dart';
 import 'bar_chart_painter.dart';
 
 class BarChartView extends StatefulWidget {
@@ -443,17 +444,17 @@ class _BarChartViewState extends State<BarChartView> {
     final scene = _scene;
     if (scene == null) return;
     final bars = _bars;
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      builder: (context) => SafeArea(
+    final title = widget.ctx.title;
+    await showWorkspaceDetail(
+      context,
+      builder: (context, close) => SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(MorphicSpace.lg),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(widget.ctx.title, style: theme.textTheme.titleSmall),
+              Text(title, style: theme.textTheme.titleSmall),
               const SizedBox(height: MorphicSpace.xs),
               Text(
                 '${scene.measure} by ${scene.dimension}',
@@ -471,17 +472,17 @@ class _BarChartViewState extends State<BarChartView> {
                     children: [
                       TableRow(
                         children: [
-                          _cell(scene.dimension, bold: true),
-                          _cell(scene.measure, bold: true),
-                          _cell('Rows', bold: true),
+                          _cell(theme, scene.dimension, bold: true),
+                          _cell(theme, scene.measure, bold: true),
+                          _cell(theme, 'Rows', bold: true),
                         ],
                       ),
                       for (final b in bars)
                         TableRow(
                           children: [
-                            _cell(b.label),
-                            _cell(formatBarValue(b.value)),
-                            _cell('${b.rowCount}'),
+                            _cell(theme, b.label),
+                            _cell(theme, formatBarValue(b.value)),
+                            _cell(theme, '${b.rowCount}'),
                           ],
                         ),
                     ],
@@ -493,7 +494,7 @@ class _BarChartViewState extends State<BarChartView> {
                 alignment: Alignment.centerRight,
                 child: TextButton(
                   key: const Key('bar-table-close'),
-                  onPressed: () => Navigator.of(context).pop(),
+                  onPressed: close,
                   child: const Text('Close'),
                 ),
               ),
@@ -504,13 +505,11 @@ class _BarChartViewState extends State<BarChartView> {
     );
   }
 
-  Widget _cell(String text, {bool bold = false}) => Padding(
+  static Widget _cell(ThemeData theme, String text, {bool bold = false}) => Padding(
         padding: const EdgeInsets.symmetric(vertical: MorphicSpace.xs),
         child: Text(
           text,
-          style: bold
-              ? Theme.of(context).textTheme.labelMedium
-              : Theme.of(context).textTheme.bodySmall,
+          style: bold ? theme.textTheme.labelMedium : theme.textTheme.bodySmall,
         ),
       );
 }

@@ -40,6 +40,7 @@ import '../change_type_button.dart';
 import '../component_registry.dart';
 import '../explanation_sheet.dart';
 import '../filter_recovery.dart';
+import '../responsive_detail.dart';
 import 'chart_format.dart';
 import 'timeline_painter.dart';
 
@@ -650,10 +651,11 @@ class _TimelineViewState extends State<TimelineView> {
     final scene = _scene;
     if (scene == null) return;
     final geo = _geometry(theme.brightness == Brightness.dark);
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      builder: (context) => SafeArea(
+    final title = widget.ctx.title;
+    final hiddenCount = _hidden.length;
+    await showWorkspaceDetail(
+      context,
+      builder: (context, close) => SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(MorphicSpace.lg),
           child: SizedBox(
@@ -661,13 +663,18 @@ class _TimelineViewState extends State<TimelineView> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(widget.ctx.title, style: theme.textTheme.titleSmall),
+                Text(title, style: theme.textTheme.titleSmall),
                 const SizedBox(height: MorphicSpace.xs),
                 Text(
                   '${geo.columns.length} buckets of ${scene.bucketing.label}'
-                  '${_hidden.isEmpty ? "" : " · ${_hidden.length} lanes hidden"}',
+                  '${hiddenCount == 0 ? "" : " · $hiddenCount lanes hidden"}',
                   style: theme.textTheme.bodySmall,
                 ),
+                if (WorkspaceDetailScope.maybeOf(context) != null)
+                  Text(
+                    'Snapshot of the visible lanes. Open again after changing the legend.',
+                    style: theme.textTheme.bodySmall,
+                  ),
                 if (scene.partialNotice != null)
                   Padding(
                     padding: const EdgeInsets.only(top: MorphicSpace.xs),
@@ -733,7 +740,7 @@ class _TimelineViewState extends State<TimelineView> {
                   alignment: Alignment.centerRight,
                   child: TextButton(
                     key: const Key('timeline-table-close'),
-                    onPressed: () => Navigator.of(context).pop(),
+                    onPressed: close,
                     child: const Text('Close'),
                   ),
                 ),

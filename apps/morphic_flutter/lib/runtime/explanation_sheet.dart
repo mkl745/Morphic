@@ -19,6 +19,7 @@ library;
 import 'package:flutter/material.dart';
 
 import '../design_system/tokens.dart';
+import 'responsive_detail.dart';
 
 /// Human headings for the rule ids in `morphic-compiler`'s `RULE_TABLE`.
 ///
@@ -111,13 +112,12 @@ Future<void> showExplanationSheet(
   required String componentTitle,
   required Map<String, dynamic>? explanation,
 }) =>
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (sheetContext) => WhyThisViewSheet(
+    showWorkspaceDetail(
+      context,
+      builder: (context, close) => WhyThisViewSheet(
         componentTitle: componentTitle,
         explanation: ComponentExplanation.fromMap(explanation),
+        onClose: close,
       ),
     );
 
@@ -155,10 +155,12 @@ class WhyThisViewSheet extends StatelessWidget {
     super.key,
     required this.componentTitle,
     required this.explanation,
+    this.onClose,
   });
 
   final String componentTitle;
   final ComponentExplanation explanation;
+  final VoidCallback? onClose;
 
   @override
   Widget build(BuildContext context) {
@@ -253,7 +255,7 @@ class WhyThisViewSheet extends StatelessWidget {
               alignment: Alignment.centerRight,
               child: TextButton(
                 key: const Key('why-sheet-close'),
-                onPressed: () => Navigator.of(context).pop(),
+                onPressed: onClose ?? () => Navigator.of(context).pop(),
                 child: const Text('Close'),
               ),
             ),

@@ -1,10 +1,9 @@
 /// Adaptive workspace renderer (M1.1 task 1.1.5).
 ///
-/// Draws the generated document in `layout.order` through the [ComponentRegistry]. Metric
-/// cards flow into columns on wide viewports; everything else spans the full width. The
-/// order the engine chose is never re-sorted here. M1.5 task 1.5.2 adds an edit mode whose
-/// drag-reorder and pinch-free resize menu are *commands*: the rendered geometry always comes
-/// back from `layout.order` and `layout.hints`, never from a Dart-side layout guess.
+/// Draws the generated document in `layout.order` through the [ComponentRegistry]. Compact
+/// windows use one column; medium and expanded windows arrange views in columns while
+/// respecting persisted span hints. Editing emits engine commands rather than keeping a
+/// second layout document in Dart.
 library;
 
 import 'dart:async';
@@ -13,6 +12,7 @@ import 'package:flutter/material.dart';
 
 import '../design_system/copy.dart';
 import '../design_system/motion.dart';
+import '../design_system/responsive.dart';
 import '../design_system/tokens.dart';
 import '../engine/engine_controller.dart';
 import '../engine/interaction.dart';
@@ -56,8 +56,8 @@ class WorkspaceView extends StatelessWidget {
   /// existing runtime tests see the exact widget tree they did before 1.5.2.
   final bool layoutEditing;
 
-  /// Phone-only focus mode shows one component at a time. It is a view convenience, not
-  /// persisted schema state; layout edits themselves are persisted by Rust as commands.
+  /// Compact focus mode expands one component and keeps the others as summaries. It is
+  /// view-only; layout edits themselves are persisted by Rust as commands.
   final bool focusMode;
   final int focusIndex;
   final ValueChanged<int>? onFocusIndexChanged;
@@ -166,10 +166,15 @@ class WorkspaceView extends StatelessWidget {
     final hints = _hints();
     return LayoutBuilder(
       builder: (context, constraints) {
-        final width = constraints.maxWidth - MorphicSpace.lg * 2;
-        final columns = width >= 1000 ? 3 : (width >= 640 ? 2 : 1);
+        final windowClass = MorphicResponsive.classify(MediaQuery.sizeOf(context).width);
+        final width = (constraints.maxWidth - MorphicSpace.lg * 2)
+            .clamp(0.0, double.infinity)
+            .toDouble();
+        final columns = MorphicResponsive.workspaceColumns(windowClass, width);
         const gap = MorphicSpace.md;
-        final cardWidth = (width - gap * (columns - 1)) / columns;
+        final cardWidth = ((width - gap * (columns - 1)) / columns)
+            .clamp(0.0, double.infinity)
+            .toDouble();
         final header = <Widget>[
           if (controller.degraded)
             DegradedNotice(
@@ -188,7 +193,7 @@ class WorkspaceView extends StatelessWidget {
             columns: columns,
           );
         }
-        if (focusMode && MediaQuery.sizeOf(context).width < 640) {
+        if (focusMode && windowClass == MorphicWindowClass.compact) {
           return _focusedLayout(
             context,
             header: header,
@@ -201,58 +206,56 @@ class WorkspaceView extends StatelessWidget {
           );
         }
 
-        // Group *consecutive* metric cards so they can flow, without reordering anything.
-        final blocks = <Widget>[];
-        var metrics = <Map<String, dynamic>>[];
-
-        // Degraded mode: the layout is real, the data is gone. Lead with that so an empty
-        // table is not mistaken for a broken import (docs/architecture/06 §3).
-        blocks.addAll(header);
-
-        void flushMetrics() {
-          if (metrics.isEmpty) return;
-          blocks.add(
-            Wrap(
+        Widget flow(List<Map<String, dynamic>> specs, {Key? key}) => Wrap(
+              key: key,
               spacing: gap,
               runSpacing: gap,
               children: [
-                for (final spec in metrics)
+                for (final spec in specs)
                   _component(
                     spec,
                     hint: hints[_idOf(spec)],
-                    defaultSpan: 1,
+                    defaultSpan: spec['type'] == 'metric_card' ? 1 : columns,
                     columns: columns,
                     width: width,
                     cardWidth: cardWidth,
                     gap: gap,
                   ),
               ],
-            ),
-          );
-          metrics = [];
-        }
-
-        for (final spec in components) {
-          if (spec['type'] == 'metric_card') {
-            metrics.add(spec);
-          } else {
-            flushMetrics();
-            blocks.add(
-              _component(
-                spec,
-                hint: hints[_idOf(spec)],
-                defaultSpan: columns,
-                columns: columns,
-                width: width,
-                cardWidth: cardWidth,
-                gap: gap,
-              ),
             );
+
+        final blocks = <Widget>[...header];
+        // Normal generated workspaces contain at most six components. Keeping them in one
+        // keyed flow preserves local chart/table state across rotation. The schema also accepts
+        // larger imported documents (up to 64), so group those into lazy rows rather than
+        // launching a query for every off-screen component at once.
+        if (components.length <= 6) {
+          blocks.add(flow(components, key: const Key('workspace-small-flow')));
+        } else {
+          var row = <Map<String, dynamic>>[];
+          var used = 0;
+          void flush() {
+            if (row.isEmpty) return;
+            blocks.add(flow(row, key: ValueKey('workspace-row-${_idOf(row.first)}')));
+            row = <Map<String, dynamic>>[];
+            used = 0;
           }
+
+          for (final spec in components) {
+            final span = _spanOf(
+              hints[_idOf(spec)],
+              spec['type'] == 'metric_card' ? 1 : columns,
+              columns,
+            );
+            if (used + span > columns) flush();
+            row.add(spec);
+            used += span;
+          }
+          flush();
         }
-        flushMetrics();
 
         return ListView.separated(
+          key: const Key('workspace-component-flow'),
           padding: const EdgeInsets.all(MorphicSpace.lg),
           itemCount: blocks.length,
           separatorBuilder: (_, __) => const SizedBox(height: MorphicSpace.md),
@@ -298,9 +301,14 @@ class WorkspaceView extends StatelessWidget {
     return Column(
       children: [
         if (header.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.all(MorphicSpace.lg),
-            child: Column(children: header),
+          Flexible(
+            fit: FlexFit.loose,
+            child: SingleChildScrollView(
+              child: Padding(
+                padding: const EdgeInsets.all(MorphicSpace.lg),
+                child: Column(children: header),
+              ),
+            ),
           ),
         Expanded(
           child: ReorderableListView.builder(
@@ -373,54 +381,82 @@ class WorkspaceView extends StatelessWidget {
       onFocusIndexChanged?.call(next);
     }
 
-    final spec = components[index];
+    final blocks = <Widget>[
+      ...header,
+      for (var i = 0; i < components.length; i++)
+        if (i == index)
+          _component(
+            components[i],
+            hint: hints[_idOf(components[i])],
+            defaultSpan: columns,
+            columns: columns,
+            width: width,
+            cardWidth: cardWidth,
+            gap: gap,
+          )
+        else
+          _focusSummary(components[i], i),
+    ];
     return Column(
       children: [
-        if (header.isNotEmpty)
-          Padding(
+        Expanded(
+          child: ListView.separated(
+            key: const Key('focus-content'),
             padding: const EdgeInsets.all(MorphicSpace.lg),
-            child: Column(children: header),
-          ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: MorphicSpace.lg),
-          child: Row(
-            children: [
-              IconButton(
-                key: const Key('focus-prev-button'),
-                tooltip: 'Previous component',
-                icon: const Icon(Icons.chevron_left),
-                onPressed: () => step(-1),
-              ),
-              Expanded(
-                child: Text(
-                  '${index + 1} of ${components.length}',
-                  textAlign: TextAlign.center,
-                ),
-              ),
-              IconButton(
-                key: const Key('focus-next-button'),
-                tooltip: 'Next component',
-                icon: const Icon(Icons.chevron_right),
-                onPressed: () => step(1),
-              ),
-            ],
+            itemCount: blocks.length,
+            separatorBuilder: (_, __) => const SizedBox(height: MorphicSpace.md),
+            itemBuilder: (_, i) => blocks[i],
           ),
         ),
-        Expanded(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(MorphicSpace.lg),
-            child: _component(
-              spec,
-              hint: hints[_idOf(spec)],
-              defaultSpan: columns,
-              columns: columns,
-              width: width,
-              cardWidth: cardWidth,
-              gap: gap,
+        Material(
+          color: Theme.of(context).colorScheme.surface,
+          child: SafeArea(
+            top: false,
+            child: Row(
+              key: const Key('focus-controls'),
+              children: [
+                IconButton(
+                  key: const Key('focus-prev-button'),
+                  tooltip: 'Previous component',
+                  icon: const Icon(Icons.chevron_left),
+                  onPressed: onFocusIndexChanged == null ? null : () => step(-1),
+                ),
+                Expanded(
+                  child: Text(
+                    '${index + 1} of ${components.length}',
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+                IconButton(
+                  key: const Key('focus-next-button'),
+                  tooltip: 'Next component',
+                  icon: const Icon(Icons.chevron_right),
+                  onPressed: onFocusIndexChanged == null ? null : () => step(1),
+                ),
+              ],
             ),
           ),
         ),
       ],
+    );
+  }
+
+  Widget _focusSummary(Map<String, dynamic> spec, int index) {
+    final title = spec['title'] as String? ?? _idOf(spec);
+    final explanation = spec['explanation'];
+    final detail = explanation is Map ? explanation['detail'] : null;
+    final type = spec['type'] as String? ?? 'view';
+    final summary = detail is String && detail.trim().isNotEmpty
+        ? detail
+        : 'View type: ${type.replaceAll('_', ' ')}';
+    return Card(
+      child: ListTile(
+        key: ValueKey('focus-summary-${_idOf(spec)}'),
+        title: Text(title),
+        subtitle: Text(summary),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: onFocusIndexChanged == null ? null : () => onFocusIndexChanged!(index),
+      ),
     );
   }
 
@@ -441,6 +477,7 @@ class WorkspaceView extends StatelessWidget {
     final clock = entrance;
     final index = controller.components.indexWhere((item) => _idOf(item) == _idOf(spec));
     return SizedBox(
+      key: ValueKey('workspace-component-${_idOf(spec)}'),
       width: componentWidth,
       height: _layoutHeights[name],
       child: clock == null
