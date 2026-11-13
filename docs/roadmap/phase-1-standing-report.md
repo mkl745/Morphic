@@ -1,4 +1,4 @@
-# Phase 1 standing report — updated for 1.6.5
+# Phase 1 standing report — updated for 1.6.1
 
 Written after task **1.2.5** went CI-green (run **42256267974**, commit **`fccec5c`**, all six
 jobs success). Every number below was read from the plan, the source tree, or a CI report —
@@ -23,15 +23,15 @@ was the only remaining core row and the milestone was still not exited. See
 [m1.5-status.md](m1.5-status.md) §5.
 
 **Update (1.5.4):** **M1.5 task 1.5.4** (autosave hardening, recovery UI and the kill-mid-save
-chaos suite) is done and CI-green at `641c48c` / run **43057629282**, 6/6 ✅. `API_VERSION` is
-**12**, all five M1.5 core rows are shipped, AT-16 is green as an automated test, and the named
+chaos suite) is done and CI-green at `641c48c` / run **43057629282**, 6/6 ✅. `API_VERSION` was
+**12**, all five M1.5 core rows were shipped, AT-16 was green as an automated test, and the named
 chaos gate runs on every push. The nightly cron is wired but has not fired; M1.5 remains **not
 exited** because AT-13/AT-14 device halves, AT-18, reopen ≤ 500 ms and the other evidence gaps
 are still owed. See [m1.5-status.md](m1.5-status.md) §6.
 
 **Update (1.5.6):** **M1.5 task 1.5.6** (`.morphic` bundle export/import) is done and CI-green at
 `a8e42e4` / run **43070316539**, 6/6 ✅, after the red first implementation run, a rustfmt bot
-push and a normal fix commit. `API_VERSION` is **13**. All **six** M1.5 task rows are now shipped,
+push and a normal fix commit. `API_VERSION` was then **13**. All **six** M1.5 task rows are shipped,
 including the optional stretch row; M1.5 remains **not exited** because the device halves, AT-18,
 reopen ≤ 500 ms and the other evidence gaps are still owed. See [m1.5-status.md](m1.5-status.md)
 §8.
@@ -44,8 +44,14 @@ rows shipped; its exit — and every other formal exit — remained unmet. See [
 
 **Update (1.6.5):** The empty/error/edge copy sweep adds recovery guidance and scope-aware
 filter clearing while keeping engine error evidence. The final code tip `23d41b9` / run
-**43283304890** passed **6/6 ✅**, with 528 Dart tests and 54 live golden comparisons. M1.6 has
-two shipped rows and no formal exit. See [m1.6-status.md](m1.6-status.md) §3.
+**43283304890** passed **6/6 ✅**, with 528 Dart tests and 54 live golden comparisons. M1.6 then
+had two shipped rows and no formal exit. See [m1.6-status.md](m1.6-status.md) §3.
+
+**Update (1.6.1):** The key-screen design pass adds bundled fonts, dark/light theme preference,
+real-event motion, an undoable live title and readable goldens for all five component families.
+The final code follow-up `3cc9edf` / run **43367563320** passed **6/6 ✅**, including 82 live
+image comparisons. The bridge is now **v14**. AT-11 and AT-18 are still partial, and all formal
+exits remain open; see [m1.6-status.md](m1.6-status.md) §§4–5.
 
 **Update 2026-11-07:** **M1.3 is code-complete** — all five tasks (plan execution, interaction
 commands, the interactive table, global filters with tap-to-filter, and cross-component
@@ -58,32 +64,32 @@ records the decisions, the measured evidence, and why the milestone's **exit is 
 
 | Question | Answer |
 |---|---|
-| Tasks finished | **32 of 41** (78%) |
-| Tasks not finished | **9** — 8 core + 1 stretch (◇) |
+| Tasks finished | **33 of 41** (80%) |
+| Tasks not finished | **8** — 7 core + 1 stretch (◇) |
 | Milestones core-complete | **5 of 7** (M1.1–M1.5; M1.5 is code-complete including its ◇ stretch row) |
-| Milestones not started | **1** (M1.7); M1.6 has 2 of 6 rows shipped |
+| Milestones not started | **1** (M1.7); M1.6 has 3 of 6 rows shipped |
 | Milestone exits formally met | **0 of 7** |
 | Acceptance tests fully green | **10 of 19** (AT-02, AT-03, AT-05, AT-06, AT-08, AT-10, AT-12, AT-15, AT-16, AT-17) |
-| Acceptance tests partially evidenced | **8** |
-| Acceptance tests not yet started | **1** (AT-18) |
-| Evidence gaps no task row covers | **6** (see §6) |
-| Remaining core effort, by the plan's own S/M/L legend | **13–22 focused days** |
+| Acceptance tests partially evidenced | **9** (including AT-18's limited token and chart-scale evidence) |
+| Acceptance tests not yet started | **0** |
+| Evidence gaps no task row fully covers | **6** (see §6) |
+| Remaining core effort, by the plan's own S/M/L legend | **10–17 focused days** |
 
 **The most important finding is the last row.** The plan estimates *all of Phase 1* at 30–40
-focused days. With M1.3, all seven M1.4 tasks, all six M1.5 rows and 1.6.4–1.6.5 finished, the **8
-unfinished core tasks sum to 13–22 days** under the plan's own legend (S ≈ ½ day, M ≈ 1–2,
-L ≈ 3–5), excluding the one remaining ◇ stretch item:
+focused days. With M1.3, all seven M1.4 tasks, all six M1.5 rows and 1.6.1/1.6.4/1.6.5 finished,
+the **7 unfinished core tasks sum to 10–17 days** under the plan's own legend (S ≈ ½ day,
+M ≈ 1–2, L ≈ 3–5), excluding the one remaining ◇ stretch item:
 
 | Remaining milestone | Core tasks | Focused days |
 |---|---|---|
 | M1.4 Visualization + planner | 0 | 0 |
 | M1.5 Lifecycle & layout | 0 | 0 |
-| M1.6 Experience pass (two L + one M) | 3 | 7–12 |
+| M1.6 Experience pass (one L + one M) | 2 | 4–7 |
 | M1.7 Hardening & release (one L + two M + two S) | 5 | 6–10 |
-| **Total** | **8** | **13–22** |
+| **Total** | **7** | **10–17** |
 
 The figure is recomputed from the plan's rows on every update rather than decremented by hand.
-The estimate was optimistic before any work started and 32 finished tasks have not made it less
+The estimate was optimistic before any work started and 33 finished tasks have not made it less
 so. §7 proposes a re-baseline.
 
 ---
@@ -95,9 +101,9 @@ so. §7 proposes a re-baseline.
 | M1.1 Vertical slice | 7 | 7 | **complete** | **unmet** — needs a mid-class device; 10 MB ≤ 3 s unmeasured; AT-02 is scored on a tuned corpus |
 | M1.2 Format breadth | 5 | 5 | **complete** | **unmet** — AT-04's temporal-log timeline is not generated for the current corpus; device evidence pending (fuzz smoke now clean) |
 | M1.3 Interactivity | 5 | 5 | **complete** | **unmet** — AT-06 ✓ AT-08 ✓; AT-07 blocked only on mid-class ARM latency |
-| M1.4 Visualization + planner | 7 | 7 | **code-complete** — all five painters, planner v1, the explanation sheet and `ChangeComponentType` shipped | **unmet** — AT-11 not green; all-five golden coverage false; chart p95 ≤33 ms not device-measured |
+| M1.4 Visualization + planner | 7 | 7 | **code-complete** — all five painters, planner v1, the explanation sheet and `ChangeComponentType` shipped | **unmet** — AT-11's full state matrix is incomplete and chart p95 ≤33 ms is not device-measured; all five families now have some goldens |
 | M1.5 Lifecycle & layout | 6 | 6 | **code-complete** — all five core rows plus the CI-green ◇1.5.6 stretch shipped; the stretch row does not satisfy the exit | **unmet** — AT-13/14 device halves, AT-18, reopen ≤ 500 ms; AT-15/16/17 green as automated tests; named chaos suite CI-green |
-| M1.6 Experience pass | 6 | 2 | **in progress** — 1.6.4 samples and 1.6.5 copy/recovery sweep shipped; 1.6.1–1.6.3 and ◇1.6.6 remain | **unmet** — full acceptance suite on low/mid devices, UX validation with ≥3 external people and a no-token-violations sweep still owed |
+| M1.6 Experience pass | 6 | 3 | **in progress** — 1.6.1 design pass, 1.6.4 samples and 1.6.5 copy/recovery shipped; 1.6.2, 1.6.3 and ◇1.6.6 remain | **unmet** — full acceptance suite on low/mid devices, UX validation with ≥3 external people and a no-token-violations sweep still owed |
 | M1.7 Hardening & release | 5 | 0 | not started | — |
 
 Phase 0 (architecture, contracts, CI, release pipeline) is complete and was verified by run
@@ -105,12 +111,12 @@ Phase 0 (architecture, contracts, CI, release pipeline) is complete and was veri
 
 **"Core-complete" is not "done".** All five core-complete milestones have working, tested code
 and none has met its exit criteria, because those exits demand evidence this sandbox cannot
-produce: a physical mid-range phone, an overnight fuzz run, all-five golden coverage and a
-device-measured interaction budget. M1.5 has all five core rows shipped but is not exited; its
-automated AT-13/AT-14 halves are green, AT-15/16/17 are fully green as automated tests, and the
-named kill-mid-save chaos suite is CI-green, while the device halves, AT-18 and reopen ≤ 500 ms
-are still owed. The optional ◇1.5.6 stretch row is now shipped and CI-green, but that does not
-change the exit. M1.6 has shipped 1.6.4 and 1.6.5 while every formal exit stays open. That
+produce: a physical mid-range phone, an overnight fuzz run, the full AT-11 golden state matrix
+and a device-measured interaction budget. M1.5 has all five core rows shipped but is not exited;
+its automated AT-13/AT-14 halves are green, AT-15/16/17 are fully green as automated tests, and
+the named kill-mid-save chaos suite is CI-green, while the device halves, AT-18 and reopen ≤ 500 ms
+are still owed. The optional ◇1.5.6 stretch row is shipped and CI-green, but that does not change
+the exit. M1.6 has shipped 1.6.1, 1.6.4 and 1.6.5 while every formal exit stays open. That
 distinction is the difference between a demo and a milestone.
 
 ---
@@ -178,17 +184,19 @@ physical device above. Workspace templates and sharing into Morphic have not shi
 | **1.6.5 recovery follow-up** | **`f100c66`** | **43277741494** | **6/6 ✅** (goldens regenerated) |
 | **1.6.5 unsupported-view guidance** | **`05e2ed7`** | **43279681382** | **6/6 ✅** |
 | **1.6.5 final code + live golden comparison** | **`23d41b9`** | **43283304890** | **6/6 ✅** |
+| **1.6.1 design sweep + initial live comparison** | **`890f318`** | **43305457290** | **6/6 ✅** (78 images; recovery follow-up later) |
+| **1.6.1 compact-title follow-up** | **`3748377`** | **43366494089** | **6/6 ✅** (82 images regenerated) |
+| **1.6.1 empty-recovery follow-up + live images** | **`3cc9edf`** | **43367563320** | **6/6 ✅** (82 images compared live) |
 
-Current source contains **702 Rust `#[test]` functions** across 8 engine crates and the bridge.
-Run **43283304890** passed **528 Dart tests** and **54 live chart golden comparisons**. The chart
-empty and failure goldens changed with the copy sweep and were regenerated by the bot in
-`00af96a`; the final run compared them with `bootstrapped: false`. The images cover bar, line
-and timeline, not all five components, and without a bundled font they check geometry/colour/
-layout rather than actual words. The generated
-UI schema artifact is unchanged; previous totals and per-task test additions are recorded in the
-individual milestone reports.
+Current source contains **703 Rust `#[test]` functions** across 8 engine crates and the bridge.
+The 1.6.1 image suite loads the bundled Inter, JetBrains Mono and Material icon fonts, and includes
+bar, line, timeline, metric, table and key-screen images in both themes. The live comparison on
+`3cc9edf` passed 80 golden tests against all 82 committed PNGs (`bootstrapped: false`), alongside
+549 behavioral tests and clean analysis. The full AT-11 state matrix remains incomplete. The
+generated UI schema artifact is unchanged;
+previous totals and per-task test additions are recorded in the individual milestone reports.
 
-Run **43283304890** also reports `STAMP_OK`, `PERMISSIONS_OK`, `ENGINE_FFI_OK`, `POC_OK`,
+Run **43367563320** also reports `STAMP_OK`, `PERMISSIONS_OK`, `ENGINE_FFI_OK`, `POC_OK`,
 `RUNTIME_OK: range 1-256 of 600` and `PAGING_OK`. The main manifest still has no INTERNET
 permission (debug INTERNET is expected). The runtime smoke runs on an emulator, not a physical
 device. Toolchain: rustc 1.100.0, Flutter 3.50.0 / Dart 3.14.0, AGP 9.1, SDK 36 / min 24,
@@ -210,14 +218,14 @@ device. Toolchain: rustc 1.100.0, Flutter 3.50.0 / Dart 3.14.0, AGP 9.1, SDK 36 
 | AT-08 | Search | **green** | case-insensitive, field-scoped, commutes with filter/sort (property test), debounced as-you-type UI. The test itself specifies no latency bound |
 | AT-09 | Save & reopen | partial | restore ✓; filters/sort/search and field corrections now persist and survive reopen (tested); ≤ 500 ms unmeasured |
 | AT-10 | UI schema validity | **green** | gate-enforced on every run; since 1.4.6 the explanation clause is checked across all 21 fixtures, not just one synthetic profile |
-| AT-11 | Component states | partial | **5 of 5** components paintable; **54 golden images** committed and gated. They pin geometry, colour and layout — with no font asset the test font draws boxes, so wording is asserted behaviourally instead |
+| AT-11 | Component states | partial | All five component families now have readable dark/light goldens, but the complete loading, empty-after-filter and binding-error matrix is not covered for every family |
 | AT-12 | Selection quality | **green** | **96.6% (85/88) on 21 labelled files**, target 85%; all three guarantees asserted per file; every generated chart rendered against its own fixture, 0 failures. Tuned against this corpus, so an upper bound. The 3 misses are text time axes the query layer cannot bucket — labels deliberately left asking for the chart |
 | AT-13 | Undo/redo | partial | automated 10-command state-hash + restart gates green (`7e59106`, run 42863981801); device half and ≤ 500 ms reopen still owed (chaos suite is now CI-green in 1.5.4) |
 | AT-14 | Layout adjustment | partial | automated reorder/span/height/type-switch persistence, validation and widget gates green (1.5.2, run 42873440886); device half still owed |
 | AT-15 | Library lifecycle | **green** | 3 workspaces, rename/duplicate/delete, one shared dataset on disk and two healthy survivors proven in Rust + Dart on run 42970337214; no device claim |
-| AT-16 | Missing-source resilience | **green** | 1.5.4 (`641c48c`, run 43057629282): degraded mode ✓, two recovery affordances ✓, hash-verified re-link restores `metric_data` ✓; named CI chaos gate covers interrupted writes, torn journals, quarantine, torn-index repair and migration backup. Automated only, no device claim |
+| AT-16 | Missing-source resilience | **green** | Degraded notice offers re-link (with an additional app-bar action on wide screens); hash-verified re-link restores `metric_data`. Named CI chaos gate covers interrupted writes, torn journals, quarantine, torn-index repair and migration backup. Automated only, no device claim |
 | AT-17 | User corrections | **green** | 1.5.5 (`23513e0`, run 43024916235): only affected bindings recompile, the override persists across reopen, undo restores the semantic state hash; automated only, no device claim |
-| AT-18 | Responsive & a11y | not started | M1.6 |
+| AT-18 | Responsive & a11y | partial | Selected theme-pair contrast checks and 1.3× chart images exist; compact/medium/expanded coverage, full ≥48 dp/contrast audit and TalkBack vertical slice are not established |
 | AT-19 | Release artifact | partial | dry-run APK only; unsigned; ~48 MB fat vs ≤ 40 MB per-ABI target |
 
 **A plan defect worth fixing:** M1.2's exit says "AT-04 passes", but AT-04 requires that "a
@@ -227,9 +235,9 @@ M1.2's exit cannot be reached during M1.2. Split AT-04 into *extraction* (M1.2, 
 
 ---
 
-## 6. Six gaps that no task row covers
+## 6. Six evidence gaps not fully covered by the task rows
 
-These will not be closed by working through the task list, because no task owns them:
+These need explicit ownership and evidence, not just a count of finished task rows:
 
 1. **Mid-class device evidence.** The matrix requires a Pixel 6a/7a-class phone for *every*
    milestone exit. Both available devices (C51, A15) are low class. Nothing downstream can be
@@ -246,13 +254,12 @@ These will not be closed by working through the task list, because no task owns 
 3. **The 10 MB → ≤ 3 s hypothesis is unmeasured.** It is the product's central claim. The
    dataset generator and the phone harness now exist, so this is one import away rather than
    needing new tooling.
-4. **Golden images exist but cannot check text.** Task 1.1.5 promised them and 1.4.2 built the
-   harness: now 54 images — bar, line and timeline, each across two themes and nine states —
-   committed and gated in CI on the same generate-then-compare contract as the Rust snapshots.
-   But the repo ships no font asset, so Flutter's test font draws glyph boxes — the images pin
-   geometry, colour and layout, not wording. A bundled font is still owed. Reviewing them does
-   pay: the line-chart images exposed a lone measurement between gaps rendering as nothing at all,
-   which no behavioural test had caught.
+4. **The AT-11 golden state matrix is incomplete.** Task 1.6.1 bundles the real fonts and adds
+   metric/table and key-screen snapshots; all five component families now have readable images
+   in both themes. The required loading, empty-after-filter and binding-error states are not yet
+   golden-covered for every component/theme. Earlier line-chart review exposed a lone measurement
+   between gaps rendering as nothing at all, so visual review remains useful alongside behavioral
+   assertions.
 5. **The report sheet shows caveat counts, not the quarantined rows themselves.** Users can
    see *that* 12 rows were set aside but not *which* — the honest-reporting promise is half kept.
 6. **Release size and signing.** ~48 MB fat APK against a ≤ 40 MB per-ABI target; signing
@@ -268,9 +275,9 @@ and hash-verified degraded re-link), 1.5.4 (autosave hardening, recovery UI and 
 chaos suite), 1.5.5 (field-correction UI plus targeted recompilation) and 1.5.6 (`.morphic` bundle
 export/import) are recorded in [m1.5-status.md](m1.5-status.md) §§2–8. AT-15, AT-16 and AT-17 are
 green as automated tests. No M1.5 code row remains; neither the shipped ◇1.5.6 stretch row nor the
-now-green chaos suite alone closes the milestone. **M1.6.4 and 1.6.5 have since shipped** bundled
-samples and empty/error recovery copy. They are code rows, not device or UX-validation evidence.
-See [m1.6-status.md](m1.6-status.md) §§2–3.
+now-green chaos suite alone closes the milestone. **M1.6.1, 1.6.4 and 1.6.5 have since shipped**
+the key-screen design pass, bundled samples and empty/error recovery copy. They are code rows,
+not device or UX-validation evidence. See [m1.6-status.md](m1.6-status.md) §§2–5.
 
 **The largest blocker is still one afternoon of mid-class device time.** It gates AT-01's 10 MB
 ≤ 3 s claim, AT-07's ≤ 150 ms sort/filter budget, AT-09's ≤ 500 ms reopen, the device halves of
@@ -279,18 +286,17 @@ low-class pass is useful but does not satisfy the written matrix. `tools/device_
 AT-07 gate exist, but the measurement still has to be run.
 
 **Keep the cheap checks gated.** The AT-02 scorer (21 labelled files, 90 fields), the 3,000-case
-seeded fuzz smoke, the named 1.5.4 chaos suite, the 54 LIVE goldens, schema drift and the
-build-stamp/permission checks all run on every push. Stable Flutter is now 3.50.0/Dart 3.14.0;
+seeded fuzz smoke, the named 1.5.4 chaos suite, committed image comparisons, schema drift and
+the build-stamp/permission checks all run on every push. Stable Flutter is now 3.50.0/Dart 3.14.0;
 `analysis_options.yaml` suppresses only the new `material.dart` deprecation info, so analyzer
 findings remain fatal and `flutter analyze` is green. Held-out detection files, coverage-guided
-fuzzing, all-five golden coverage and a bundled font remain owed; the nightly supply-chain audit
+fuzzing and the complete AT-11 image state matrix remain owed; the nightly supply-chain audit
 and the nightly chaos copy are blocked on the merge to `main`, not on missing code.
 
-**Re-baseline the estimate.** The remaining **8 core tasks** are **13–22 focused days** — still a
-large slice of the 30–40 the plan allowed for *all* of Phase 1, with **32 tasks** already spent.
-If the calendar cannot absorb that, the honest lever is scope: the one remaining ◇ stretch item
-(templates) is already optional, and M1.6's design sweep can be narrowed without touching
-correctness.
+**Re-baseline the estimate.** The remaining **7 core tasks** are **10–17 focused days** — still a
+large slice of the 30–40 the plan allowed for *all* of Phase 1, with **33 tasks** already spent.
+If the calendar cannot absorb that, the one remaining ◇ stretch item (templates) is already
+optional; narrowing acceptance, accessibility or device evidence requires an explicit re-plan.
 
 ---
 

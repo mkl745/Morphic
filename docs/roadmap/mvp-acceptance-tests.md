@@ -148,8 +148,10 @@ content re-links by hash and restores full function. *(automated chaos)*
 *1.5.3 note.* The automated half is **green** in the same run. Rust deletes the dataset file,
 confirms `open_session` reports `degraded`, refuses a different file, then re-links the exact
 original bytes by SHA-256 and confirms `metric_data` returns the row count again. The degraded
-notice now carries a **Restore source file** button alongside an app-bar action, and four Dart
-widget tests cover both entry points, a rejected re-link and a healthy workspace. The
+notice carries a **Restore source file** button, and wider screens also have an app-bar action;
+compact screens keep the notice action without the duplicate, including for an empty component
+list. If the document itself is absent, compact chrome retains the app-bar action as a fallback.
+Dart widget tests cover these entry points, a rejected re-link and a healthy workspace. The
 kill-mid-save / corrupted-index **chaos suite** is task 1.5.4.
 
 *1.5.4 note.* **AT-16 is now green as an automated test.** `641c48c` / run **43057629282** has a
@@ -191,9 +193,17 @@ M1.6 task; it makes no device claim and does not change AT-18 or any milestone e
 
 *1.6.5 note.* Empty/error surfaces gained shared recovery copy and actionable scoped filter
 clearing. The final code tip `23d41b9` / run **43283304890** is CI-green (6/6). This improves
-some AT-11 states but does not supply its all-five-component golden coverage; AT-11 remains
-partial. It does not satisfy AT-18 or change any milestone exit. See
+some AT-11 states but did not at the time supply golden coverage of all five components;
+AT-11 remained partial. It did not satisfy AT-18 or change any milestone exit. See
 [m1.6-status.md](m1.6-status.md) §3.
+
+*1.6.1 note.* Readable, font-loaded goldens now include all five component families and the
+key screens in both themes; `3cc9edf` / run **43367563320** passed 80 live golden tests against
+82 PNGs. They do not yet cover the full AT-11 matrix: loading, empty-after-filter and
+binding-error images are not established for every component in both themes. AT-11 remains partial. The new theme-pair contrast checks and existing 1.3× chart
+images give AT-18 partial evidence, but do not prove the full responsive/target/contrast matrix
+or the TalkBack vertical slice. No milestone exit is implied. See
+[m1.6-status.md](m1.6-status.md) §§4–5.
 
 **AT-18 — Responsive & accessibility.**
 Given compact/medium/expanded widths and text scale 1.3, then layouts follow the design

@@ -117,12 +117,12 @@ recovery, a 2 s checkpoint debounce plus lifecycle flush, the recovery UI, a mig
 copy and a named kill-mid-save chaos suite; 1.5.5 shipped a table-header field-correction sheet
 backed by targeted recompilation; 1.5.6 shipped `.morphic` export/import as a self-contained
 UTF-8 JSON envelope with a manifest, authoritative `WorkspaceDoc` and hash-verified hex source
-bytes — not a ZIP, and with no new Cargo dependency. `API_VERSION` is **13** (`a8e42e4`, run
-43070316539, 6/6 ✅, after the red `ee57c55` run, the `61817a2` rustfmt bot push and the normal
-fix commit). AT-15, AT-16 and AT-17 are green as automated tests; AT-13/AT-14 automated halves
-are green, but their device halves, AT-18, reopen ≤ 500 ms and the other evidence gaps are still
-owed. The milestone exit is **unmet** — see [m1.5-status.md](m1.5-status.md) for the CI chain and
-the remaining evidence. The chaos suite runs as a named gate in `ci.yml` and is also wired into
+bytes — not a ZIP, and with no new Cargo dependency. `API_VERSION` was **13** at the end of
+M1.5 (`a8e42e4`, run 43070316539, 6/6 ✅, after the red `ee57c55` run, the `61817a2` rustfmt
+bot push and the normal fix commit); 1.6.1 later raises it to **14**. AT-15, AT-16 and AT-17 are
+green as automated tests; AT-13/AT-14 automated halves are green, but their device halves, AT-18,
+reopen ≤ 500 ms and the other evidence gaps are still owed. The milestone exit is **unmet** — see
+[m1.5-status.md](m1.5-status.md) for the CI chain and the remaining evidence. The chaos suite runs as a named gate in `ci.yml` and is also wired into
 `nightly.yml`; the nightly cron itself has not fired yet because the workflow is not on `main`.
 
 **Exit:** AT-13…AT-17 pass; kill-mid-save chaos suite green; reopen ≤ 500 ms measured.
@@ -131,20 +131,20 @@ the remaining evidence. The chaos suite runs as a named gate in `ci.yml` and is 
 
 | # | Task | Size | Notes |
 |---|---|---|---|
-| 1.6.1 | Design-system application sweep: home, import, workspace chrome, settings; dark/light parity; motion tokens (real-event morph stages, stagger ≤400 ms) | L | goldens refreshed |
+| 1.6.1 | Design-system application sweep: home, import, workspace chrome, settings; dark/light parity; motion tokens (real-event morph stages, stagger ≤400 ms) | L | **done, CI-green**; goldens refreshed |
 | 1.6.2 | Responsive: compact focus mode, medium two-column, expanded rail; landscape; text scale 1.3 goldens | L | AT-18 |
 | 1.6.3 | Accessibility pass: semantic summaries, focus order, targets, contrast, TalkBack on vertical slice | M | a11y checklist signed |
 | 1.6.4 | Sample datasets (3–5 bundled: server logs, sales CSV, sensor JSON) + first-run suggestion | S | |
 | 1.6.5 | Empty/error/edge copy sweep (every failure has human language + next action) | S | |
 | 1.6.6 | ◇ Workspace templates ("keep this layout for future imports") — only if 1.5 lands early; else P4 | M | stretch |
 
-*Status, updated for 1.6.5:* **2 of 6 M1.6 rows are implemented.** Task 1.6.4 shipped four
-synthetic bundled samples and an empty-library suggestion on Home plus a sample row on Import.
-Task 1.6.5 adds shared recovery copy, separate workspace/view filter-clear actions, and working
-retry paths for chart, home and PoC failures. The final code tip `23d41b9` / run
-**43283304890** is **6/6 ✅**, with 528 Dart tests and 54 live chart goldens. The bridge API stays
-**13**. 1.6.1–1.6.3 and optional ◇1.6.6 remain; neither row supplies device,
-accessibility or external UX-validation evidence. See [m1.6-status.md](m1.6-status.md) §§2–3.
+*Status, updated for 1.6.1:* **3 of 6 M1.6 rows are implemented.** Task 1.6.4 shipped four
+synthetic samples and first-run suggestions; 1.6.5 added shared recovery copy, distinct filter
+scopes and retries. Task 1.6.1 applies dark/light themes, bundled fonts, real-event import
+motion, the editable live workspace title and Settings details, with refreshed screen and
+component goldens. The bridge API is **14**. Tasks 1.6.2, 1.6.3 and optional ◇1.6.6 remain;
+these code rows do not supply physical-device, complete accessibility or external UX evidence.
+See [m1.6-status.md](m1.6-status.md) §§2–5.
 
 **Exit:** full acceptance suite passes on low/mid devices; UX validation script run with
 ≥3 external people, findings logged; no screen violates token rules.

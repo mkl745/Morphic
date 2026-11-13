@@ -1,8 +1,9 @@
 # MORPHIC Design System — "Precision Instrument"
 
 Implements spec §10 · [ADR-0013](../decisions/ADR-0013-design-system-material-foundation.md).
-Tokens are defined once in `lib/design_system/tokens.dart` (Phase 0) and consumed everywhere;
-no raw colors/sizes in feature code (lint-enforced).
+Tokens are defined in `lib/design_system/tokens.dart`; the application sweep consumes them
+across the key screens and runtime components. Avoid raw colours/sizes in feature code, but a
+complete token audit and a dedicated enforcement lint have not yet been established.
 
 ## 1. Identity
 
@@ -22,14 +23,19 @@ decoratively. Dark mode is the reference theme; light mode is first-class, not i
 | `textPrimary` | `#E6EAF2` | `#14181F` | headings, values |
 | `textSecondary` | `#9AA3B2` | `#5B6472` | labels, axes |
 | `accent` | `#4FD1C5` | `#0D9488` | focus, selection, primary actions, "generated" moments |
+| action text | `#4FD1C5` | `#0F766E` | text and outlined button foregrounds |
 | `info` | `#60A5FA` | `#2563EB` | informational |
-| `success` | `#34D399` | `#059669` | healthy/verified |
-| `warning` | `#FBBF24` | `#D97706` | inferred/uncertain (with confidence UI) |
-| `error` | `#F87171` | `#DC2626` | errors, severity ERROR |
+| success text | `#34D399` | `#047857` | healthy/verified |
+| warning text | `#FBBF24` | `#B45309` | inferred/uncertain (with confidence UI) |
+| `error` | `#F87171` | `#B91C1C` | errors, severity ERROR |
+| error container | `#402025` | `#FFEDEC` | recovery surfaces |
 | `severity.*` | trace `#64748B` · debug `#94A3B8` · info `#60A5FA` · warn `#FBBF24` · error `#F87171` · fatal `#C084FC` | same hues, darkened for contrast | logs/timelines |
 
-Contrast: all text/background pairs ≥ 4.5:1 (checked by a token unit test). Inferred/AI
-content (P2) always carries the `warning`-tinted provenance chip — never styled as fact.
+Contrast target: all text/background pairs ≥ 4.5:1. Task 1.6.1 tests selected theme and
+recovery-surface pairs, including action text; it is not a complete screen-by-screen audit.
+Light action text uses a deeper teal than the graphical accent, and error/recovery containers
+use theme-specific tonal surfaces. Inferred/AI content (P2) always carries the `warning`-tinted
+provenance chip — never styled as fact.
 
 ## 3. Typography
 
@@ -53,6 +59,10 @@ changes animate size/position (200 ms); **no artificial loading animation** — 
 stage indicator reflects real engine events and disappears when work is done (spec §10.3).
 Reduced-motion setting disables stagger/translation, keeps opacity.
 
+Task 1.6.1 applies the event-driven stage transition and a shared ≤400 ms post-import entrance;
+reopening a workspace is immediate. Layout-change size/position animation is not yet established
+as a design-token guarantee and remains part of the responsive/motion follow-up.
+
 ## 6. Responsive layout
 
 | Class | Width | Workspace behavior |
@@ -72,9 +82,9 @@ content · footer state (row counts, filter-active indicator). Empty-after-filte
 binding-error states are designed surfaces with recovery actions, never blank boxes.
 
 Task 1.6.5 adds shared recovery copy, scoped filter-clearing actions and human-readable chart
-failures with the engine evidence retained. It is not the complete component-chrome, responsive,
-contrast or accessibility sweep; those remain in 1.6.1–1.6.3. See
-[m1.6-status.md](../roadmap/m1.6-status.md) §3.
+failures with the engine evidence retained. Task 1.6.1 applies key-screen chrome and theme tokens;
+responsive behavior, the full component-chrome/contrast audit and accessibility work remain.
+See [m1.6-status.md](../roadmap/m1.6-status.md).
 
 ## 8. Key screens (MVP)
 
