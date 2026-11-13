@@ -67,6 +67,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   DropdownButtonFormField<ThemeMode>(
                     key: ValueKey('theme-picker-${mode.name}'),
                     initialValue: mode,
+                    isExpanded: true,
+                    isDense: false,
+                    itemHeight: null,
                     decoration: const InputDecoration(labelText: 'Theme'),
                     items: const [
                       DropdownMenuItem(value: ThemeMode.system, child: Text('System')),

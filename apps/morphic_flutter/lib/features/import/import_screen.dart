@@ -349,6 +349,11 @@ class _ImportScreenState extends State<ImportScreen> {
             const SizedBox(height: MorphicSpace.lg),
             DropdownButtonFormField<String>(
               initialValue: _formatChoice,
+              // Let the selected label wrap at larger text scales instead of measuring all
+              // menu choices at unconstrained width inside the compact window.
+              isExpanded: true,
+              isDense: false,
+              itemHeight: null,
               decoration: const InputDecoration(
                 labelText: 'Format',
                 helperText: 'Detect automatically unless the result looks wrong.',

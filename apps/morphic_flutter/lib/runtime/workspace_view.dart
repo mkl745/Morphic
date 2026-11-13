@@ -191,6 +191,7 @@ class WorkspaceView extends StatelessWidget {
             components: components,
             hints: hints,
             columns: columns,
+            headerMaxHeight: constraints.maxHeight.isFinite ? constraints.maxHeight * 0.4 : 240.0,
           );
         }
         if (focusMode && windowClass == MorphicWindowClass.compact) {
@@ -271,6 +272,7 @@ class WorkspaceView extends StatelessWidget {
     required List<Map<String, dynamic>> components,
     required Map<String, Map<String, dynamic>> hints,
     required int columns,
+    required double headerMaxHeight,
   }) {
     Future<void> reorder(int oldIndex, int newIndex) async {
       final id = _idOf(components[oldIndex]);
@@ -301,8 +303,8 @@ class WorkspaceView extends StatelessWidget {
     return Column(
       children: [
         if (header.isNotEmpty)
-          Flexible(
-            fit: FlexFit.loose,
+          ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: headerMaxHeight),
             child: SingleChildScrollView(
               child: Padding(
                 padding: const EdgeInsets.all(MorphicSpace.lg),
@@ -321,7 +323,9 @@ class WorkspaceView extends StatelessWidget {
               final spec = components[index];
               final id = _idOf(spec);
               final hint = hints[id];
-              final span = _spanOf(hint, 1, columns);
+              // Show the saved span, even when the current narrow window displays fewer
+              // columns. The menu is editing the persisted hint, not today's clamped width.
+              final span = (hint?['span'] as num?)?.toInt() ?? _spanOf(hint, 1, columns);
               final heightName = hint?['height'] as String? ?? '';
               final height = heightName.isEmpty ? 'auto' : heightName;
               return Padding(
@@ -400,12 +404,10 @@ class WorkspaceView extends StatelessWidget {
     return Column(
       children: [
         Expanded(
-          child: ListView.separated(
-            key: const Key('focus-content'),
-            padding: const EdgeInsets.all(MorphicSpace.lg),
-            itemCount: blocks.length,
-            separatorBuilder: (_, __) => const SizedBox(height: MorphicSpace.md),
-            itemBuilder: (_, i) => blocks[i],
+          child: _FocusContent(
+            blocks: blocks,
+            focusIndex: index,
+            activeBlockIndex: header.length + index,
           ),
         ),
         Material(
@@ -452,8 +454,8 @@ class WorkspaceView extends StatelessWidget {
     return Card(
       child: ListTile(
         key: ValueKey('focus-summary-${_idOf(spec)}'),
-        title: Text(title),
-        subtitle: Text(summary),
+        title: Text(title, maxLines: 2, overflow: TextOverflow.ellipsis),
+        subtitle: Text(summary, maxLines: 2, overflow: TextOverflow.ellipsis),
         trailing: const Icon(Icons.chevron_right),
         onTap: onFocusIndexChanged == null ? null : () => onFocusIndexChanged!(index),
       ),
@@ -494,6 +496,75 @@ class WorkspaceView extends StatelessWidget {
 
   String _idOf(Map<String, dynamic> spec) =>
       spec['id'] as String? ?? spec['type'] as String? ?? '';
+}
+
+/// Only the selected view is mounted; the remaining children are inexpensive summaries. Keep
+/// them in one scrollable so selecting a summary or using Next can reveal the newly expanded
+/// view even when it was previously far below the fold.
+class _FocusContent extends StatefulWidget {
+  const _FocusContent({
+    required this.blocks,
+    required this.focusIndex,
+    required this.activeBlockIndex,
+  });
+
+  final List<Widget> blocks;
+  final int focusIndex;
+  final int activeBlockIndex;
+
+  @override
+  State<_FocusContent> createState() => _FocusContentState();
+}
+
+class _FocusContentState extends State<_FocusContent> {
+  final GlobalKey _active = GlobalKey();
+
+  @override
+  void initState() {
+    super.initState();
+    _revealActive();
+  }
+
+  @override
+  void didUpdateWidget(_FocusContent oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.focusIndex != oldWidget.focusIndex) _revealActive();
+  }
+
+  void _revealActive() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final active = _active.currentContext;
+      if (!mounted || active == null) return;
+      final viewBox = context.findRenderObject();
+      final activeBox = active.findRenderObject();
+      if (viewBox is RenderBox && activeBox is RenderBox && viewBox.hasSize && activeBox.hasSize) {
+        final viewTop = viewBox.localToGlobal(Offset.zero).dy;
+        final activeTop = activeBox.localToGlobal(Offset.zero).dy;
+        final fullyVisible = activeTop >= viewTop &&
+            activeTop + activeBox.size.height <= viewTop + viewBox.size.height;
+        if (fullyVisible) return;
+      }
+      final duration = MediaQuery.disableAnimationsOf(context) ? Duration.zero : MorphicMotion.standard;
+      unawaited(Scrollable.ensureVisible(active, duration: duration));
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => SingleChildScrollView(
+        key: const Key('focus-content'),
+        padding: const EdgeInsets.all(MorphicSpace.lg),
+        child: Column(
+          children: [
+            for (var i = 0; i < widget.blocks.length; i++) ...[
+              if (i > 0) const SizedBox(height: MorphicSpace.md),
+              if (i == widget.activeBlockIndex)
+                KeyedSubtree(key: _active, child: widget.blocks[i])
+              else
+                widget.blocks[i],
+            ],
+          ],
+        ),
+      );
 }
 
 /// Shown when a workspace reopened without its source data. The engine's wording is used

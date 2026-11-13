@@ -144,6 +144,11 @@ class _WorkspaceScreenState extends State<WorkspaceScreen>
           final windowWidth = MediaQuery.sizeOf(context).width;
           final windowClass = MorphicResponsive.classify(windowWidth);
           final compact = windowClass == MorphicWindowClass.compact;
+          // A short landscape phone has room horizontally for the controls but precious
+          // vertical space. Narrow portrait windows get a second row to protect the title.
+          final compactControlsRow = compact && windowWidth < 480;
+          final scopeRevision = ctl.revision;
+          final scopeWorkspaceId = ctl.workspaceId;
           final controls = <Widget>[
             _historyButton(context, ctl, undo: true),
             _historyButton(context, ctl, undo: false),
@@ -190,7 +195,7 @@ class _WorkspaceScreenState extends State<WorkspaceScreen>
                       onRename: () => _renameWorkspace(context, ctl),
                     ),
               actions: [
-                if (!compact) ...controls,
+                if (!compactControlsRow) ...controls,
                 // The device harness finds this action by its tooltip; keep it directly
                 // reachable in the app bar even when compact controls get a second row.
                 IconButton(
@@ -203,7 +208,7 @@ class _WorkspaceScreenState extends State<WorkspaceScreen>
                   ),
                 ),
               ],
-              bottom: compact
+              bottom: compactControlsRow
                   ? PreferredSize(
                       preferredSize: const Size.fromHeight(kMinInteractiveDimension),
                       child: Row(
@@ -217,7 +222,11 @@ class _WorkspaceScreenState extends State<WorkspaceScreen>
             body: WorkspaceDetailScope(
               windowClass: windowClass,
               openInRail: (builder, bottom) => _showDetail(ctl, builder, bottom),
-              reopen: _reopenDetail,
+              reopen: (builder, bottom) {
+                if (ctl.revision == scopeRevision && ctl.workspaceId == scopeWorkspaceId) {
+                  _reopenDetail(builder, bottom);
+                }
+              },
               child: Builder(
                 key: _detailAnchor,
                 builder: (context) => Column(
@@ -456,7 +465,7 @@ class _WorkspaceDetailRail extends StatelessWidget {
                   Text('Details', style: theme.textTheme.titleSmall),
                   const SizedBox(height: MorphicSpace.sm),
                   Text(
-                    'Choose a view’s information button or a table row to inspect it here.',
+                    'Choose a view’s information or table button, or a data row, to inspect it here.',
                     style: theme.textTheme.bodySmall,
                   ),
                 ],

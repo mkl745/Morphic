@@ -122,21 +122,26 @@ void main() {
     expect(MorphicResponsive.classify(840.001), MorphicWindowClass.expanded);
   });
 
-  testWidgets('home, import and settings remain readable on wide and compact windows',
-      (tester) async {
-    _resetSurface(tester);
-    _setSurface(tester, const Size(1400, 800));
-    final bridge = ScriptedBridge();
-    final screens = <Widget>[
-      HomeScreen(fileSource: FakeFileSource(), sampleLauncher: FakeSampleLauncher()),
-      ImportScreen(
-        fileSource: FakeFileSource(),
-        runner: FakeImportRunner(),
-        sampleLauncher: FakeSampleLauncher(),
-      ),
-      SettingsScreen(storageUsage: (_) async => 1024),
-    ];
-    for (final screen in screens) {
+  for (final name in ['home', 'import', 'settings']) {
+    testWidgets('$name remains readable on wide and compact windows at 1.3x', (tester) async {
+      _resetSurface(tester);
+      _setSurface(tester, const Size(1400, 800));
+      final previousHandler = FlutterError.onError;
+      FlutterError.onError = (details) {
+        debugPrint('Responsive $name diagnostic: ${details.toString()}');
+        previousHandler?.call(details);
+      };
+      addTearDown(() => FlutterError.onError = previousHandler);
+      final bridge = ScriptedBridge();
+      final Widget screen = switch (name) {
+        'home' => HomeScreen(fileSource: FakeFileSource(), sampleLauncher: FakeSampleLauncher()),
+        'import' => ImportScreen(
+            fileSource: FakeFileSource(),
+            runner: FakeImportRunner(),
+            sampleLauncher: FakeSampleLauncher(),
+          ),
+        _ => SettingsScreen(storageUsage: (_) async => 1024),
+      };
       await tester.pumpWidget(BridgeScope(
         bridge: bridge,
         storageRoot: '/tmp/m',
@@ -155,8 +160,8 @@ void main() {
       await _resize(tester, const Size(390, 844));
       expect(tester.getSize(page).width, closeTo(390, 0.1));
       await _resize(tester, const Size(1400, 800));
-    }
-  });
+    });
+  }
 
   testWidgets('mixed views follow engine order and spans at the actual breakpoints',
       (tester) async {
@@ -273,6 +278,29 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('focus navigation reveals the selected view on a short screen', (tester) async {
+    _resetSurface(tester);
+    _setSurface(tester, const Size(390, 400));
+    final bridge = _mixedBridge();
+    final engine = EngineController(bridge: bridge, storageRoot: '/tmp/m');
+    await engine.open('w1');
+    await tester.pumpWidget(_app(engine, registry: _geometryRegistry(), scale: 1.3));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('focus-mode-button')));
+    await tester.pumpAndSettle();
+    for (var i = 0; i < 4; i++) {
+      await tester.tap(find.byKey(const Key('focus-next-button')));
+      await tester.pumpAndSettle();
+    }
+    expect(find.text('5 of 5'), findsOneWidget);
+    final viewport = tester.getRect(find.byKey(const Key('focus-content')));
+    final selected = _paintRect(tester, 'timeline');
+    expect(selected.top, greaterThanOrEqualTo(viewport.top));
+    expect(selected.bottom, lessThanOrEqualTo(viewport.bottom));
+    expect(bridge.commandBatches, isEmpty);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('resizing layout stays engine-owned at compact, medium and expanded widths',
       (tester) async {
     _resetSurface(tester);
@@ -295,6 +323,14 @@ void main() {
       expect(bridge.commandBatches.last.single['kind'], 'resizeComponent');
       expect(bridge.commandBatches.last.single['componentId'], 'table');
       expect(bridge.commandBatches.last.single['span'], 2);
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('layout-tile-table')),
+          matching: find.text('span 2 · height auto'),
+        ),
+        findsOneWidget,
+        reason: 'the saved span remains visible even where rendering is clamped',
+      );
     }
     await tester.tap(find.byKey(const Key('layout-edit-button')));
     await tester.pumpAndSettle();
